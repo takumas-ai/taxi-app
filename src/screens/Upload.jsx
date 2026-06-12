@@ -219,7 +219,7 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
           <div style={{ fontSize:13, color:C.muted, marginBottom:20 }}>{ocrError || "もう一度試すか、手動で入力してください"}</div>
           <Btn onClick={() => fileInputRef.current?.click()} style={{ marginBottom:10 }}>もう一度撮影する</Btn>
           <Btn onClick={() => { setForm(EMPTY); setStep("confirm"); }} variant="ghost">手動で入力する</Btn>
-          <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{ display:"none" }}/>
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{ display:"none" }}/>
         </Card>
       </div>
     );
@@ -323,7 +323,6 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         onChange={handleFileSelect}
         style={{ display:"none" }}
       />
