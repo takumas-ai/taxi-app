@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { C, fmt, occ, dow, hourly, FREE_LIMIT } from "../lib/constants";
 import { generateReportComment } from "../lib/ai";
 import { Card, Btn, ProgressBar } from "../components/UI";
 import { WORK_AREAS_BY_PARENT } from "../data/mockData";
+import { supabase } from "../lib/supabase";
 
 const OCR_SEQ = ["画像を解析中...","日付・勤務時間を読み取り中...","売上データを抽出中...","営業回数・走行距離を確認中...","フォーマット差異を吸収中...","読み取り完了 ✓"];
 const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"1.0", highway_fee:"0", trouble_note:"", work_area:"" };
@@ -66,20 +67,80 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
   const [saving, setSaving] = useState(false);
   const [ocrLines, setOcrLines] = useState([]);
   const [ocrProg, setOcrProg]   = useState(0);
+  const [ocrError, setOcrError] = useState("");
+  const fileInputRef = useRef(null);
   const remaining = FREE_LIMIT - uploadCount;
 
-  const handleOCR = async () => {
+  // ガイドモーダルの「進む」→ファイルピッカーを開く
+  const handleOCR = () => {
     setShowGuide(false);
-    setStep("ocring"); setOcrLines([]); setOcrProg(0);
-    for (let i=0; i<OCR_SEQ.length; i++) {
-      await new Promise(r=>setTimeout(r,500));
-      setOcrLines(prev=>[...prev, OCR_SEQ[i]]);
-      setOcrProg(Math.round(((i+1)/OCR_SEQ.length)*100));
+    fileInputRef.current?.click();
+  };
+
+  // ファイル選択後にOCR実行
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // リセット
+    e.target.value = "";
+    setOcrError("");
+    setStep("ocring");
+    setOcrLines([]);
+    setOcrProg(0);
+
+    const addLine = (text, prog) => {
+      setOcrLines(prev => [...prev, text]);
+      setOcrProg(prog);
+    };
+
+    try {
+      // base64変換
+      addLine("画像を読み込み中...", 15);
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      addLine("AIに画像を送信中...", 35);
+      await new Promise(r => setTimeout(r, 300));
+      addLine("日付・売上データを抽出中...", 55);
+
+      const { data, error } = await supabase.functions.invoke("ocr-report", {
+        body: { image_base64: base64, media_type: file.type || "image/jpeg" },
+      });
+
+      if (error) throw new Error(error.message || "OCRエラー");
+
+      addLine("走行距離・乗務時間を確認中...", 80);
+      await new Promise(r => setTimeout(r, 300));
+      addLine("読み取り完了 ✓", 100);
+      await new Promise(r => setTimeout(r, 400));
+
+      const f = data?.fields ?? {};
+      const today = new Date().toISOString().slice(0, 10);
+      setForm({
+        date:               f.date              ?? today,
+        gross_sales:        f.gross_sales        != null ? String(f.gross_sales)        : "",
+        cash_sales:         f.cash_sales         != null ? String(f.cash_sales)         : "",
+        card_sales:         f.card_sales         != null ? String(f.card_sales)         : "",
+        app_sales:          f.app_sales          != null ? String(f.app_sales)          : "",
+        ride_count:         f.ride_count         != null ? String(f.ride_count)         : "",
+        total_distance:     f.total_distance     != null ? String(f.total_distance)     : "",
+        occupied_distance:  f.occupied_distance  != null ? String(f.occupied_distance)  : "",
+        work_hours:         f.work_hours         != null ? String(f.work_hours)         : "",
+        break_hours:        f.break_hours        != null ? String(f.break_hours)        : "1.0",
+        highway_fee:        f.highway_fee        != null ? String(f.highway_fee)        : "0",
+        trouble_note:       "",
+        work_area:          "",
+      });
+      setStep("confirm");
+    } catch (err) {
+      console.error("[OCR]", err);
+      setOcrError(err.message || "読み取りに失敗しました");
+      setStep("ocr_error");
     }
-    await new Promise(r=>setTimeout(r,300));
-    // デモ: 実際はClaude Vision API（Supabase Edge Functions経由）に差し替え
-    setForm({ date:"2026-06-10", gross_sales:"61800", cash_sales:"37200", card_sales:"18400", app_sales:"6200", ride_count:"30", total_distance:"304", occupied_distance:"155", work_hours:"13.0", break_hours:"1.0", highway_fee:"0", trouble_note:"" });
-    setStep("confirm");
   };
 
   const handleSave = async () => {
@@ -144,6 +205,21 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
           <div style={{ marginTop:14 }}>
             {ocrLines.map((l,i) => <div key={i} style={{ fontSize:13, color:i===ocrLines.length-1?C.text:C.muted, padding:"5px 0", borderBottom:i<ocrLines.length-1?`1px solid ${C.border}`:"none" }}>{l}</div>)}
           </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (step === "ocr_error") {
+    return (
+      <div style={{ maxWidth:480, margin:"0 auto", padding:"40px 16px 100px", textAlign:"center" }}>
+        <Card style={{ padding:32 }}>
+          <div style={{ fontSize:48, marginBottom:12 }}>⚠️</div>
+          <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>読み取りに失敗しました</div>
+          <div style={{ fontSize:13, color:C.muted, marginBottom:20 }}>{ocrError || "もう一度試すか、手動で入力してください"}</div>
+          <Btn onClick={() => fileInputRef.current?.click()} style={{ marginBottom:10 }}>もう一度撮影する</Btn>
+          <Btn onClick={() => { setForm(EMPTY); setStep("confirm"); }} variant="ghost">手動で入力する</Btn>
+          <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{ display:"none" }}/>
         </Card>
       </div>
     );
@@ -241,6 +317,16 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
 
       {/* 撮影ガイドモーダル */}
       {showGuide && <ShotGuideModal onShoot={handleOCR} onCancel={()=>setShowGuide(false)}/>}
+
+      {/* hidden file input（カメラ or ギャラリー選択） */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleFileSelect}
+        style={{ display:"none" }}
+      />
     </div>
   );
 }
