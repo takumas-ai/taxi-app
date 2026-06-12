@@ -94,12 +94,28 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
     };
 
     try {
-      // base64変換
+      // 画像を圧縮してbase64変換（スマホ写真はサイズ大のため）
       addLine("画像を読み込み中...", 15);
       const base64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(",")[1]);
         reader.onerror = reject;
+        reader.onload = (ev) => {
+          const img = new Image();
+          img.onerror = reject;
+          img.onload = () => {
+            const MAX = 1600;
+            let { width, height } = img;
+            if (width > MAX || height > MAX) {
+              if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+              else { width = Math.round(width * MAX / height); height = MAX; }
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = width; canvas.height = height;
+            canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
+          };
+          img.src = ev.target.result;
+        };
         reader.readAsDataURL(file);
       });
 
