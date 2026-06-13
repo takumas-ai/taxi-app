@@ -23,7 +23,7 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
 
   const SUB = [
     {id:"profile", icon:"👤", label:"プロフィール", sub:"名前・勤務形態"},
-    {id:"mode",    icon:"🎛️", label:"モード",       sub:appMode==="simple"?"かんたん":appMode==="analysis"?"分析":"スタンダード"},
+    {id:"mode",    icon:"🎛️", label:"モードとカラーテーマ", sub:appMode==="simple"?"かんたん":appMode==="analysis"?"分析":"スタンダード"},
     {id:"area",    icon:"📍", label:"エリア",       sub:user.areas?.length>0?user.areas[0]:"未設定"},
     {id:"notif",   icon:"🔔", label:"通知",         sub:"アラート設定"},
     {id:"takepay", icon:"💴", label:"手取り設定",    sub:`歩合${takePay.rate}% / 控除${(takePay.deduction/10000).toFixed(1)}万円`},
@@ -60,7 +60,7 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
       ) : (
         <>
           <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
-            <div onClick={()=>setSubTab("")} style={{ display:"flex", alignItems:"center", gap:4, color:C.accentLight, fontSize:14, cursor:"pointer", fontWeight:600 }}>‹ 設定</div>
+            <div onClick={()=>setSubTab("")} style={{ display:"flex", alignItems:"center", gap:4, color:C.accentLight, fontSize:14, cursor:"pointer", fontWeight:600 }}>‹ 戻る</div>
             <div style={{ fontSize:15, fontWeight:800, color:C.text }}>{SUB.find(t=>t.id===subTab)?.label}</div>
           </div>
 
