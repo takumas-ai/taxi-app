@@ -64,7 +64,7 @@ export function Header({ user, tab, setTab, onManageArea, showAreaModal }) {
   return (
     <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 16px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:40 }}>
       <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
-        <span style={{ fontSize:18, fontWeight:900, color:C.accentLight, letterSpacing:"-0.5px" }}>日報AI</span>
+        <span style={{ fontSize:18, fontWeight:900, color:C.accentLight, letterSpacing:"-0.5px" }}>🦉 タクロー</span>
         <span style={{ fontSize:10, color:C.muted }}>β</span>
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:8 }}>

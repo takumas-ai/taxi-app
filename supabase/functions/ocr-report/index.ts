@@ -43,7 +43,31 @@ serve(async (req) => {
             },
             {
               type: "text",
-              text: "この画像はタクシードライバーの日報です。以下の項目をJSON形式で抽出してください。項目が読み取れない場合はnullにしてください。\n\n{\"gross_sales\":総売上,\"cash_sales\":現金売上,\"card_sales\":カード売上,\"app_sales\":アプリ売上,\"highway_fee\":高速料金,\"ride_count\":乗車回数,\"total_distance\":総走行距離,\"work_hours\":乗務時間,\"break_hours\":休憩時間,\"format_type\":\"mismatsu_simple or mismatsu_full or greencab or unknown\"}\n\nJSONのみ返してください。",
+              text: `あなたはタクシー日報の読み取り専門AIです。
+この画像はタクシードライバーが記入した日報（乗務日報）です。
+画像をよく見て、以下の項目を正確に読み取り、JSON形式のみで返してください。
+
+【抽出ルール】
+- 数値はカンマや単位（円・km・回・時間）を除いた純粋な数字のみ
+- 「万」単位の場合は円に換算（例：6万1800円→61800）
+- 時間は小数点表記（例：13時間30分→13.5）
+- 読み取れない項目はnull
+- JSONのみ返す（説明文・コードブロック不要）
+
+【抽出項目】
+{
+  "date": "日付（YYYY-MM-DD形式、例：2026-06-12）",
+  "gross_sales": "総売上・売上合計（円）",
+  "cash_sales": "現金売上（円）",
+  "card_sales": "クレジットカード売上（円）",
+  "app_sales": "配車アプリ・GO・DiDi等の売上（円）",
+  "highway_fee": "高速料金・有料道路料金（円）",
+  "ride_count": "乗車回数・営業回数（回）",
+  "total_distance": "総走行距離・走行キロ（km）",
+  "occupied_distance": "実車距離・営業距離（km）",
+  "work_hours": "乗務時間・勤務時間（時間、小数点）",
+  "break_hours": "休憩時間（時間、小数点）"
+}`,
             },
           ],
         }],

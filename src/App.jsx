@@ -113,9 +113,9 @@ function LoginScreen({ onLogin }) {
   return (
     <div style={{ minHeight:"100vh", backgroundColor:C.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:24, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text }}>
       <div style={{ textAlign:"center", marginBottom:36 }}>
-        <div style={{ fontSize:52, marginBottom:8 }}>🚕</div>
-        <div style={{ fontSize:28, fontWeight:900, color:C.text, letterSpacing:"-1px" }}>日報AI</div>
-        <div style={{ fontSize:13, color:C.muted, marginTop:6, fontStyle:"italic" }}>紙の日報を、資産に変える。</div>
+        <div style={{ fontSize:52, marginBottom:8 }}>🦉</div>
+        <div style={{ fontSize:28, fontWeight:900, color:C.text, letterSpacing:"-1px" }}>タクロー</div>
+        <div style={{ fontSize:13, color:C.muted, marginTop:6, fontStyle:"italic" }}>勘と経験を、データに変える。</div>
       </div>
 
       {error && <div style={{ backgroundColor:C.redGlow, border:`1px solid ${C.red}44`, borderRadius:10, padding:"10px 14px", marginBottom:14, fontSize:13, color:C.red, maxWidth:360, width:"100%" }}>{error}</div>}
