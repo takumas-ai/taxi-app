@@ -30,6 +30,7 @@ import GuideScreen        from "./screens/Guide";
 import ShiftScreen        from "./screens/Shift";
 import Settings           from "./screens/Settings";
 import OnboardingScreen   from "./screens/Onboarding";
+import CommunityScreen    from "./screens/Community";
 
 // Components
 import { BottomNav, Header } from "./components/Navigation";
@@ -455,13 +456,14 @@ export default function App() {
       case "guide":     return <GuideScreen userAreas={userAreas}/>;
       case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")}/>;
       case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports}/>;
+      case "community": return <CommunityScreen />;
       default:          return null;
     }
   };
 
   return (
     <div key={themeVer} style={{ minHeight:"100vh", backgroundColor:C.bg, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text }}>
-      <Header user={user} tab={tab} setTab={setTab} onManageArea={()=>setShowAreaModal(true)} appMode={appMode} onModeChange={setAppMode} />
+      <Header user={user} tab={tab} setTab={setTab} appMode={appMode} onModeChange={setAppMode} />
       {renderScreen()}
       <ReportModal key={selected ? `${selected.id}-${selectedForEdit}` : "none"} report={selected} onClose={()=>{setSelected(null);setSelectedForEdit(false);}} onUpdate={handleUpdateReport} startInEdit={selectedForEdit}/>
       <BottomNav tab={tab} setTab={setTab} userAreas={userAreas}/>

@@ -10,16 +10,9 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+    // anonキーまたはBearerトークンがあればOK（デモユーザーも利用可）
+    const apiKey = req.headers.get("apikey") || req.headers.get("Authorization");
+    if (!apiKey) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
 
     const { messages, system, max_tokens = 1024 } = await req.json();
 

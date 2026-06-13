@@ -3,11 +3,10 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 import { useState } from "react";
 import { C } from "../lib/constants";
-import { AREA_MASTER } from "../data/mockData";
 import { MOCK_DELAYS } from "../data/mockData";
 
 // ボトムナビ（5タブ）
-// 📊ホーム | 📋日報 | ＋記録 | 📍ガイド | ⚙️設定
+// 📊ホーム | 📋日報 | ＋記録 | 📍ガイド | 💬コミュニティ
 export function BottomNav({ tab, setTab, userAreas=[] }) {
   const alertCount = MOCK_DELAYS.filter(d =>
     d.status !== "normal" && d.opportunity && d.severity === "high" &&
@@ -15,15 +14,15 @@ export function BottomNav({ tab, setTab, userAreas=[] }) {
   ).length;
 
   const items = [
-    { id:"dashboard", icon:"📊", label:"ホーム"  },
-    { id:"list",      icon:"📋", label:"日報"    },
-    { id:"upload",    icon:"＋", label:"記録",  special:true },
-    { id:"guide",     icon:"📍", label:"ガイド"  },
-    { id:"settings",  icon:"⚙️", label:"設定"   },
+    { id:"dashboard",  icon:"📊", label:"ホーム"   },
+    { id:"list",       icon:"📋", label:"日報"     },
+    { id:"upload",     icon:"＋", label:"記録",  special:true },
+    { id:"guide",      icon:"📍", label:"ガイド"   },
+    { id:"community",  icon:"💬", label:"コミュニティ" },
   ];
 
   const isActive = id => {
-    if (id === "dashboard") return ["dashboard","info","community","shift"].includes(tab);
+    if (id === "dashboard") return ["dashboard","info","shift"].includes(tab);
     if (id === "guide")     return ["guide","spots"].includes(tab);
     return tab === id;
   };
@@ -54,17 +53,19 @@ export function BottomNav({ tab, setTab, userAreas=[] }) {
   );
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// モード選択ボトムシート
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const MODES = [
   { id:"simple",   icon:"🟢", label:"かんたん", desc:"大きな文字・シンプル表示" },
   { id:"standard", icon:"🔵", label:"通常",     desc:"標準的な表示" },
   { id:"analysis", icon:"🟣", label:"分析",     desc:"詳細データ・グラフ表示" },
 ];
 
-// モード選択ボトムシート
 function ModeSheet({ appMode, onModeChange, onClose }) {
   return (
     <div style={{ position:"fixed", inset:0, backgroundColor:"#00000088", zIndex:200 }} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{ position:"absolute", bottom:0, left:0, right:0, backgroundColor:C.surface, borderRadius:"20px 20px 0 0", padding:24, paddingBottom:40, maxWidth:480, margin:"0 auto" }}>
+      <div onClick={e=>e.stopPropagation()} style={{ position:"absolute", bottom:0, left:0, right:0, backgroundColor:C.surface, borderRadius:"20px 20px 0 0", padding:24, paddingBottom:44, maxWidth:480, margin:"0 auto" }}>
         <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 20px" }}/>
         <div style={{ fontSize:15, fontWeight:800, marginBottom:16 }}>表示モードを選択</div>
         {MODES.map(m => (
@@ -83,9 +84,12 @@ function ModeSheet({ appMode, onModeChange, onClose }) {
   );
 }
 
-// ヘッダー（情報・シフトのショートカット付き）
-export function Header({ user, tab, setTab, onManageArea, appMode="standard", onModeChange }) {
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ヘッダー
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export function Header({ user, tab, setTab, appMode="standard", onModeChange }) {
   const [showModeSheet, setShowModeSheet] = useState(false);
+
   const userAreas = user?.areas || [];
   const alertCount = MOCK_DELAYS.filter(d =>
     d.status !== "normal" && d.opportunity && d.severity === "high" &&
@@ -96,40 +100,35 @@ export function Header({ user, tab, setTab, onManageArea, appMode="standard", on
 
   return (
     <>
-    <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 12px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:40 }}>
+      <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 14px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:40 }}>
 
-      {/* 左：モード選択ボタン */}
-      <div onClick={() => setShowModeSheet(true)}
-        style={{ display:"flex", alignItems:"center", gap:5, cursor:"pointer", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:99, padding:"5px 12px", minWidth:0 }}>
-        <span style={{ fontSize:13 }}>{currentMode.icon}</span>
-        <span style={{ fontSize:11, fontWeight:700, color:C.sub, whiteSpace:"nowrap" }}>{currentMode.label}</span>
-        <span style={{ fontSize:10, color:C.muted }}>▾</span>
-      </div>
-
-      {/* 中央：アプリ名 */}
-      <div style={{ position:"absolute", left:"50%", transform:"translateX(-50%)", display:"flex", alignItems:"baseline", gap:4, pointerEvents:"none" }}>
-        <span style={{ fontSize:17, fontWeight:900, color:C.text, letterSpacing:"-0.5px" }}>🦉 タクロー</span>
-        <span style={{ fontSize:9, color:C.muted }}>β</span>
-      </div>
-
-      {/* 右：通知・シフト・エリア */}
-      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-        <div onClick={() => setTab("info")} style={{ position:"relative", cursor:"pointer", padding:"4px 6px", borderRadius:8, backgroundColor:tab==="info"?C.accentGlow:"transparent" }}>
-          <span style={{ fontSize:18, opacity:tab==="info"?1:0.6 }}>🔔</span>
-          {alertCount > 0 && <div style={{ position:"absolute", top:0, right:2, width:8, height:8, borderRadius:"50%", backgroundColor:C.red }} />}
+        {/* 左：モード選択 */}
+        <div onClick={() => setShowModeSheet(true)}
+          style={{ display:"flex", alignItems:"center", gap:5, cursor:"pointer", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:99, padding:"5px 12px" }}>
+          <span style={{ fontSize:13 }}>{currentMode.icon}</span>
+          <span style={{ fontSize:11, fontWeight:700, color:C.sub }}>{currentMode.label}</span>
+          <span style={{ fontSize:10, color:C.muted }}>▾</span>
         </div>
-        <div onClick={() => setTab("shift")} style={{ cursor:"pointer", padding:"4px 6px", borderRadius:8, backgroundColor:tab==="shift"?C.accentGlow:"transparent" }}>
-          <span style={{ fontSize:18, opacity:tab==="shift"?1:0.6 }}>📅</span>
+
+        {/* 中央：アプリ名（絶対配置で完全センター） */}
+        <div style={{ position:"absolute", left:"50%", transform:"translateX(-50%)", display:"flex", alignItems:"baseline", gap:4, pointerEvents:"none" }}>
+          <span style={{ fontSize:17, fontWeight:900, color:C.text, letterSpacing:"-0.5px" }}>🦉 タクロー</span>
+          <span style={{ fontSize:9, color:C.muted }}>β</span>
         </div>
-        {userAreas.length > 0 && (
-          <div onClick={onManageArea} style={{ display:"flex", alignItems:"center", gap:4, cursor:"pointer", backgroundColor:C.accentGlow, borderRadius:99, padding:"3px 8px" }}>
-            <span style={{ fontSize:11 }}>{AREA_MASTER[userAreas[0]]?.emoji}</span>
-            <span style={{ fontSize:10, color:C.accentLight, fontWeight:700 }}>{userAreas.length === 1 ? userAreas[0] : `${userAreas[0]}他`}</span>
+
+        {/* 右：通知・設定 */}
+        <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+          <div onClick={() => setTab("info")} style={{ position:"relative", cursor:"pointer", padding:"6px 8px", borderRadius:10, backgroundColor:tab==="info"?C.accentGlow:"transparent" }}>
+            <span style={{ fontSize:19, opacity:tab==="info"?1:0.6 }}>🔔</span>
+            {alertCount > 0 && <div style={{ position:"absolute", top:2, right:4, width:8, height:8, borderRadius:"50%", backgroundColor:C.red }} />}
           </div>
-        )}
+          <div onClick={() => setTab("settings")} style={{ cursor:"pointer", padding:"6px 8px", borderRadius:10, backgroundColor:tab==="settings"?C.accentGlow:"transparent" }}>
+            <span style={{ fontSize:19, opacity:tab==="settings"?1:0.6 }}>⚙️</span>
+          </div>
+        </div>
       </div>
-    </div>
-    {showModeSheet && <ModeSheet appMode={appMode} onModeChange={onModeChange} onClose={() => setShowModeSheet(false)}/>}
+
+      {showModeSheet && <ModeSheet appMode={appMode} onModeChange={onModeChange} onClose={() => setShowModeSheet(false)}/>}
     </>
   );
 }

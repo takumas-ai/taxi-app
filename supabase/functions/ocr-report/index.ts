@@ -1,54 +1,71 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// 会社フォーマット対応の詳細プロンプト
-const REPORT_OCR_PROMPT = `あなたはタクシー日報OCRシステムです。
+// 汎用タクシー日報OCRプロンプト（会社フォーマット自動検出 + 勤務時間計算）
+const REPORT_OCR_PROMPT = `あなたはタクシー日報OCRの専門AIです。
 画像を解析し、JSONのみを返してください。前置き・説明・マークダウン不要。
 
-フォーマット判定ルール:
-・美松交通（簡易版）: 合計金額列の合計 → gross_sales
-・美松交通（フル版）: 「総営収」 → gross_sales
-・グリーンキャブ: 「税込運収」 → gross_sales、「高速納金」 → highway_fee、「走行粁」 → total_distance
+## ステップ1: 会社フォーマットを自動判定して各項目を読み取る
 
-重要: occupied_distance（実車距離）は両社とも記載なし → 必ずnull
+どんな会社の日報でも、以下の対応表を使って柔軟にマッピングしてください:
 
-出力JSON（数値は整数または小数のみ、単位・カンマ不要、読み取れない項目はnull）:
+| 出力フィールド | よく使われる欄名・手がかり |
+|---|---|
+| gross_sales | 税込運収 / 総営収 / 合計金額 / 総売上 / 運収合計 / 売上合計 |
+| cash_sales | 現金 / 現収 / 現金売上 / 現金運収 |
+| card_sales | カード / クレジット / カード売上 / カード運収 |
+| app_sales | アプリ / GO / S.RIDE / 配車アプリ / Uber |
+| highway_fee | 高速納金 / 高速料金 / 高速代 / 高速 |
+| ride_count | 回数 / 乗車回数 / 営業回数 / 件数 |
+| total_distance | 走行粁 / 走行距離 / 総走行 / 走行km |
+| occupied_distance | 実車距離 / 実車粁 / 営業距離（記載なければnull） |
+| clock_in | 出庫時刻 / 出庫 / 出発 |
+| clock_out | 帰庫時刻 / 帰庫 / 到着 |
+| clock_in_date | 出庫日（日付欄や出庫日時から読む） |
+| clock_out_date | 帰庫日（帰庫日時から読む。翌日になることが多い） |
+
+## ステップ2: 勤務時間を計算する
+
+clock_in と clock_out が読み取れた場合、work_hours を計算してください。
+- 日付またぎ（例: 出庫12:10 → 帰庫翌日08:21）に必ず対応する
+- 計算式: (帰庫のUnixtime - 出庫のUnixtime) / 3600 を小数第1位で丸める
+- 例: 出庫12:10 帰庫翌日08:21 → 20.2時間
+
+## ステップ3: JSONを出力する
+
 {
-  "date": "YYYY-MM-DD",
-  "gross_sales": 総売上円,
+  "date": "出庫日のYYYY-MM-DD",
+  "gross_sales": 総売上円（整数）またはnull,
   "cash_sales": 現金売上円またはnull,
   "card_sales": カード売上円またはnull,
-  "app_sales": アプリ配車売上円またはnull,
+  "app_sales": アプリ売上円またはnull,
   "highway_fee": 高速料金円またはnull,
-  "ride_count": 乗車回数またはnull,
-  "total_distance": 総走行距離kmまたはnull,
-  "occupied_distance": null,
-  "work_hours": 勤務時間（小数）またはnull,
+  "ride_count": 乗車回数（整数）またはnull,
+  "total_distance": 総走行距離km（整数）またはnull,
+  "occupied_distance": 実車距離kmまたはnull,
+  "work_hours": 勤務時間（小数、計算値）またはnull,
   "break_hours": 休憩時間（小数）またはnull,
+  "clock_in": "HH:MM"またはnull,
+  "clock_out": "HH:MM"またはnull,
   "confidence": 読み取り信頼度0〜100,
-  "format_type": "mismatsu_simple|mismatsu_full|greencab|unknown",
+  "company": "会社名（読み取れた場合）",
   "unreadable_fields": ["読み取れなかった項目名"]
-}`;
+}
+
+数値はカンマ・単位を除いた純粋な数字のみ。読み取れない項目はnull。`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+    // anonキーまたはBearerトークンがあればOK（デモユーザーも利用可）
+    const apiKey = req.headers.get("apikey") || req.headers.get("Authorization");
+    if (!apiKey) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
 
     const body = await req.json();
     const { image_base64, media_type = "image/jpeg" } = body;
@@ -71,7 +88,7 @@ serve(async (req) => {
     if (!anthropicKey) {
       return new Response(JSON.stringify({ error: "API key not configured" }), { status: 500, headers: corsHeaders });
     }
-    console.log("[ocr-report] user:", user.id, "type:", normalizedType);
+    console.log("[ocr-report] type:", normalizedType);
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
