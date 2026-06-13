@@ -1,6 +1,7 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ナビゲーションコンポーネント
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+import { useState } from "react";
 import { C } from "../lib/constants";
 import { AREA_MASTER } from "../data/mockData";
 import { MOCK_DELAYS } from "../data/mockData";
@@ -53,30 +54,56 @@ export function BottomNav({ tab, setTab, userAreas=[] }) {
   );
 }
 
+const MODES = [
+  { id:"simple",   icon:"🟢", label:"かんたん", desc:"大きな文字・シンプル表示" },
+  { id:"standard", icon:"🔵", label:"通常",     desc:"標準的な表示" },
+  { id:"analysis", icon:"🟣", label:"分析",     desc:"詳細データ・グラフ表示" },
+];
+
+// モード選択ボトムシート
+function ModeSheet({ appMode, onModeChange, onClose }) {
+  return (
+    <div style={{ position:"fixed", inset:0, backgroundColor:"#00000088", zIndex:200 }} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{ position:"absolute", bottom:0, left:0, right:0, backgroundColor:C.surface, borderRadius:"20px 20px 0 0", padding:24, paddingBottom:40, maxWidth:480, margin:"0 auto" }}>
+        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 20px" }}/>
+        <div style={{ fontSize:15, fontWeight:800, marginBottom:16 }}>表示モードを選択</div>
+        {MODES.map(m => (
+          <div key={m.id} onClick={() => { onModeChange(m.id); onClose(); }}
+            style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 16px", borderRadius:14, marginBottom:8, cursor:"pointer", border:`2px solid ${appMode===m.id ? C.accentLight : C.border}`, backgroundColor:appMode===m.id ? C.accentGlow : C.card }}>
+            <span style={{ fontSize:24 }}>{m.icon}</span>
+            <div>
+              <div style={{ fontSize:14, fontWeight:700, color:appMode===m.id ? C.accentLight : C.text }}>{m.label}</div>
+              <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{m.desc}</div>
+            </div>
+            {appMode===m.id && <span style={{ marginLeft:"auto", color:C.accentLight, fontSize:18 }}>✓</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ヘッダー（情報・シフトのショートカット付き）
 export function Header({ user, tab, setTab, onManageArea, appMode="standard", onModeChange }) {
+  const [showModeSheet, setShowModeSheet] = useState(false);
   const userAreas = user?.areas || [];
   const alertCount = MOCK_DELAYS.filter(d =>
     d.status !== "normal" && d.opportunity && d.severity === "high" &&
     (userAreas.length === 0 || d.areas.some(a => userAreas.includes(a)))
   ).length;
 
-  const MODES = [
-    { id:"simple",   icon:"🟢", label:"かんたん" },
-    { id:"standard", icon:"🔵", label:"通常" },
-    { id:"analysis", icon:"🟣", label:"分析" },
-  ];
   const currentMode = MODES.find(m => m.id === appMode) || MODES[1];
-  const nextMode    = MODES[(MODES.findIndex(m => m.id === appMode) + 1) % MODES.length];
 
   return (
+    <>
     <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 12px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:40 }}>
 
-      {/* 左：モード切り替えボタン */}
-      <div onClick={() => onModeChange && onModeChange(nextMode.id)}
-        style={{ display:"flex", alignItems:"center", gap:5, cursor:"pointer", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:99, padding:"4px 10px", minWidth:0 }}>
-        <span style={{ fontSize:12 }}>{currentMode.icon}</span>
+      {/* 左：モード選択ボタン */}
+      <div onClick={() => setShowModeSheet(true)}
+        style={{ display:"flex", alignItems:"center", gap:5, cursor:"pointer", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:99, padding:"5px 12px", minWidth:0 }}>
+        <span style={{ fontSize:13 }}>{currentMode.icon}</span>
         <span style={{ fontSize:11, fontWeight:700, color:C.sub, whiteSpace:"nowrap" }}>{currentMode.label}</span>
+        <span style={{ fontSize:10, color:C.muted }}>▾</span>
       </div>
 
       {/* 中央：アプリ名 */}
@@ -102,5 +129,7 @@ export function Header({ user, tab, setTab, onManageArea, appMode="standard", on
         )}
       </div>
     </div>
+    {showModeSheet && <ModeSheet appMode={appMode} onModeChange={onModeChange} onClose={() => setShowModeSheet(false)}/>}
+    </>
   );
 }

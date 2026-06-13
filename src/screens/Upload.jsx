@@ -177,7 +177,8 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
     setSaving(true);
     // サニタイズ（XSS対策・値のクランプ）
     const data = { id: Date.now(), ...sanitizeReportData(form) };
-    const comment = await generateReportComment(data, reports);
+    // 3回以上記録が溜まってからAIコメント生成（データ不足での的外れコメントを防ぐ）
+    const comment = reports.length >= 2 ? await generateReportComment(data, reports) : "";
     data.ai_comment = comment;
     setSaving(false); onSave(data); setForm(EMPTY); setStep("done");
   };

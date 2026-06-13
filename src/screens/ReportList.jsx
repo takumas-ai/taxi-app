@@ -98,7 +98,7 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
             <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:8 }}>
               <Badge color={oc} size={11}>実車率 {or}%</Badge>
               {onUpdate && (
-                <button onClick={startEdit} style={{ fontSize:12, color:C.accentLight, background:"none", border:`1px solid ${C.accentLight}44`, borderRadius:8, padding:"4px 12px", cursor:"pointer" }}>
+                <button onClick={startEdit} style={{ fontSize:14, fontWeight:700, color:C.accentLight, background:C.accentGlow, border:`1px solid ${C.accentLight}66`, borderRadius:10, padding:"8px 18px", cursor:"pointer" }}>
                   ✏️ 編集
                 </button>
               )}
