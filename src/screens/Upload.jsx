@@ -132,8 +132,9 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
       await new Promise(r => setTimeout(r, 300));
       addLine("日付・売上データを抽出中...", 55);
 
+      // canvas.toDataURL は常にJPEG出力なので media_type は固定
       const { data, error } = await supabase.functions.invoke("ocr-report", {
-        body: { image_base64: base64, media_type: file.type || "image/jpeg" },
+        body: { image_base64: base64, media_type: "image/jpeg" },
       });
 
       if (error) throw new Error(error.message || "OCRエラー");
