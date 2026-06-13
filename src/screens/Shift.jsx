@@ -1,18 +1,13 @@
 // シフト管理画面
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C, TODAY, THIS_YEAR, THIS_MONTH, loadS, saveS, fmt, dow } from "../lib/constants";
 import { Card, Btn, ProgressBar, Badge, KpiCard } from "../components/UI";
 import { MOCK_SHIFTS } from "../data/mockData";
 import { SHIFT_OCR_PROMPT } from "../lib/ai";
+import { supabase } from "../lib/supabase";
 
 const MONTH_DAYS = (y,m) => new Date(y,m,0).getDate();
-const OCR_LINES = ["シフト表を解析中...","出勤日を検出中...","出庫・帰庫時刻を読み取り中...","勤務形態を判定中...","フォーマット差異を吸収中...","読み取り完了 ✓"];
-
-// シフトOCRシミュレーター（本番: Claude Vision API + Supabase Edge Functions）
-async function runShiftOCR() {
-  await new Promise(r=>setTimeout(r,3000));
-  return { year:2026, month:6, shifts:MOCK_SHIFTS.map(s=>({date:s.date,clockIn:s.clockIn,clockOut:s.clockOut,isNight:s.isNight,note:s.note})), confidence:88, notes:"隔日勤務パターンを検出。出庫12:00、翌日08:00帰庫として読み取り。" };
-}
+const OCR_LINES = ["画像を読み込み中...","AIに送信中...","出勤日を検出中...","出庫・帰庫時刻を読み取り中...","読み取り完了 ✓"];
 
 function ShiftCalendar({ year, month, shifts, reports, onSelectDay }) {
   const totalDays = MONTH_DAYS(year, month);
@@ -101,10 +96,12 @@ export default function ShiftScreen({ reports, onGoUpload }) {
   const [ocrStep, setOcrStep]       = useState("idle");
   const [ocrResult, setOcrResult]   = useState(null);
   const [ocrLines, setOcrLines]     = useState([]);
+  const [ocrError, setOcrError]     = useState("");
   const [editShifts, setEditShifts] = useState([]);
   const [selectedDay, setSelectedDay] = useState(null);
   const [dayShift, setDayShift]     = useState(null);
   const [dayReport, setDayReport]   = useState(null);
+  const fileInputRef = useRef(null);
   useEffect(()=>saveS("taxi_shifts",shifts),[shifts]);
 
   const monthShifts     = shifts.filter(s=>{const d=new Date(s.date);return d.getFullYear()===viewMonth.year&&d.getMonth()+1===viewMonth.month;});
@@ -113,11 +110,75 @@ export default function ShiftScreen({ reports, onGoUpload }) {
   const reportMap       = Object.fromEntries(reports.map(r=>[r.date,r]));
   const missing         = monthShifts.filter(s=>s.date<TODAY&&!reportMap[s.date]);
 
-  const handleOCR = async () => {
-    setOcrStep("reading"); setOcrLines([]);
-    for (let i=0;i<OCR_LINES.length;i++) { await new Promise(r=>setTimeout(r,500)); setOcrLines(prev=>[...prev,OCR_LINES[i]]); }
-    const result = await runShiftOCR();
-    setOcrResult(result); setEditShifts(result.shifts.map((s,i)=>({...s,id:"ocr_"+i}))); setOcrStep("confirm");
+  // ファイルピッカーを開く
+  const handleOCR = () => fileInputRef.current?.click();
+
+  // ファイル選択後にOCR実行
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setOcrError("");
+    setOcrStep("reading");
+    setOcrLines([]);
+
+    const addLine = (text) => setOcrLines(prev => [...prev, text]);
+
+    try {
+      addLine("画像を読み込み中...");
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = reject;
+        reader.onload = (ev) => {
+          const img = new Image();
+          img.onerror = reject;
+          img.onload = () => {
+            const MAX = 1600;
+            let { width, height } = img;
+            if (width > MAX || height > MAX) {
+              if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+              else { width = Math.round(width * MAX / height); height = MAX; }
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = width; canvas.height = height;
+            canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+
+      addLine("AIに送信中...");
+      addLine("出勤日を検出中...");
+
+      const { data, error } = await supabase.functions.invoke("ocr-report", {
+        body: { image_base64: base64, media_type: "image/jpeg", prompt: SHIFT_OCR_PROMPT },
+      });
+
+      if (error) throw new Error(error.message || "OCRエラー");
+
+      addLine("出庫・帰庫時刻を読み取り中...");
+      await new Promise(r => setTimeout(r, 300));
+      addLine("読み取り完了 ✓");
+      await new Promise(r => setTimeout(r, 400));
+
+      const f = data?.fields ?? {};
+      const result = {
+        year: f.year ?? new Date().getFullYear(),
+        month: f.month ?? new Date().getMonth() + 1,
+        shifts: Array.isArray(f.shifts) ? f.shifts : [],
+        confidence: f.confidence ?? 80,
+        notes: f.notes ?? "",
+      };
+      setOcrResult(result);
+      setEditShifts(result.shifts.map((s, i) => ({ ...s, id: "ocr_" + i })));
+      setOcrStep("confirm");
+    } catch (err) {
+      console.error("[ShiftOCR]", err);
+      setOcrError(err.message || "読み取りに失敗しました");
+      setOcrStep("ocr_error");
+    }
   };
 
   const handleSaveShifts = () => {
@@ -127,6 +188,21 @@ export default function ShiftScreen({ reports, onGoUpload }) {
 
   const prevMonth = () => setViewMonth(v=>v.month===1?{year:v.year-1,month:12}:{year:v.year,month:v.month-1});
   const nextMonth = () => setViewMonth(v=>v.month===12?{year:v.year+1,month:1}:{year:v.year,month:v.month+1});
+
+  if (ocrStep==="ocr_error") {
+    return (
+      <div style={{maxWidth:480,margin:"0 auto",padding:"40px 16px 100px",textAlign:"center"}}>
+        <Card style={{padding:32}}>
+          <div style={{fontSize:48,marginBottom:12}}>⚠️</div>
+          <div style={{fontSize:16,fontWeight:700,marginBottom:8}}>読み取りに失敗しました</div>
+          <div style={{fontSize:13,color:C.muted,marginBottom:20}}>{ocrError || "もう一度試してください"}</div>
+          <Btn onClick={()=>fileInputRef.current?.click()} style={{marginBottom:10}}>もう一度撮影する</Btn>
+          <Btn onClick={()=>setOcrStep("idle")} variant="ghost">キャンセル</Btn>
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{display:"none"}}/>
+        </Card>
+      </div>
+    );
+  }
 
   if (ocrStep==="reading") {
     return (
@@ -214,6 +290,9 @@ export default function ShiftScreen({ reports, onGoUpload }) {
         </>
       )}
       {selectedDay&&<DayDetailModal dateStr={selectedDay} shift={dayShift} report={dayReport} onClose={()=>setSelectedDay(null)} onDeleteShift={sh=>{setShifts(prev=>prev.filter(x=>x.id!==sh.id));setSelectedDay(null);}} onGoUpload={()=>{setSelectedDay(null);onGoUpload();}}/>}
+
+      {/* hidden file input */}
+      <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{display:"none"}}/>
     </div>
   );
 }
