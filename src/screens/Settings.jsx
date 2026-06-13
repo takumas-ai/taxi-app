@@ -77,25 +77,113 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
         </Card>
       )}
 
-      {subTab==="plan" && (
-        <>
-          <Card style={{ borderColor:C.gold+"44", backgroundColor:C.goldGlow }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-              <div><div style={{ fontSize:16, fontWeight:800, color:C.gold }}>無料プラン</div><div style={{ fontSize:12, color:C.sub, marginTop:2 }}>今月 {user.uploadCount||0}/{FREE_LIMIT} 件使用</div></div>
-              <Btn variant="gold" style={{ width:"auto", padding:"10px 18px", fontSize:13 }}>480円/月</Btn>
+      {subTab==="plan" && (() => {
+        const PlanCard = ({ title, icon, color, monthPrice, yearPrice, features, badge, comingSoon }) => (
+          <Card style={{ marginBottom:14, borderColor: color+"44", position:"relative", overflow:"hidden" }}>
+            {badge && <div style={{ position:"absolute", top:12, right:12, backgroundColor:color, color:"#fff", fontSize:10, fontWeight:800, padding:"3px 10px", borderRadius:99 }}>{badge}</div>}
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>{icon}</div>
+              <div style={{ fontSize:18, fontWeight:900, color }}>{title}</div>
             </div>
-            <ProgressBar value={user.uploadCount||0} max={FREE_LIMIT} color={(user.uploadCount||0)>=FREE_LIMIT-1?C.red:C.gold} height={6}/>
+            {/* 料金 */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
+              <div style={{ backgroundColor:C.bg, borderRadius:10, padding:"12px 14px", border:`1px solid ${C.border}` }}>
+                <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>月払い</div>
+                <div style={{ fontSize:22, fontWeight:900, color }}>{monthPrice}<span style={{ fontSize:11, color:C.muted }}>円/月</span></div>
+              </div>
+              <div style={{ backgroundColor:C.bg, borderRadius:10, padding:"12px 14px", border:`1.5px solid ${color}66`, position:"relative" }}>
+                <div style={{ position:"absolute", top:-8, left:"50%", transform:"translateX(-50%)", backgroundColor:color, color:"#fff", fontSize:9, fontWeight:800, padding:"2px 8px", borderRadius:99, whiteSpace:"nowrap" }}>★ おすすめ</div>
+                <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>年払い</div>
+                <div style={{ fontSize:22, fontWeight:900, color }}>{yearPrice}<span style={{ fontSize:11, color:C.muted }}>円/年</span></div>
+                <div style={{ fontSize:10, color, marginTop:2, fontWeight:700 }}>2ヶ月分お得！</div>
+              </div>
+            </div>
+            {/* 機能一覧 */}
+            {features.map(([t,d]) => (
+              <div key={t} style={{ display:"flex", alignItems:"flex-start", gap:10, padding:"9px 0", borderBottom:`1px solid ${C.border}` }}>
+                <span style={{ color:C.green, fontSize:15, flexShrink:0, marginTop:1 }}>✓</span>
+                <div><div style={{ fontSize:13, fontWeight:600 }}>{t}</div>{d && <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>{d}</div>}</div>
+              </div>
+            ))}
+            <div style={{ marginTop:14, backgroundColor:C.bg, borderRadius:10, padding:"10px 14px", textAlign:"center", border:`1px dashed ${C.border}` }}>
+              <div style={{ fontSize:12, color:C.muted, fontWeight:700 }}>🚧 準備中 — もうすぐ利用できます</div>
+            </div>
           </Card>
-          {[["無制限アップロード","月8件の制限なし"],["AI分析コメント","毎回の日報に営業アドバイス"],["売上グラフ","曜日別・月別トレンド分析"],["目標管理","達成率と逆算表示"],["翌日発表通知","毎朝8時に前日集計を受け取れる"]].map(([t,d])=>(
-            <div key={t} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 0", borderBottom:`1px solid ${C.border}` }}>
-              <span style={{ color:C.green, fontSize:18 }}>✓</span>
-              <div><div style={{ fontSize:14, fontWeight:600 }}>{t}</div><div style={{ fontSize:12, color:C.muted }}>{d}</div></div>
-            </div>
-          ))}
-          <Btn variant="gold" style={{ marginTop:16 }}>月額480円で始める</Btn>
-          <Btn variant="ghost" style={{ marginTop:10 }}>年払い 3,800円で始める</Btn>
-        </>
-      )}
+        );
+
+        return (
+          <>
+            {/* 現在のプラン */}
+            <Card style={{ borderColor:C.border, marginBottom:20 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                <div>
+                  <div style={{ fontSize:11, color:C.muted }}>現在のプラン</div>
+                  <div style={{ fontSize:16, fontWeight:800, color:C.text }}>無料プラン</div>
+                </div>
+                <div style={{ fontSize:11, color:C.muted, textAlign:"right" }}>
+                  <div>日報アップロード</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:(user.uploadCount||0)>=FREE_LIMIT-1?C.red:C.text }}>{user.uploadCount||0} / {FREE_LIMIT} 件</div>
+                </div>
+              </div>
+              <ProgressBar value={user.uploadCount||0} max={FREE_LIMIT} color={(user.uploadCount||0)>=FREE_LIMIT-1?C.red:C.gold} height={6}/>
+              <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>Lv3以上で翌日発表・ランキング閲覧 / Lv5以上でグループ参加</div>
+            </Card>
+
+            <div style={{ fontSize:12, color:C.muted, fontWeight:700, marginBottom:12 }}>📋 有料プラン（準備中）</div>
+
+            <PlanCard
+              title="通常プラン"
+              icon="🚕 タクシードライバー向け"
+              color={C.accentLight}
+              monthPrice="480"
+              yearPrice="4,800"
+              features={[
+                ["日報アップロード無制限", "月8件の制限なし"],
+                ["AIアドバイス", "毎回の日報に営業戦略コメント"],
+                ["今日の戦略をAIに聞く", "出勤前に最適な戦略を提案"],
+                ["週次レポート自動配信", "毎週月曜に先週の分析"],
+                ["プッシュ通知", "遅延・翌日発表・需要スコア"],
+                ["イベント詳細コメント", "需要予測の詳細情報"],
+              ]}
+            />
+
+            <PlanCard
+              title="個人タクシープラン"
+              icon="🏅 個人タクシー事業者向け"
+              color={C.gold}
+              monthPrice="780"
+              yearPrice="7,800"
+              badge="個タク専用"
+              features={[
+                ["通常プランの全機能", ""],
+                ["経費入力", "ガソリン・駐車場・車検・保険など"],
+                ["月次・年次売上レポート", "PDF / CSV 出力対応"],
+                ["確定申告用収支サマリー", "収入・経費・所得を自動集計"],
+                ["AI需要予測（Phase3）", "エリア別の需要を先読み分析"],
+              ]}
+            />
+
+            {/* 無料で使える機能 */}
+            <div style={{ fontSize:12, color:C.muted, fontWeight:700, marginBottom:10 }}>✅ 無料で使える機能</div>
+            <Card style={{ marginBottom:6 }}>
+              {[
+                ["ダッシュボード基本表示", ""],
+                ["日報アップロード（月8件）", "Lv1から利用可能"],
+                ["乗り場・空港ガイド閲覧", "Lv1から利用可能"],
+                ["電車遅延・渋滞の基本情報", "Lv1から利用可能"],
+                ["オープン掲示板の閲覧", "Lv1 / 投稿はLv2から"],
+                ["翌日発表・ランキング閲覧", "Lv3から利用可能"],
+                ["グループ参加", "Lv5から利用可能"],
+              ].map(([t,d]) => (
+                <div key={t} style={{ display:"flex", alignItems:"flex-start", gap:10, padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
+                  <span style={{ color:C.green, fontSize:14, flexShrink:0 }}>✓</span>
+                  <div><div style={{ fontSize:13 }}>{t}</div>{d && <div style={{ fontSize:11, color:C.muted }}>{d}</div>}</div>
+                </div>
+              ))}
+            </Card>
+          </>
+        );
+      })()}
 
       {subTab==="notif" && (
         <>
