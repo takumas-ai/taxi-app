@@ -4,7 +4,8 @@
 //   <div> → <View>、inline style → StyleSheet に置換する
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 import { useState, useEffect } from "react";
-import { C, loadS, saveS } from "./lib/constants";
+import { C, loadS, saveS, applyTheme, computeIsDark } from "./lib/constants";
+import { sanitizeProfile, isValidEmail, isValidPassword } from "./lib/validate";
 import { INITIAL_REPORTS, ALL_AREAS, AREA_MASTER } from "./data/mockData";
 import { processLogin, processReport, processAction, levelFromXp, checkMissions, getMissionState, saveMissionState } from "./lib/xp";
 import {
@@ -17,6 +18,7 @@ import {
   upsertProfile,
   fetchReports,
   insertReport,
+  updateReport,
 } from "./lib/supabase";
 
 // Screens
@@ -27,6 +29,7 @@ import InfoCenter         from "./screens/InfoCenter";
 import GuideScreen        from "./screens/Guide";
 import ShiftScreen        from "./screens/Shift";
 import Settings           from "./screens/Settings";
+import OnboardingScreen   from "./screens/Onboarding";
 
 // Components
 import { BottomNav, Header } from "./components/Navigation";
@@ -63,6 +66,8 @@ function LoginScreen({ onLogin }) {
   // Supabase メール登録
   const doRegister = async () => {
     if (!form.name || !form.email || !form.password) { setError("名前・メール・パスワードは必須です"); return; }
+    if (!isValidEmail(form.email)) { setError("正しいメールアドレスを入力してください"); return; }
+    if (!isValidPassword(form.password)) { setError("パスワードは6文字以上で入力してください"); return; }
     setLoading(true); setError("");
     if (SUPABASE_READY) {
       const { data, error: err } = await signUpWithEmail(form.email, form.password);
@@ -70,9 +75,12 @@ function LoginScreen({ onLogin }) {
       // usersテーブルを更新（トリガーで基本行は作成済み）
       if (data.user) {
         await upsertProfile({
-          id: data.user.id, name: form.name, email: form.email,
-          company_name: form.company, work_type: form.workType,
-          areas, monthly_target: parseInt(form.target) || 380000,
+          id: data.user.id,
+          ...sanitizeProfile({
+            name: form.name, company_name: form.company,
+            work_type: form.workType, areas,
+            monthly_target: parseInt(form.target) || 380000,
+          }),
         });
         onLogin({ id: data.user.id, name: form.name, company: form.company, workType: form.workType, target: form.target, plan:"free", uploadCount:0, areas });
       }
@@ -199,12 +207,62 @@ function LoginScreen({ onLogin }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Root App
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 初回起動同意画面
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function ConsentScreen({ onAgree }) {
+  const [checked, setChecked] = useState(false);
+  const s = {
+    wrap: { minHeight:"100vh", backgroundColor:C.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:24, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text },
+    title: { fontSize:22, fontWeight:900, color:C.text, marginBottom:6 },
+    sub: { fontSize:13, color:C.muted, marginBottom:28, textAlign:"center" },
+    box: { width:"100%", maxWidth:360, backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:20, marginBottom:20, fontSize:12, color:C.sub, lineHeight:1.9, maxHeight:280, overflowY:"auto" },
+    row: { display:"flex", alignItems:"flex-start", gap:10, cursor:"pointer", maxWidth:360, marginBottom:24 },
+    chk: { width:22, height:22, borderRadius:6, border:`2px solid ${checked?C.accentLight:C.border}`, backgroundColor:checked?C.accentLight:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 },
+    btn: { width:"100%", maxWidth:360, padding:"14px 0", borderRadius:12, fontSize:16, fontWeight:800, cursor:"pointer", border:"none", backgroundColor:checked?C.accentLight:"#444", color:checked?"#fff":"#888" },
+  };
+  return (
+    <div style={s.wrap}>
+      <div style={{ fontSize:44, marginBottom:10 }}>🦉</div>
+      <div style={s.title}>タクローへようこそ</div>
+      <div style={s.sub}>利用開始の前に、ご確認ください</div>
+
+      <div style={s.box}>
+        <div style={{ fontWeight:700, color:C.text, marginBottom:10 }}>利用規約・プライバシーポリシーの要点</div>
+        <div>• 本アプリはタクシードライバーの業務記録管理ツールです。</div>
+        <div>• 収益・健康・労働環境への影響について運営者は責任を負いません。</div>
+        <div>• ランキングは参考情報です。無理な営業や過労運転を推奨しません。</div>
+        <div>• 疲労時は必ず休憩を取り、安全を最優先にしてください。</div>
+        <div>• 日報画像はAI読み取り後、数値データのみ保存されます（画像は保存しません）。</div>
+        <div>• 個人を特定できない匿名データは統計に使用されることがあります。</div>
+        <div>• データの改ざん・虚偽入力はアカウント停止の対象になります。</div>
+        <div>• サービスは予告なく変更・終了することがあります。</div>
+        <div style={{ marginTop:10 }}>詳細は設定画面の「利用規約」「プライバシーポリシー」でご確認いただけます。</div>
+      </div>
+
+      <div style={s.row} onClick={()=>setChecked(p=>!p)}>
+        <div style={s.chk}>{checked && <span style={{ color:"#fff", fontSize:14, fontWeight:900 }}>✓</span>}</div>
+        <div style={{ fontSize:13, color:C.sub, lineHeight:1.7 }}>利用規約およびプライバシーポリシーを読み、内容に同意します</div>
+      </div>
+
+      <button onClick={()=>{ if(checked) onAgree(); }} style={s.btn} disabled={!checked}>
+        同意してはじめる
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const [user, setUser]         = useState(() => loadS("taxi_user", null));
-  const [appMode, setAppMode] = useState(loadS("taxi_app_mode","standard"));
+  const [appMode, setAppMode]   = useState(loadS("taxi_app_mode","standard"));
+  const [themeMode, setThemeMode] = useState(() => loadS("taxi_theme_mode","auto"));
+  const [themeVer, setThemeVer] = useState(0); // テーマ変更時に全体を再描画させるカウンター
+  const [consentDone, setConsentDone]       = useState(() => !!loadS("taxi_consent_done", false));
+  const [onboardingDone, setOnboardingDone] = useState(() => !!loadS("taxi_onboarding_done", false));
   const [reports, setReports]   = useState(() => loadS("taxi_reports", INITIAL_REPORTS));
   const [tab, setTab]           = useState("dashboard");
   const [selected, setSelected] = useState(null);
+  const [selectedForEdit, setSelectedForEdit] = useState(false);
   const [notif, setNotif]       = useState(() => loadS("taxi_notif", { delays:true, events:false, traffic:false, dailyTip:false, achievement:true, dailyResult:false }));
   const [showAreaModal, setShowAreaModal] = useState(false);
   const [authReady, setAuthReady] = useState(!SUPABASE_READY);
@@ -261,6 +319,24 @@ export default function App() {
   useEffect(() => { if (!SUPABASE_READY || user?.isDemo) saveS("taxi_reports", reports); }, [reports]);
   useEffect(() => { if (!SUPABASE_READY || user?.isDemo) saveS("taxi_user", user); }, [user]);
   useEffect(() => { saveS("taxi_app_mode", appMode); }, [appMode]);
+
+  // ─── テーマ管理 ───
+  useEffect(() => {
+    saveS("taxi_theme_mode", themeMode);
+    applyTheme(computeIsDark(themeMode));
+    setThemeVer(v => v + 1);
+  }, [themeMode]);
+
+  // autoモード: 1分ごとに日没チェック
+  useEffect(() => {
+    if (themeMode !== "auto") return;
+    const tick = () => {
+      applyTheme(computeIsDark("auto"));
+      setThemeVer(v => v + 1);
+    };
+    const id = setInterval(tick, 60 * 1000);
+    return () => clearInterval(id);
+  }, [themeMode]);
   useEffect(() => saveS("taxi_notif", notif), [notif]);
   useEffect(() => { if (user && (!user.areas || user.areas.length === 0)) setShowAreaModal(true); }, [user]);
 
@@ -268,8 +344,23 @@ export default function App() {
     return <div style={{ minHeight:"100vh", backgroundColor:C.bg, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted, fontFamily:"'Inter','Hiragino Sans',sans-serif" }}>読み込み中...</div>;
   }
 
+  if (!consentDone) {
+    return <ConsentScreen onAgree={() => { saveS("taxi_consent_done", true); setConsentDone(true); }}/>;
+  }
+
   if (!user) {
     return <LoginScreen onLogin={u => setUser({ ...u, uploadCount: u.uploadCount ?? 0, areas: u.areas || [] })} />;
+  }
+
+  if (!onboardingDone) {
+    return (
+      <OnboardingScreen onComplete={() => {
+        saveS("taxi_onboarding_done", true);
+        setOnboardingDone(true);
+        // XPボーナス +50
+        setUser(u => ({ ...u, xp: (u.xp || 0) + 50 }));
+      }}/>
+    );
   }
 
   const userAreas = user.areas || [];
@@ -326,6 +417,28 @@ export default function App() {
     setTab("list");
   };
 
+  // 日報更新（編集後）
+  const handleUpdateReport = async (updated) => {
+    setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+    if (SUPABASE_READY && !user.isDemo && user.id && updated.id) {
+      await updateReport(updated.id, {
+        report_date:       updated.date,
+        gross_sales:       updated.gross_sales,
+        cash_sales:        updated.cash_sales,
+        card_sales:        updated.card_sales,
+        app_sales:         updated.app_sales,
+        highway_fee:       updated.highway_fee,
+        ride_count:        updated.ride_count,
+        total_distance:    updated.total_distance,
+        occupied_distance: updated.occupied_distance,
+        work_hours:        updated.work_hours,
+        break_hours:       updated.break_hours,
+        trouble_note:      updated.trouble_note,
+        work_area:         updated.work_area,
+      });
+    }
+  };
+
   const handleLogout = async () => {
     if (SUPABASE_READY && !user.isDemo) await signOut();
     localStorage.clear();
@@ -336,21 +449,21 @@ export default function App() {
   const renderScreen = () => {
     switch (tab) {
       case "dashboard": return <Dashboard reports={reports} user={user} onOpenReport={setSelected} onManageArea={()=>setShowAreaModal(true)} rankPrefs={rankPrefs} appMode={appMode}/>;
-      case "list":      return <ReportList reports={reports} onSelect={setSelected}/>;
+      case "list":      return <ReportList reports={reports} onSelect={r=>{setSelectedForEdit(false);setSelected(r);}} onEdit={r=>{setSelectedForEdit(true);setSelected(r);}}/>;
       case "upload":    return <UploadScreen uploadCount={user.uploadCount||0} onSave={handleSave} reports={reports}/>;
       case "info":      return <InfoCenter notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} userAreas={userAreas} onManageArea={()=>setShowAreaModal(true)}/>;
       case "guide":     return <GuideScreen userAreas={userAreas}/>;
       case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")}/>;
-      case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))}/>;
+      case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports}/>;
       default:          return null;
     }
   };
 
   return (
-    <div style={{ minHeight:"100vh", backgroundColor:C.bg, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text }}>
-      <Header user={user} tab={tab} setTab={setTab} onManageArea={()=>setShowAreaModal(true)} />
+    <div key={themeVer} style={{ minHeight:"100vh", backgroundColor:C.bg, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text }}>
+      <Header user={user} tab={tab} setTab={setTab} onManageArea={()=>setShowAreaModal(true)} appMode={appMode} onModeChange={setAppMode} />
       {renderScreen()}
-      <ReportModal report={selected} onClose={()=>setSelected(null)}/>
+      <ReportModal key={selected ? `${selected.id}-${selectedForEdit}` : "none"} report={selected} onClose={()=>{setSelected(null);setSelectedForEdit(false);}} onUpdate={handleUpdateReport} startInEdit={selectedForEdit}/>
       <BottomNav tab={tab} setTab={setTab} userAreas={userAreas}/>
       {showAreaModal && <AreaSettingModal userAreas={userAreas} onSave={areas=>setUser(u=>({...u,areas}))} onClose={()=>setShowAreaModal(false)}/>}
     </div>

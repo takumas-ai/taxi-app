@@ -3,6 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <!-- Content Security Policy: XSSと外部スクリプト注入を防止 -->
+    <meta http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src 'self' 'unsafe-inline';
+        style-src 'self' 'unsafe-inline';
+        connect-src 'self' https://*.supabase.co https://api.anthropic.com;
+        img-src 'self' data: blob: https://*.supabase.co;
+        font-src 'self' data:;
+        frame-src 'none';
+        object-src 'none';
+        base-uri 'self';
+      " />
+    <!-- クリックジャッキング対策 -->
+    <meta http-equiv="X-Frame-Options" content="DENY" />
     <title>タクロー — 勘と経験を、データに変える。</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }

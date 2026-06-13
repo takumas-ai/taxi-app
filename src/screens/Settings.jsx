@@ -4,8 +4,15 @@ import { C, FREE_LIMIT, loadS, saveS } from "../lib/constants";
 import { Card, Btn, ProgressBar, Toggle } from "../components/UI";
 import { AreaBadges } from "../components/UI";
 import { levelFromXp, getTitle, BADGES } from "../lib/xp";
+import { insertFeedback } from "../lib/supabase";
+import { downloadCSV, printAsPDF } from "../lib/export";
 
-export default function Settings({ user, onUpdate, onLogout, onManageArea, notifSettings, onUpdateNotif, appMode="standard", onModeChange }) {
+const SUPABASE_READY = !!(
+  import.meta.env.VITE_SUPABASE_URL &&
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
+
+export default function Settings({ user, onUpdate, onLogout, onManageArea, notifSettings, onUpdateNotif, appMode="standard", onModeChange, themeMode="auto", onThemeChange, reports=[] }) {
   const [subTab, setSubTab] = useState("");
   const [form, setForm] = useState({ name:user.name||"", company:user.company||"", workType:user.workType||"隔日勤務", target:user.target||"380000" });
   const [saved, setSaved] = useState(false);
@@ -16,13 +23,20 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
 
   const SUB = [
     {id:"profile", icon:"👤", label:"プロフィール", sub:"名前・勤務形態"},
-    {id:"mode",    icon:"🎛️", label:"モード",       sub:appMode==="easy"?"かんたん":appMode==="analyze"?"分析":"スタンダード"},
+    {id:"mode",    icon:"🎛️", label:"モード",       sub:appMode==="simple"?"かんたん":appMode==="analysis"?"分析":"スタンダード"},
     {id:"area",    icon:"📍", label:"エリア",       sub:user.areas?.length>0?user.areas[0]:"未設定"},
     {id:"notif",   icon:"🔔", label:"通知",         sub:"アラート設定"},
     {id:"takepay", icon:"💴", label:"手取り設定",    sub:`歩合${takePay.rate}% / 控除${(takePay.deduction/10000).toFixed(1)}万円`},
     {id:"plan",    icon:"💳", label:"プラン",        sub:"無料プラン"},
     {id:"rank",    icon:"🏆", label:"ランク",       sub:"表示設定"},
     {id:"roadmap", icon:"🗺️", label:"ロードマップ",  sub:"開発予定"},
+    {id:"export",   icon:"📤", label:"データエクスポート", sub:"CSV / PDF 出力"},
+    {id:"coupon",   icon:"🎟️", label:"クーポンコード",    sub:"割引・特典コードを入力"},
+    {id:"referral", icon:"🎁", label:"友達を招待",        sub:"紹介リンク・特典"},
+    {id:"feedback", icon:"💬", label:"意見箱",          sub:"要望・バグ報告・ひとこと"},
+    {id:"help",    icon:"❓", label:"ヘルプ・FAQ",    sub:"よくある質問"},
+    {id:"terms",   icon:"📄", label:"利用規約",      sub:"タクロー利用規約"},
+    {id:"privacy", icon:"🔒", label:"プライバシーポリシー", sub:"個人情報の取り扱い"},
   ];
 
   return (
@@ -185,13 +199,111 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
         );
       })()}
 
-      {subTab==="notif" && (
-        <>
-          {[{k:"delays",icon:"🚃",l:"電車遅延チャンス通知",d:"遅延・見合わせ発生時（エリア内）"},{k:"events",icon:"🎵",l:"イベント前通知",d:"出勤予定追加イベントの60分前"},{k:"traffic",icon:"🚗",l:"重大渋滞通知",d:"渋滞レベル3発生時"},{k:"dailyTip",icon:"🤖",l:"AI日次戦略通知",d:"毎朝8時にエリアに絞った戦略"},{k:"achievement",icon:"🏆",l:"自己ベスト更新通知",d:"売上・実車率・時間単価の更新時"},{k:"dailyResult",icon:"📣",l:"翌日発表通知（毎朝8時）",d:"前日の集計結果・順位・エリア平均"}].map(({k,icon,l,d})=>(
-            <Card key={k} style={{ padding:"14px" }}><div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}><div style={{ display:"flex", gap:10 }}><span style={{ fontSize:20 }}>{icon}</span><div><div style={{ fontSize:14, fontWeight:600 }}>{l}</div><div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{d}</div></div></div><Toggle value={notifSettings[k]||false} onChange={v=>onUpdateNotif(k,v)}/></div></Card>
-          ))}
-        </>
-      )}
+      {subTab==="notif" && (() => {
+        const [notifTab, setNotifTab] = useState("settings"); // settings | log
+        const [quietHours, setQuietHours] = useState(() => loadS("taxi_quiet_hours", { enabled:true, from:"23:00", to:"07:00" }));
+        const saveQuiet = (next) => { setQuietHours(next); saveS("taxi_quiet_hours", next); };
+
+        const NOTIF_ITEMS = [
+          { k:"delays",      icon:"🚃", l:"電車遅延チャンス通知",   d:"遅延・見合わせ発生時（エリア内）" },
+          { k:"events",      icon:"🎵", l:"イベント前通知",         d:"出勤予定のイベントの60分前" },
+          { k:"traffic",     icon:"🚗", l:"重大渋滞通知",           d:"渋滞レベル3以上の発生時" },
+          { k:"dailyTip",    icon:"🤖", l:"AI日次戦略通知",         d:"毎朝8時にエリア別の戦略ヒント" },
+          { k:"achievement", icon:"🏆", l:"自己ベスト更新通知",     d:"売上・実車率・時間単価の更新時" },
+          { k:"dailyResult", icon:"📣", l:"翌日発表通知",           d:"毎朝8時 — 前日の集計・エリア平均" },
+        ];
+
+        const MOCK_LOG = [
+          { icon:"🚃", title:"電車遅延チャンス", body:"東海道線が遅延中（横浜方面）。駅周辺の需要が上昇しています。", time:"今日 18:42", read:false },
+          { icon:"🏆", title:"自己ベスト更新！", body:"今日の売上が過去最高の73,200円を記録しました！", time:"今日 06:31", read:false },
+          { icon:"📣", title:"翌日発表 — 6/11", body:"昨日の平均売上: 62,400円。あなたは上位28%でした。", time:"昨日 08:00", read:true },
+          { icon:"🤖", title:"今日の戦略ヒント", body:"金曜夜は六本木・銀座エリアの需要が高い傾向があります。", time:"昨日 08:00", read:true },
+          { icon:"🎵", title:"イベント前通知", body:"横浜アリーナでコンサートが19:00開始。17時以降に現地入り推奨。", time:"6/11 16:00", read:true },
+        ];
+
+        return (
+          <>
+            {/* タブ切り替え */}
+            <div style={{ display:"flex", backgroundColor:C.surface, borderRadius:10, padding:3, gap:3, marginBottom:16 }}>
+              {[["settings","⚙️ 設定"],["log","📋 通知ログ"]].map(([v,l])=>(
+                <div key={v} onClick={()=>setNotifTab(v)} style={{ flex:1, textAlign:"center", padding:"8px 0", borderRadius:8, fontSize:13, fontWeight:notifTab===v?700:400, backgroundColor:notifTab===v?C.card:"transparent", color:notifTab===v?C.text:C.muted, cursor:"pointer" }}>{l}</div>
+              ))}
+            </div>
+
+            {notifTab === "settings" && (
+              <>
+                {/* サイレント時間帯 */}
+                <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>🌙 サイレント時間帯</div>
+                <Card style={{ marginBottom:14, padding:"14px 16px" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: quietHours.enabled ? 14 : 0 }}>
+                    <div>
+                      <div style={{ fontSize:14, fontWeight:600 }}>おやすみモード</div>
+                      <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>設定した時間帯は通知を受け取りません</div>
+                    </div>
+                    <Toggle value={quietHours.enabled} onChange={v=>saveQuiet({...quietHours, enabled:v})}/>
+                  </div>
+                  {quietHours.enabled && (
+                    <div style={{ display:"flex", alignItems:"center", gap:12, paddingTop:14, borderTop:`1px solid ${C.border}` }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:10, color:C.muted, marginBottom:5 }}>開始</div>
+                        <input type="time" value={quietHours.from} onChange={e=>saveQuiet({...quietHours, from:e.target.value})}
+                          style={{ width:"100%", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:"8px 10px", color:C.text, fontSize:14, fontWeight:700, outline:"none" }}/>
+                      </div>
+                      <div style={{ fontSize:18, color:C.muted, paddingTop:14 }}>〜</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:10, color:C.muted, marginBottom:5 }}>終了</div>
+                        <input type="time" value={quietHours.to} onChange={e=>saveQuiet({...quietHours, to:e.target.value})}
+                          style={{ width:"100%", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:"8px 10px", color:C.text, fontSize:14, fontWeight:700, outline:"none" }}/>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+
+                {/* 通知種別 */}
+                <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>📬 通知の種類</div>
+                <Card style={{ padding:0, overflow:"hidden" }}>
+                  {NOTIF_ITEMS.map(({k,icon,l,d}, i)=>(
+                    <div key={k} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom: i<NOTIF_ITEMS.length-1?`1px solid ${C.border}`:"none" }}>
+                      <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                        <span style={{ fontSize:20 }}>{icon}</span>
+                        <div>
+                          <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{l}</div>
+                          <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{d}</div>
+                        </div>
+                      </div>
+                      <Toggle value={notifSettings[k]||false} onChange={v=>onUpdateNotif(k,v)}/>
+                    </div>
+                  ))}
+                </Card>
+
+                {/* 注意書き */}
+                <div style={{ marginTop:12, padding:"10px 14px", backgroundColor:C.surface, borderRadius:10, fontSize:11, color:C.muted, lineHeight:1.7 }}>
+                  💡 プッシュ通知は有料プランで利用可能です。現在はアプリ内通知のみ対応しています。
+                </div>
+              </>
+            )}
+
+            {notifTab === "log" && (
+              <>
+                <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>直近7日間の通知履歴</div>
+                {MOCK_LOG.map((n, i) => (
+                  <div key={i} style={{ display:"flex", gap:12, padding:"13px 14px", backgroundColor: n.read ? C.surface : C.accentGlow, border:`1px solid ${n.read ? C.border : C.accentLight+"44"}`, borderRadius:12, marginBottom:8 }}>
+                    <span style={{ fontSize:22, flexShrink:0 }}>{n.icon}</span>
+                    <div style={{ flex:1 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:3 }}>
+                        <div style={{ fontSize:13, fontWeight:n.read?600:800, color:C.text }}>{n.title}</div>
+                        {!n.read && <div style={{ width:7, height:7, borderRadius:"50%", backgroundColor:C.accentLight, flexShrink:0 }}/>}
+                      </div>
+                      <div style={{ fontSize:12, color:C.sub, lineHeight:1.6 }}>{n.body}</div>
+                      <div style={{ fontSize:10, color:C.muted, marginTop:5 }}>{n.time}</div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </>
+        );
+      })()}
 
       {subTab==="rank" && (() => {
         const xpData   = levelFromXp(user.xp || 0);
@@ -273,6 +385,28 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
               </div>
             </div>
           ))}
+
+          {/* テーマ切替 */}
+          <div style={{ marginTop:20 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>🌗 カラーテーマ</div>
+            <div style={{ fontSize:12, color:C.muted, marginBottom:12 }}>自動は季節の日没時間に合わせてダークに切替わります</div>
+            {[
+              { id:"auto",  icon:"🌗", name:"自動（日没で切替）", desc:"春17:45 / 夏18:30 / 秋17:15 / 冬16:30 にダークへ" },
+              { id:"dark",  icon:"🌙", name:"ダーク固定", desc:"常に濃いネイビー系" },
+              { id:"light", icon:"☀️", name:"ライト固定", desc:"常に白基調" },
+            ].map(t => (
+              <div key={t.id} onClick={()=>onThemeChange&&onThemeChange(t.id)} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", marginBottom:8, borderRadius:12, border:`2px solid ${themeMode===t.id?C.accentLight:C.border}`, backgroundColor:themeMode===t.id?C.accentLight+"11":"transparent", cursor:"pointer" }}>
+                <span style={{ fontSize:22 }}>{t.icon}</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
+                    <span style={{ fontSize:14, fontWeight:700, color:themeMode===t.id?C.accentLight:C.text }}>{t.name}</span>
+                    {themeMode===t.id && <span style={{ fontSize:10, backgroundColor:C.accentLight, color:"#fff", padding:"2px 8px", borderRadius:99, fontWeight:700 }}>使用中</span>}
+                  </div>
+                  <div style={{ fontSize:11, color:C.muted }}>{t.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -340,6 +474,535 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
             </div>
           ))}
         </Card>
+      )}
+
+      {subTab==="export" && (() => {
+        const isPaid = user?.plan === "paid" || user?.plan === "kojin";
+        const now    = new Date();
+        const thisYear  = now.getFullYear();
+        const thisMonth = now.getMonth() + 1;
+
+        // 月リスト（過去12ヶ月）
+        const months = [];
+        for (let i = 0; i < 12; i++) {
+          let m = thisMonth - i, y = thisYear;
+          if (m <= 0) { m += 12; y--; }
+          months.push({ y, m });
+        }
+
+        const [exportYear,  setExportYear]  = useState(thisYear);
+        const [exportMonth, setExportMonth] = useState(thisMonth);
+        const [exportRange, setExportRange] = useState("month"); // month | year
+
+        const getReports = () => {
+          if (exportRange === "month") {
+            const prefix = `${exportYear}-${String(exportMonth).padStart(2,"0")}`;
+            return reports.filter(r => r.date.startsWith(prefix));
+          }
+          return reports.filter(r => r.date.startsWith(String(exportYear)));
+        };
+        const label = exportRange === "month"
+          ? `${exportYear}年${exportMonth}月`
+          : `${exportYear}年間`;
+        const targetReports = getReports();
+
+        return (
+          <div>
+            {!isPaid && (
+              <div style={{ backgroundColor:C.goldGlow, border:`1px solid ${C.gold}44`, borderRadius:10, padding:"10px 14px", marginBottom:16, fontSize:12, color:C.sub, lineHeight:1.7 }}>
+                💡 無料プランは直近1ヶ月のみ出力できます。全期間は有料プランで利用可能です。
+              </div>
+            )}
+
+            {/* 期間選択 */}
+            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>期間</div>
+            <div style={{ display:"flex", backgroundColor:C.surface, borderRadius:10, padding:3, gap:3, marginBottom:14 }}>
+              {[["month","月次"],["year","年次"]].map(([v,l])=>(
+                <div key={v} onClick={()=>setExportRange(v)} style={{ flex:1, textAlign:"center", padding:"8px 0", borderRadius:8, fontSize:13, fontWeight:exportRange===v?700:400, backgroundColor:exportRange===v?C.card:"transparent", color:exportRange===v?C.text:C.muted, cursor:"pointer" }}>{l}</div>
+              ))}
+            </div>
+
+            <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+              {/* 年選択 */}
+              <select value={exportYear} onChange={e=>setExportYear(Number(e.target.value))}
+                style={{ flex:1, backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}>
+                {[thisYear, thisYear-1, thisYear-2].map(y => <option key={y} value={y}>{y}年</option>)}
+              </select>
+              {/* 月選択（月次のみ） */}
+              {exportRange === "month" && (
+                <select value={exportMonth} onChange={e=>setExportMonth(Number(e.target.value))}
+                  style={{ flex:1, backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}>
+                  {Array.from({length:12},(_,i)=>i+1).map(m=><option key={m} value={m}>{m}月</option>)}
+                </select>
+              )}
+            </div>
+
+            {/* 対象件数プレビュー */}
+            <div style={{ backgroundColor:C.surface, borderRadius:10, padding:"12px 16px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div style={{ fontSize:13, color:C.muted }}>{label} の日報</div>
+              <div style={{ fontSize:18, fontWeight:800, color: targetReports.length>0?C.text:C.muted }}>{targetReports.length}<span style={{ fontSize:12, marginLeft:3 }}>件</span></div>
+            </div>
+
+            {targetReports.length === 0 ? (
+              <div style={{ textAlign:"center", padding:"24px", color:C.muted, fontSize:13 }}>この期間の日報はありません</div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                <button onClick={()=>downloadCSV(targetReports, label)}
+                  style={{ width:"100%", padding:"14px 0", borderRadius:11, fontSize:14, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.green, color:"#fff" }}>
+                  📊 CSV でダウンロード
+                </button>
+                <button onClick={()=>printAsPDF(targetReports, label, user)}
+                  style={{ width:"100%", padding:"14px 0", borderRadius:11, fontSize:14, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:C.card, color:C.text }}>
+                  🖨️ PDF で印刷 / 保存
+                </button>
+              </div>
+            )}
+            <div style={{ marginTop:12, fontSize:11, color:C.muted, lineHeight:1.7 }}>
+              ※ PDFはブラウザの印刷ダイアログから「PDFとして保存」を選んでください。
+            </div>
+          </div>
+        );
+      })()}
+
+      {subTab==="coupon" && (() => {
+        const VALID_CODES = {
+          "TAKURO2026":  { label:"2026年記念コード",   benefit:"1ヶ月無料",  xp:200 },
+          "DRIVER100":   { label:"ドライバー応援コード", benefit:"2週間無料",  xp:100 },
+          "BETA-TESTER": { label:"ベータテスター特典",  benefit:"3ヶ月無料",  xp:500 },
+        };
+
+        const [code,     setCode]     = useState("");
+        const [applied,  setApplied]  = useState(() => loadS("taxi_coupon_applied", []));
+        const [result,   setResult]   = useState(null); // { ok, msg, info }
+        const [loading,  setLoading]  = useState(false);
+
+        const handleApply = async () => {
+          const upper = code.trim().toUpperCase();
+          if (!upper) return;
+          setLoading(true); setResult(null);
+          await new Promise(r => setTimeout(r, 700));
+
+          if (applied.includes(upper)) {
+            setResult({ ok:false, msg:"このコードはすでに使用済みです" });
+          } else if (VALID_CODES[upper]) {
+            const info = VALID_CODES[upper];
+            const next = [...applied, upper];
+            setApplied(next);
+            saveS("taxi_coupon_applied", next);
+            setResult({ ok:true, msg:`コード適用完了！${info.benefit}と +${info.xp} XP を獲得`, info });
+            setCode("");
+          } else {
+            setResult({ ok:false, msg:"無効なコードです。スペルを確認してください" });
+          }
+          setLoading(false);
+        };
+
+        return (
+          <div>
+            {/* 入力フォーム */}
+            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>クーポンコードを入力</div>
+            <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+              <input
+                value={code}
+                onChange={e=>setCode(e.target.value.toUpperCase())}
+                onKeyDown={e=>e.key==="Enter"&&handleApply()}
+                placeholder="例: TAKURO2026"
+                style={{ flex:1, backgroundColor:C.card, border:`1px solid ${result?.ok===false?C.red:result?.ok?C.green:C.border}`, borderRadius:10, padding:"12px 14px", color:C.text, fontSize:14, outline:"none", letterSpacing:"1px", fontWeight:700 }}
+              />
+              <button onClick={handleApply} disabled={!code.trim()||loading}
+                style={{ padding:"0 18px", borderRadius:10, border:"none", backgroundColor:code.trim()?C.accentLight:"#444", color:"#fff", fontSize:13, fontWeight:700, cursor:code.trim()?"pointer":"not-allowed", opacity:loading?0.6:1 }}>
+                {loading?"確認中":"適用"}
+              </button>
+            </div>
+
+            {result && (
+              <div style={{ padding:"10px 14px", borderRadius:10, marginBottom:16, backgroundColor:result.ok?C.greenGlow:C.redGlow, border:`1px solid ${result.ok?C.green+"44":C.red+"44"}`, fontSize:13, color:result.ok?C.green:C.red, fontWeight:600 }}>
+                {result.ok?"✅ ":"❌ "}{result.msg}
+              </div>
+            )}
+
+            {/* 適用済みコード一覧 */}
+            {applied.length > 0 && (
+              <>
+                <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>適用済みコード</div>
+                <Card style={{ padding:0, overflow:"hidden", marginBottom:16 }}>
+                  {applied.map((c, i) => {
+                    const info = VALID_CODES[c];
+                    return (
+                      <div key={c} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: i<applied.length-1?`1px solid ${C.border}`:"none" }}>
+                        <span style={{ fontSize:20 }}>🎟️</span>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:13, fontWeight:700 }}>{c}</div>
+                          {info && <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{info.label} — {info.benefit}</div>}
+                        </div>
+                        <span style={{ fontSize:11, color:C.green, fontWeight:700 }}>適用済み</span>
+                      </div>
+                    );
+                  })}
+                </Card>
+              </>
+            )}
+
+            <div style={{ padding:"12px 14px", backgroundColor:C.surface, borderRadius:10, fontSize:11, color:C.muted, lineHeight:1.7 }}>
+              💡 クーポンコードはキャンペーンやSNSで配布されます。大文字・小文字は区別しません。
+            </div>
+          </div>
+        );
+      })()}
+
+      {subTab==="referral" && (() => {
+        const refCode = "TAKURO-" + (user?.id || "DEMO").toString().slice(-6).toUpperCase();
+        const refUrl  = `https://takuro-app.vercel.app/?ref=${refCode}`;
+        const shareText = `タクシードライバー向け業務記録アプリ「タクロー」を使ってみて！売上分析・乗り場ガイド・AIアドバイスが全部ひとつで揃ってるよ🦉\n${refUrl}`;
+
+        const [copied, setCopied] = useState(false);
+
+        const copyLink = () => {
+          navigator.clipboard.writeText(refUrl).catch(() => {});
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        };
+
+        const shareVia = (channel) => {
+          if (channel === "line") {
+            window.open(`https://line.me/R/msg/text/?${encodeURIComponent(shareText)}`, "_blank");
+          } else if (channel === "x") {
+            window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`, "_blank");
+          } else if (channel === "instagram") {
+            copyLink();
+            alert("リンクをコピーしました。Instagramに貼り付けて投稿してください。");
+          }
+        };
+
+        // モック紹介実績（将来はSupabaseから取得）
+        const referralCount  = 3;
+        const rewardXp       = referralCount * 100;
+        const REWARD_TIERS   = [
+          { count:1,  reward:"🎉 +100 XP", desc:"1人招待達成" },
+          { count:3,  reward:"⭐ +300 XP + 1ヶ月無料", desc:"3人招待達成" },
+          { count:5,  reward:"👑 +500 XP + 3ヶ月無料", desc:"5人招待達成" },
+          { count:10, reward:"🏆 永久無料プラン", desc:"10人招待達成" },
+        ];
+
+        return (
+          <div>
+            {/* 実績バナー */}
+            <div style={{ background:`linear-gradient(135deg, ${C.accentLight}22, ${C.purple}22)`, border:`1px solid ${C.accentLight}44`, borderRadius:14, padding:"16px", marginBottom:16, textAlign:"center" }}>
+              <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>あなたの紹介実績</div>
+              <div style={{ fontSize:36, fontWeight:900, color:C.text }}>{referralCount}<span style={{ fontSize:16, color:C.muted, marginLeft:4 }}>人</span></div>
+              <div style={{ fontSize:12, color:C.accentLight, fontWeight:700, marginTop:4 }}>累計 +{rewardXp} XP 獲得済み</div>
+            </div>
+
+            {/* 紹介コード */}
+            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>あなたの紹介コード</div>
+            <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+              <div style={{ flex:1, backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px" }}>
+                <div style={{ fontSize:11, color:C.muted, marginBottom:3 }}>招待コード</div>
+                <div style={{ fontSize:16, fontWeight:900, color:C.accentLight, letterSpacing:"1px" }}>{refCode}</div>
+              </div>
+              <button onClick={copyLink} style={{ padding:"0 16px", borderRadius:10, border:`1px solid ${copied?C.green:C.border}`, backgroundColor:copied?C.greenGlow:C.card, color:copied?C.green:C.sub, fontSize:13, fontWeight:700, cursor:"pointer", flexShrink:0, transition:"all 0.2s" }}>
+                {copied ? "✓ コピー済" : "📋 コピー"}
+              </button>
+            </div>
+
+            {/* シェアボタン */}
+            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>シェアする</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:20 }}>
+              {[
+                { ch:"line",      icon:"💬", label:"LINE で送る",    color:"#06C755", bg:"#06C75518" },
+                { ch:"x",         icon:"✕",  label:"X (Twitter)",   color:"#000",    bg:"#00000018" },
+                { ch:"instagram", icon:"📸", label:"Instagram",     color:"#E1306C", bg:"#E1306C18" },
+                { ch:"copy",      icon:"🔗", label:"リンクをコピー", color:C.accentLight, bg:C.accentGlow },
+              ].map(({ ch, icon, label, color, bg }) => (
+                <button key={ch} onClick={() => ch === "copy" ? copyLink() : shareVia(ch)}
+                  style={{ display:"flex", alignItems:"center", gap:8, padding:"12px 14px", borderRadius:11, border:`1px solid ${color}44`, backgroundColor:bg, color, fontSize:13, fontWeight:700, cursor:"pointer", textAlign:"left" }}>
+                  <span style={{ fontSize:18 }}>{icon}</span>
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* 特典ティア */}
+            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>🎁 紹介特典</div>
+            <Card style={{ padding:0, overflow:"hidden" }}>
+              {REWARD_TIERS.map((tier, i) => {
+                const achieved = referralCount >= tier.count;
+                return (
+                  <div key={tier.count} style={{ display:"flex", alignItems:"center", gap:12, padding:"13px 16px", borderBottom: i < REWARD_TIERS.length-1 ? `1px solid ${C.border}` : "none", opacity: achieved ? 1 : 0.5 }}>
+                    <div style={{ width:32, height:32, borderRadius:"50%", backgroundColor: achieved ? C.green+"22" : C.surface, border:`2px solid ${achieved ? C.green : C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>
+                      {achieved ? "✓" : tier.count}
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color: achieved ? C.text : C.muted }}>{tier.desc}</div>
+                      <div style={{ fontSize:11, color: achieved ? C.green : C.muted, marginTop:2 }}>{tier.reward}</div>
+                    </div>
+                    {achieved && <span style={{ fontSize:18 }}>🏅</span>}
+                  </div>
+                );
+              })}
+            </Card>
+
+            <div style={{ marginTop:12, fontSize:11, color:C.muted, lineHeight:1.7, padding:"10px 14px", backgroundColor:C.surface, borderRadius:10 }}>
+              ※ 招待した相手がアカウント登録を完了した時点で特典が付与されます。自己紹介は対象外です。
+            </div>
+          </div>
+        );
+      })()}
+
+      {subTab==="feedback" && (() => {
+        const CATEGORIES = [
+          { id:"feature", label:"✨ 機能要望", color:C.accentLight },
+          { id:"bug",     label:"🐛 バグ報告", color:C.red },
+          { id:"praise",  label:"👍 良かった点", color:C.green },
+          { id:"other",   label:"💭 その他",    color:C.muted },
+        ];
+        const [fbCategory, setFbCategory] = useState("feature");
+        const [fbBody, setFbBody]         = useState("");
+        const [fbAnon, setFbAnon]         = useState(false);
+        const [fbState, setFbState]       = useState("idle"); // idle | sending | done | error
+
+        const handleSend = async () => {
+          if (!fbBody.trim()) return;
+          setFbState("sending");
+          try {
+            if (SUPABASE_READY && !user?.isDemo) {
+              const { error } = await insertFeedback({ userId: user?.id, category: fbCategory, body: fbBody.trim(), anonymous: fbAnon });
+              if (error) throw error;
+            } else {
+              // Supabase未設定時はローカル保存で代替
+              const prev = loadS("taxi_feedback_local", []);
+              saveS("taxi_feedback_local", [...prev, { category: fbCategory, body: fbBody.trim(), anonymous: fbAnon, at: new Date().toISOString() }]);
+              await new Promise(r => setTimeout(r, 600));
+            }
+            setFbState("done");
+            setFbBody("");
+          } catch {
+            setFbState("error");
+          }
+        };
+
+        if (fbState === "done") {
+          return (
+            <div style={{ textAlign:"center", padding:"48px 24px" }}>
+              <div style={{ fontSize:52, marginBottom:16 }}>🙏</div>
+              <div style={{ fontSize:18, fontWeight:800, marginBottom:8 }}>ありがとうございます！</div>
+              <div style={{ fontSize:13, color:C.muted, marginBottom:24, lineHeight:1.8 }}>ご意見はしっかり読んで、アプリ改善に活かします。</div>
+              <button onClick={()=>setFbState("idle")} style={{ padding:"10px 24px", borderRadius:10, border:`1px solid ${C.border}`, background:"none", color:C.accentLight, cursor:"pointer", fontSize:13, fontWeight:700 }}>
+                もう一件送る
+              </button>
+            </div>
+          );
+        }
+
+        const catColor = CATEGORIES.find(c=>c.id===fbCategory)?.color || C.muted;
+
+        return (
+          <div>
+            <div style={{ fontSize:13, color:C.muted, marginBottom:16, lineHeight:1.8 }}>
+              アプリへのご意見・要望・バグ報告をお送りください。開発者が全件読んでいます。
+            </div>
+
+            {/* カテゴリ */}
+            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>カテゴリ</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
+              {CATEGORIES.map(cat=>(
+                <div key={cat.id} onClick={()=>setFbCategory(cat.id)}
+                  style={{ padding:"10px 12px", borderRadius:10, border:`2px solid ${fbCategory===cat.id?cat.color:C.border}`, backgroundColor:fbCategory===cat.id?cat.color+"15":"transparent", color:fbCategory===cat.id?cat.color:C.muted, fontSize:13, fontWeight:fbCategory===cat.id?700:400, cursor:"pointer", textAlign:"center" }}>
+                  {cat.label}
+                </div>
+              ))}
+            </div>
+
+            {/* テキスト */}
+            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>内容</div>
+            <textarea
+              value={fbBody}
+              onChange={e=>setFbBody(e.target.value)}
+              placeholder="例：〇〇機能が使いにくい、△△画面でエラーが出る など"
+              rows={5}
+              style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.card, border:`1px solid ${fbBody?catColor+"77":C.border}`, borderRadius:10, padding:"12px 14px", color:C.text, fontSize:13, outline:"none", resize:"vertical", lineHeight:1.7, fontFamily:"inherit" }}
+            />
+            <div style={{ fontSize:11, color:C.muted, textAlign:"right", marginTop:4, marginBottom:16 }}>
+              {fbBody.length} 文字
+            </div>
+
+            {/* 匿名オプション */}
+            <div onClick={()=>setFbAnon(p=>!p)} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20, cursor:"pointer" }}>
+              <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${fbAnon?C.accentLight:C.border}`, backgroundColor:fbAnon?C.accentLight:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                {fbAnon && <span style={{ color:"#fff", fontSize:13, fontWeight:900 }}>✓</span>}
+              </div>
+              <div>
+                <div style={{ fontSize:13, color:C.text }}>匿名で送る</div>
+                <div style={{ fontSize:11, color:C.muted }}>チェックするとユーザーIDが送信されません</div>
+              </div>
+            </div>
+
+            {/* 送信ボタン */}
+            {fbState === "error" && (
+              <div style={{ backgroundColor:C.redGlow, border:`1px solid ${C.red}44`, borderRadius:8, padding:"8px 12px", marginBottom:12, fontSize:12, color:C.red }}>
+                送信に失敗しました。しばらく待ってから再度お試しください。
+              </div>
+            )}
+            <button onClick={handleSend} disabled={!fbBody.trim() || fbState==="sending"}
+              style={{ width:"100%", padding:"13px 0", borderRadius:11, fontSize:14, fontWeight:700, cursor:fbBody.trim()?"pointer":"not-allowed", border:"none", backgroundColor:fbBody.trim()?catColor:"#444", color:fbBody.trim()?"#fff":"#888", opacity:fbState==="sending"?0.6:1 }}>
+              {fbState === "sending" ? "送信中..." : "📨 送信する"}
+            </button>
+          </div>
+        );
+      })()}
+
+      {subTab==="help" && (() => {
+        const FAQ_DATA = [
+          { category:"日報の記録", icon:"📋", items:[
+            { q:"日報はどうやって登録するの？", a:"下のナビバーの「＋ アップロード」タブから登録できます。カメラで日報を撮影するとAIが自動読み取り（OCR）します。手動入力も可能です。" },
+            { q:"OCRが正確に読み取れない", a:"画像が暗い・斜め・ぼけている場合に精度が下がります。明るい場所でまっすぐ撮影してください。読み取り後に数値を手修正することもできます。" },
+            { q:"過去の日報を編集したい", a:"「記録」タブから日報を選び、詳細画面の「✏️ 編集」ボタンで修正できます。一覧画面の各カード右側の小さな✏️からも直接編集できます。" },
+            { q:"1日に複数の日報を登録できる？", a:"はい、同じ日付で複数登録できます。日報は日付ごとに管理されます。" },
+          ]},
+          { category:"目標・売上", icon:"🎯", items:[
+            { q:"月の目標売上はどこで設定する？", a:"設定 › プロフィール から「月間目標売上」を変更できます。デフォルトは38万円に設定されています。" },
+            { q:"残りシフトの計算はどうやってる？", a:"隔日勤務の場合は残り日数÷2、それ以外は残り日数×0.75で推定しています。シフト実績と異なる場合があります。" },
+            { q:"手取り計算の歩合・控除を変えたい", a:"設定 › 手取り設定 から歩合率と固定控除額を変更できます。" },
+          ]},
+          { category:"乗り場ガイド", icon:"📍", items:[
+            { q:"乗り場ガイドの情報はいつ更新されるの？", a:"現在はアプリのバージョンアップ時に更新されます。今後、ドライバーからの投稿で随時更新できる仕組みを検討中です。" },
+            { q:"自分のエリア外の乗り場も見られる？", a:"はい、全ての乗り場・空港を閲覧できます。エリア設定はホームの情報表示の絞り込みにのみ影響します。" },
+            { q:"お気に入りに追加した乗り場はどこに保存される？", a:"お使いの端末のローカルに保存されます。アプリを削除すると消えます。" },
+          ]},
+          { category:"XP・レベル", icon:"🏅", items:[
+            { q:"XPはどうすれば貯まるの？", a:"日報登録（+20XP）、毎日ログイン（+5〜10XP）、デイリーミッション達成、実績バッジ獲得などで増えます。" },
+            { q:"レベルが上がると何がある？", a:"現在はドライバー称号（見習い→ベテラン→エースなど）が変わります。今後、上位ランクへの特典を追加予定です。" },
+          ]},
+          { category:"アカウント・データ", icon:"🔐", items:[
+            { q:"データはどこに保存されているの？", a:"Supabaseのクラウドに安全に保存されています。デモモードの場合はお使いの端末のローカルに保存されます。" },
+            { q:"アカウントを削除したい", a:"現在はアプリ内からの削除機能は準備中です。削除を希望する場合はお問い合わせください。" },
+            { q:"無料プランでできることは？", a:"月8件まで日報を登録できます。基本的な売上グラフ・分析・乗り場ガイドは全て無料で使えます。" },
+          ]},
+        ];
+
+        const [helpSearch, setHelpSearch] = useState("");
+        const [openItems, setOpenItems] = useState({});
+        const toggleItem = key => setOpenItems(p => ({...p, [key]: !p[key]}));
+
+        const q = helpSearch.trim().toLowerCase();
+        const filtered = FAQ_DATA.map(cat => ({
+          ...cat,
+          items: cat.items.filter(item =>
+            !q || item.q.toLowerCase().includes(q) || item.a.toLowerCase().includes(q)
+          )
+        })).filter(cat => cat.items.length > 0);
+
+        return (
+          <div>
+            {/* 検索バー */}
+            <div style={{ position:"relative", marginBottom:16 }}>
+              <span style={{ position:"absolute", left:11, top:"50%", transform:"translateY(-50%)", fontSize:14, color:C.muted, pointerEvents:"none" }}>🔍</span>
+              <input
+                value={helpSearch}
+                onChange={e=>setHelpSearch(e.target.value)}
+                placeholder="キーワードで検索（例：OCR、編集）"
+                style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px 10px 34px", fontSize:13, color:C.text, outline:"none" }}
+              />
+              {helpSearch && (
+                <button onClick={()=>setHelpSearch("")} style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:16 }}>×</button>
+              )}
+            </div>
+
+            {/* 結果なし */}
+            {filtered.length === 0 && (
+              <div style={{ textAlign:"center", padding:"40px 20px", color:C.muted }}>
+                <div style={{ fontSize:32, marginBottom:10 }}>🤔</div>
+                <div style={{ fontSize:14 }}>「{helpSearch}」に一致する質問が見つかりませんでした</div>
+              </div>
+            )}
+
+            {/* FAQリスト */}
+            {filtered.map(cat => (
+              <div key={cat.category} style={{ marginBottom:16 }}>
+                <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>
+                  {cat.icon} {cat.category}
+                </div>
+                <Card style={{ padding:0, overflow:"hidden" }}>
+                  {cat.items.map((item, idx) => {
+                    const key = cat.category + idx;
+                    const isOpen = !!openItems[key];
+                    return (
+                      <div key={idx} style={{ borderBottom: idx < cat.items.length-1 ? `1px solid ${C.border}` : "none" }}>
+                        <div onClick={()=>toggleItem(key)} style={{ display:"flex", alignItems:"center", gap:10, padding:"14px 16px", cursor:"pointer" }}>
+                          <div style={{ flex:1, fontSize:13, fontWeight:isOpen?700:400, color:isOpen?C.text:C.sub, lineHeight:1.4 }}>{item.q}</div>
+                          <span style={{ color:C.muted, fontSize:14, flexShrink:0 }}>{isOpen?"▲":"▼"}</span>
+                        </div>
+                        {isOpen && (
+                          <div style={{ padding:"0 16px 14px", fontSize:12, color:C.sub, lineHeight:1.8, borderTop:`1px solid ${C.border}`, backgroundColor:C.bg }}>
+                            {item.a}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </Card>
+              </div>
+            ))}
+
+            {/* お問い合わせリンク */}
+            <div onClick={()=>setSubTab("feedback")} style={{ marginTop:8, padding:"14px 16px", backgroundColor:C.surface, borderRadius:12, border:`1px solid ${C.border}`, textAlign:"center", cursor:"pointer" }}>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>解決しませんでしたか？</div>
+              <div style={{ fontSize:13, color:C.accentLight, fontWeight:700 }}>💬 意見箱に送る →</div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {subTab==="terms" && (
+        <div style={{ fontSize:13, color:C.sub, lineHeight:1.8 }}>
+          <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:16 }}>タクロー 利用規約</div>
+          <div style={{ fontSize:11, color:C.muted, marginBottom:20 }}>最終更新日：2026年6月</div>
+
+          {[
+            { title:"第1条（目的）", body:"本規約は、タクロー（以下「本アプリ」）の利用条件を定めるものです。ユーザーは本規約に同意のうえ、本アプリをご利用ください。" },
+            { title:"第2条（免責事項）", body:"本アプリの利用による労働環境・健康状態・収益への影響について、運営者は一切の責任を負いません。本アプリはあくまで情報管理ツールであり、営業成果を保証するものではありません。" },
+            { title:"第3条（ランキング・競争機能）", body:"ランキングは参考情報であり、無理な営業を推奨するものではありません。ランキング上位を目指すあまり、安全運転を損なう行為は禁止します。" },
+            { title:"第4条（健康・安全に関する注意）", body:"ドライバーは適切な休息を取り、疲労状態での運転を行わないでください。本アプリは連続乗務や過労を助長することを意図していません。体調に異変を感じた場合は直ちに運転を中止してください。" },
+            { title:"第5条（データの正確性）", body:"日報データの正確性はユーザー自身の責任において管理してください。虚偽・誤ったデータの入力による不利益について、運営者は責任を負いません。" },
+            { title:"第6条（不正利用の禁止）", body:"データの改ざん・虚偽入力・不正なアクセス・システムへの攻撃等の行為は禁止します。これらが確認された場合、アカウントを停止または削除することがあります。" },
+            { title:"第7条（サービスの変更・終了）", body:"運営者は予告なくサービス内容を変更・停止・終了することがあります。これによりユーザーに生じた損害について、運営者は責任を負いません。" },
+            { title:"第8条（準拠法）", body:"本規約は日本法に準拠し、本アプリに関する紛争は東京地方裁判所を専属的合意管轄裁判所とします。" },
+          ].map(({title, body}) => (
+            <div key={title} style={{ marginBottom:18 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>{title}</div>
+              <div style={{ fontSize:12, color:C.sub, lineHeight:1.8 }}>{body}</div>
+            </div>
+          ))}
+
+          <div style={{ marginTop:24, padding:14, backgroundColor:C.card, borderRadius:10, fontSize:11, color:C.muted }}>
+            ※ 本規約は運営者の判断により改定されることがあります。改定後も本アプリを継続してご利用いただいた場合、改定後の規約に同意したものとみなします。
+          </div>
+        </div>
+      )}
+
+      {subTab==="privacy" && (
+        <div style={{ fontSize:13, color:C.sub, lineHeight:1.8 }}>
+          <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:16 }}>プライバシーポリシー</div>
+          <div style={{ fontSize:11, color:C.muted, marginBottom:20 }}>最終更新日：2026年6月</div>
+
+          {[
+            { title:"1. 収集する情報", body:"本アプリでは以下の情報を収集します。\n・メールアドレス（認証用）\n・お名前・勤務形態（任意入力）\n・日報データ（売上・走行距離・乗車回数等）\n・アプリの利用ログ（エラー情報・操作履歴）" },
+            { title:"2. 情報の利用目的", body:"収集した情報は以下の目的で利用します。\n・サービスの提供・改善\n・翌日発表・ランキング等の集計（匿名化処理後）\n・不正利用の検知・防止\n・ユーザーサポート" },
+            { title:"3. 日報画像の取り扱い", body:"アップロードされた日報画像はAI読み取り処理後に数値データとして保存されます。画像そのものは保存しません。日報に含まれる個人情報（氏名・所属会社等）はシステムログには記録しません。" },
+            { title:"4. 統計データの利用", body:"個人を特定できない形に匿名化・集計したデータを、エリア別売上統計・需要スコアの算出等に利用することがあります。個人が特定できる形でのデータ販売は行いません。" },
+            { title:"5. 第三者への提供", body:"法令に基づく場合を除き、ユーザーの個人情報を第三者に提供することはありません。本アプリはSupabase（データベース）およびAnthropic（AI処理）のサービスを利用しており、各社のプライバシーポリシーも適用されます。" },
+            { title:"6. データの保管・削除", body:"ユーザーがアカウントを削除した場合、個人情報および日報データは30日以内に削除されます。匿名化済みの統計データは引き続き保持されることがあります。" },
+            { title:"7. セキュリティ", body:"本アプリはデータの暗号化・アクセス制御等の適切なセキュリティ対策を講じています。ただし、インターネット上での完全なセキュリティを保証するものではありません。" },
+            { title:"8. お問い合わせ", body:"プライバシーに関するお問い合わせは、アプリ内のサポート窓口までご連絡ください。" },
+          ].map(({title, body}) => (
+            <div key={title} style={{ marginBottom:18 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>{title}</div>
+              {body.split("\n").map((line, i) => (
+                <div key={i} style={{ fontSize:12, color:C.sub }}>{line}</div>
+              ))}
+            </div>
+          ))}
+        </div>
       )}
         </>
       )}

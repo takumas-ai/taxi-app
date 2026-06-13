@@ -23,23 +23,34 @@ serve(async (req) => {
 
     const { messages, system, max_tokens = 1024 } = await req.json();
 
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return new Response(JSON.stringify({ error: "messages is required" }), { status: 400, headers: corsHeaders });
+    }
+
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!anthropicKey) {
+      return new Response(JSON.stringify({ error: "API key not configured" }), { status: 500, headers: corsHeaders });
+    }
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        "x-api-key": anthropicKey!,
+        "x-api-key": anthropicKey,
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
         max_tokens,
-        system,
+        ...(system ? { system } : {}),
         messages,
       }),
     });
 
     const data = await response.json();
+    if (!response.ok) {
+      console.error("[claude-proxy] Anthropic error:", response.status, JSON.stringify(data).slice(0, 200));
+    }
     return new Response(JSON.stringify(data), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

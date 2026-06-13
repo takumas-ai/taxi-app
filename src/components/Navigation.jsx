@@ -54,32 +54,48 @@ export function BottomNav({ tab, setTab, userAreas=[] }) {
 }
 
 // ヘッダー（情報・シフトのショートカット付き）
-export function Header({ user, tab, setTab, onManageArea, showAreaModal }) {
+export function Header({ user, tab, setTab, onManageArea, appMode="standard", onModeChange }) {
   const userAreas = user?.areas || [];
   const alertCount = MOCK_DELAYS.filter(d =>
     d.status !== "normal" && d.opportunity && d.severity === "high" &&
     (userAreas.length === 0 || d.areas.some(a => userAreas.includes(a)))
   ).length;
 
+  const MODES = [
+    { id:"simple",   icon:"🟢", label:"かんたん" },
+    { id:"standard", icon:"🔵", label:"通常" },
+    { id:"analysis", icon:"🟣", label:"分析" },
+  ];
+  const currentMode = MODES.find(m => m.id === appMode) || MODES[1];
+  const nextMode    = MODES[(MODES.findIndex(m => m.id === appMode) + 1) % MODES.length];
+
   return (
-    <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 16px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:40 }}>
-      <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
-        <span style={{ fontSize:18, fontWeight:900, color:C.accentLight, letterSpacing:"-0.5px" }}>🦉 タクロー</span>
-        <span style={{ fontSize:10, color:C.muted }}>β</span>
+    <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 12px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:40 }}>
+
+      {/* 左：モード切り替えボタン */}
+      <div onClick={() => onModeChange && onModeChange(nextMode.id)}
+        style={{ display:"flex", alignItems:"center", gap:5, cursor:"pointer", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:99, padding:"4px 10px", minWidth:0 }}>
+        <span style={{ fontSize:12 }}>{currentMode.icon}</span>
+        <span style={{ fontSize:11, fontWeight:700, color:C.sub, whiteSpace:"nowrap" }}>{currentMode.label}</span>
       </div>
-      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-        {/* 情報ボタン */}
-        <div onClick={() => setTab("info")} style={{ position:"relative", cursor:"pointer", padding:"4px 8px", borderRadius:8, backgroundColor:tab==="info"?C.accentGlow:"transparent" }}>
+
+      {/* 中央：アプリ名 */}
+      <div style={{ position:"absolute", left:"50%", transform:"translateX(-50%)", display:"flex", alignItems:"baseline", gap:4, pointerEvents:"none" }}>
+        <span style={{ fontSize:17, fontWeight:900, color:C.text, letterSpacing:"-0.5px" }}>🦉 タクロー</span>
+        <span style={{ fontSize:9, color:C.muted }}>β</span>
+      </div>
+
+      {/* 右：通知・シフト・エリア */}
+      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+        <div onClick={() => setTab("info")} style={{ position:"relative", cursor:"pointer", padding:"4px 6px", borderRadius:8, backgroundColor:tab==="info"?C.accentGlow:"transparent" }}>
           <span style={{ fontSize:18, opacity:tab==="info"?1:0.6 }}>🔔</span>
           {alertCount > 0 && <div style={{ position:"absolute", top:0, right:2, width:8, height:8, borderRadius:"50%", backgroundColor:C.red }} />}
         </div>
-        {/* シフトボタン */}
-        <div onClick={() => setTab("shift")} style={{ cursor:"pointer", padding:"4px 8px", borderRadius:8, backgroundColor:tab==="shift"?C.accentGlow:"transparent" }}>
+        <div onClick={() => setTab("shift")} style={{ cursor:"pointer", padding:"4px 6px", borderRadius:8, backgroundColor:tab==="shift"?C.accentGlow:"transparent" }}>
           <span style={{ fontSize:18, opacity:tab==="shift"?1:0.6 }}>📅</span>
         </div>
-        {/* エリアバッジ */}
         {userAreas.length > 0 && (
-          <div onClick={onManageArea} style={{ display:"flex", alignItems:"center", gap:4, cursor:"pointer", backgroundColor:C.accentGlow, borderRadius:99, padding:"3px 10px" }}>
+          <div onClick={onManageArea} style={{ display:"flex", alignItems:"center", gap:4, cursor:"pointer", backgroundColor:C.accentGlow, borderRadius:99, padding:"3px 8px" }}>
             <span style={{ fontSize:11 }}>{AREA_MASTER[userAreas[0]]?.emoji}</span>
             <span style={{ fontSize:10, color:C.accentLight, fontWeight:700 }}>{userAreas.length === 1 ? userAreas[0] : `${userAreas[0]}他`}</span>
           </div>

@@ -4,6 +4,7 @@ import { generateReportComment } from "../lib/ai";
 import { Card, Btn, ProgressBar } from "../components/UI";
 import { WORK_AREAS_BY_PARENT } from "../data/mockData";
 import { supabase } from "../lib/supabase";
+import { validateImageFile, validateReportForm, sanitizeReportData } from "../lib/validate";
 
 const OCR_SEQ = ["画像を解析中...","日付・勤務時間を読み取り中...","売上データを抽出中...","営業回数・走行距離を確認中...","フォーマット差異を吸収中...","読み取り完了 ✓"];
 const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"1.0", highway_fee:"0", trouble_note:"", work_area:"" };
@@ -83,6 +84,14 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
     if (!file) return;
     // リセット
     e.target.value = "";
+
+    // ファイルバリデーション
+    const fileCheck = validateImageFile(file);
+    if (!fileCheck.ok) {
+      setOcrError(fileCheck.error);
+      setStep("ocr_error");
+      return;
+    }
     setOcrError("");
     setStep("ocring");
     setOcrLines([]);
@@ -160,21 +169,13 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
   };
 
   const handleSave = async () => {
-    const e = {};
-    if (!form.date) e.date = "必須";
-    if (!form.gross_sales || parseInt(form.gross_sales)<=0) e.gross_sales = "必須";
-    if (Object.keys(e).length) { setErrors(e); return; }
+    // バリデーション（強化版）
+    const { errors: validationErrors, isValid } = validateReportForm(form);
+    if (!isValid) { setErrors(validationErrors); return; }
+
     setSaving(true);
-    const data = {
-      id: Date.now(), date: form.date,
-      gross_sales: parseInt(form.gross_sales)||0, cash_sales: parseInt(form.cash_sales)||0,
-      card_sales: parseInt(form.card_sales)||0, app_sales: parseInt(form.app_sales)||0,
-      ride_count: parseInt(form.ride_count)||0,
-      total_distance: Math.max(parseInt(form.total_distance)||0, 0),
-      occupied_distance: Math.max(parseInt(form.occupied_distance)||0, 0),
-      work_hours: parseFloat(form.work_hours)||0, break_hours: parseFloat(form.break_hours)||0,
-      highway_fee: parseInt(form.highway_fee)||0, trouble_note: form.trouble_note, ai_comment: "",
-    };
+    // サニタイズ（XSS対策・値のクランプ）
+    const data = { id: Date.now(), ...sanitizeReportData(form) };
     const comment = await generateReportComment(data, reports);
     data.ai_comment = comment;
     setSaving(false); onSave(data); setForm(EMPTY); setStep("done");

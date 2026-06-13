@@ -132,6 +132,26 @@ export async function uploadReportImage(file, userId) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 意見箱（feedback）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** 意見を送信 */
+export async function insertFeedback({ userId, category, body, anonymous }) {
+  const { data, error } = await supabase
+    .from("feedback")
+    .insert({
+      user_id:   anonymous ? null : userId,
+      category,
+      body,
+      anonymous,
+      created_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+  return { data, error };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 翌日発表（daily_summaries）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

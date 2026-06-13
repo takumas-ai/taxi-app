@@ -26,7 +26,10 @@ async function callClaude(prompt, maxTokens = 1000) {
       "Content-Type": "application/json",
       ...(token ? { "Authorization": `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ prompt, max_tokens: maxTokens }),
+    body: JSON.stringify({
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: maxTokens,
+    }),
   });
 
   if (!res.ok) {
@@ -34,7 +37,8 @@ async function callClaude(prompt, maxTokens = 1000) {
     return "";
   }
   const data = await res.json();
-  return data.text ?? "";
+  // claude-proxy は Anthropic レスポンスをそのまま返す
+  return data.content?.[0]?.text ?? data.text ?? "";
 }
 
 /**
