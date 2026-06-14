@@ -62,6 +62,7 @@ function ShotGuideModal({ onShoot, onCancel }) {
 
 export default function UploadScreen({ uploadCount, onSave, reports }) {
   const [step, setStep]     = useState("select");
+  const [isManual, setIsManual] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [form, setForm]     = useState(EMPTY);
   const [errors, setErrors] = useState({});
@@ -180,7 +181,7 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
     // 3回以上記録が溜まってからAIコメント生成（データ不足での的外れコメントを防ぐ）
     const comment = reports.length >= 2 ? await generateReportComment(data, reports) : "";
     data.ai_comment = comment;
-    setSaving(false); onSave(data); setForm(EMPTY); setStep("done");
+    setSaving(false); onSave(data); setForm(EMPTY); setIsManual(false); setStep("done");
   };
 
   const F = ({label,fk,type="number",ph="",required=false,span=1}) => (
@@ -208,7 +209,7 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
         <Card style={{ padding:32 }}>
           <div style={{ fontSize:48, marginBottom:12 }}>✅</div>
           <div style={{ fontSize:18, fontWeight:700, marginBottom:4 }}>保存しました</div>
-          <div style={{ fontSize:13, color:C.sub, marginBottom:20 }}>AI分析コメントが追加されました</div>
+          <div style={{ fontSize:13, color:C.sub, marginBottom:20 }}>日報を記録しました</div>
           <Btn onClick={()=>setStep("select")} variant="ghost">続けてアップロード</Btn>
         </Card>
       </div>
@@ -237,7 +238,7 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
           <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>読み取りに失敗しました</div>
           <div style={{ fontSize:13, color:C.muted, marginBottom:20 }}>{ocrError || "もう一度試すか、手動で入力してください"}</div>
           <Btn onClick={() => fileInputRef.current?.click()} style={{ marginBottom:10 }}>もう一度撮影する</Btn>
-          <Btn onClick={() => { setForm(EMPTY); setStep("confirm"); }} variant="ghost">手動で入力する</Btn>
+          <Btn onClick={() => { setIsManual(true); setForm(EMPTY); setStep("confirm"); }} variant="ghost">手動で入力する</Btn>
           <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{ display:"none" }}/>
         </Card>
       </div>
@@ -247,7 +248,7 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
   if (step === "confirm") {
     return (
       <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
-        <div style={{ fontSize:13, color:C.muted, marginBottom:12 }}>📋 読み取り結果を確認・修正してください</div>
+        <div style={{ fontSize:13, color:C.muted, marginBottom:12 }}>{isManual ? "📝 日報を入力してください" : "📋 読み取り結果を確認・修正してください"}</div>
         <Card>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
             {F({label:"日付", fk:"date", type:"date", required:true, span:2})}
@@ -283,8 +284,8 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
         {form.total_distance && form.occupied_distance && parseInt(form.total_distance)>0 && (
           <Card style={{ padding:12, textAlign:"center" }}><span style={{ fontSize:12, color:C.muted }}>実車率（自動計算）: </span><span style={{ fontSize:16, fontWeight:700, color:C.green }}>{Math.round(parseInt(form.occupied_distance)/parseInt(form.total_distance)*100)}%</span></Card>
         )}
-        <Btn onClick={handleSave} disabled={saving}>{saving?"AI分析中...":"保存してAI分析を受け取る"}</Btn>
-        <Btn onClick={()=>setStep("select")} variant="ghost" style={{ marginTop:10 }}>戻る</Btn>
+        <Btn onClick={handleSave} disabled={saving}>{saving?"保存中...":"保存する"}</Btn>
+        <Btn onClick={()=>{ setIsManual(false); setStep("select"); }} variant="ghost" style={{ marginTop:10 }}>戻る</Btn>
       </div>
     );
   }
@@ -332,7 +333,7 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
         <span style={{ fontSize:11, color:C.muted }}>または</span>
         <div style={{ flex:1, height:1, backgroundColor:C.border }}/>
       </div>
-      <Btn onClick={()=>setStep("confirm")} variant="ghost">手動で入力する</Btn>
+      <Btn onClick={()=>{ setIsManual(true); setForm(EMPTY); setStep("confirm"); }} variant="secondary">✏️ 手動で入力する</Btn>
 
       {/* 撮影ガイドモーダル */}
       {showGuide && <ShotGuideModal onShoot={handleOCR} onCancel={()=>setShowGuide(false)}/>}

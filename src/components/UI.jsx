@@ -43,6 +43,7 @@ export function Btn({ children, onClick, variant="primary", style={}, disabled=f
     primary: { backgroundColor:C.accentLight, color:"#fff" },
     gold:    { backgroundColor:C.gold, color:"#000" },
     ghost:   { backgroundColor:"transparent", color:C.sub, border:`1px solid ${C.border}` },
+    secondary: { backgroundColor:C.card, color:C.text, border:`1px solid ${C.border}` },
     danger:  { backgroundColor:C.red+"22", color:C.red, border:`1px solid ${C.red}44` },
   };
   return (
