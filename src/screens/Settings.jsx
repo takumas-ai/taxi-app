@@ -23,7 +23,7 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
 
   const SUB = [
     {id:"profile", icon:"👤", label:"プロフィール", sub:"名前・勤務形態"},
-    {id:"mode",    icon:"🎛️", label:"モードとカラーテーマ", sub:appMode==="simple"?"かんたん":appMode==="analysis"?"分析":"スタンダード"},
+    {id:"mode",    icon:"🎛️", label:"モードとカラーテーマ", sub:appMode==="simple"?"かんたん":appMode==="simple_large"?"かんたん（大）":appMode==="analysis"?"分析":"かんたん"},
     {id:"area",    icon:"📍", label:"エリア",       sub:user.areas?.length>0?user.areas[0]:"未設定"},
     {id:"notif",   icon:"🔔", label:"通知",         sub:"アラート設定"},
     {id:"takepay", icon:"💴", label:"手取り設定",    sub:`歩合${takePay.rate}% / 控除${(takePay.deduction/10000).toFixed(1)}万円`},
@@ -370,9 +370,9 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
         <div>
           <div style={{ fontSize:12, color:C.muted, marginBottom:12 }}>使い方に合わせて表示を切り替えます</div>
           {[
-            { id:"easy",     icon:"😊", name:"かんたん",    color:"#10B981", desc:"大きな文字・最小限の入力。年配の方や疲れてる日でも使いやすいモード。" },
-            { id:"standard", icon:"📊", name:"スタンダード", color:C.accentLight, desc:"基本機能をすべて使えるデフォルトモード。" },
-            { id:"analyze",  icon:"🔬", name:"分析",        color:"#8B5CF6", desc:"エリア統計・詳細グラフ・実車率など全データを表示するモード。" },
+            { id:"simple",       icon:"🟢", name:"かんたん",      color:"#10B981", desc:"シンプル表示・標準文字サイズ。日報記録を最優先にした構成。" },
+            { id:"simple_large", icon:"🔵", name:"かんたん（大）", color:C.accentLight, desc:"かんたんモードの文字を大きく表示。視認性重視・年配の方向け。" },
+            { id:"analysis",     icon:"🟣", name:"分析",          color:"#8B5CF6", desc:"AI分析・詳細グラフ・統計情報をフルで表示する上級者向けモード。" },
           ].map(m => (
             <div key={m.id} onClick={()=>onModeChange&&onModeChange(m.id)} style={{ display:"flex", alignItems:"center", gap:14, padding:"14px", marginBottom:10, borderRadius:12, border:`2px solid ${appMode===m.id?m.color:C.border}`, backgroundColor:appMode===m.id?m.color+"11":"transparent", cursor:"pointer" }}>
               <span style={{ fontSize:28 }}>{m.icon}</span>

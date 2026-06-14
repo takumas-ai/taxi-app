@@ -255,7 +255,8 @@ function ConsentScreen({ onAgree }) {
 
 export default function App() {
   const [user, setUser]         = useState(() => loadS("taxi_user", null));
-  const [appMode, setAppMode]   = useState(loadS("taxi_app_mode","standard"));
+  // "standard" は旧モード名 → "simple" にマッピング
+  const [appMode, setAppMode]   = useState(() => { const m = loadS("taxi_app_mode","simple"); return m === "standard" ? "simple" : m; });
   const [themeMode, setThemeMode] = useState(() => loadS("taxi_theme_mode","auto"));
   const [themeVer, setThemeVer] = useState(0); // テーマ変更時に全体を再描画させるカウンター
   const [consentDone, setConsentDone]       = useState(() => !!loadS("taxi_consent_done", false));

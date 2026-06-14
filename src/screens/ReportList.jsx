@@ -227,8 +227,115 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
   );
 }
 
+// ─── 月別統計ページ ───
+function MonthlyStats({ reports }) {
+  const now = new Date();
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+
+  // 全データから年一覧を生成
+  const years = [...new Set(reports.map(r => r.date?.slice(0,4)).filter(Boolean))].sort((a,b)=>b-a);
+  if (!years.includes(String(selectedYear))) years.unshift(String(selectedYear));
+
+  // 選択年の12ヶ月分集計
+  const monthlyData = Array.from({length:12}, (_,i) => {
+    const month = String(i+1).padStart(2,"0");
+    const key = `${selectedYear}-${month}`;
+    const reps = reports.filter(r => r.date?.startsWith(key) && r.gross_sales > 0);
+    const totalSales = reps.reduce((s,r)=>s+(r.gross_sales||0),0);
+    const totalRides = reps.reduce((s,r)=>s+(r.ride_count||0),0);
+    const avgOcc = reps.length ? Math.round(reps.reduce((s,r)=>s+occ(r),0)/reps.length) : 0;
+    return { month:i+1, label:`${i+1}月`, reps:reps.length, totalSales, totalRides, avgOcc };
+  });
+
+  const maxSales = Math.max(...monthlyData.map(d=>d.totalSales), 1);
+  const isCurrentYear = selectedYear === now.getFullYear();
+  const yearTotal = monthlyData.reduce((s,d)=>s+d.totalSales,0);
+  const yearRides = monthlyData.reduce((s,d)=>s+d.reps,0);
+
+  const [selectedMonth, setSelectedMonth] = useState(null);
+  const detail = selectedMonth != null ? monthlyData[selectedMonth-1] : null;
+
+  return (
+    <div>
+      {/* 年選択 */}
+      <div style={{ display:"flex", gap:8, marginBottom:16, alignItems:"center" }}>
+        <span style={{ fontSize:12, color:C.muted }}>年：</span>
+        {[...new Set([...years, String(now.getFullYear())])].slice(0,4).map(y=>(
+          <div key={y} onClick={()=>{ setSelectedYear(Number(y)); setSelectedMonth(null); }}
+            style={{ padding:"5px 14px", borderRadius:99, fontSize:12, fontWeight:selectedYear===Number(y)?700:400, backgroundColor:selectedYear===Number(y)?C.accentLight+"22":C.card, color:selectedYear===Number(y)?C.accentLight:C.muted, border:`1px solid ${selectedYear===Number(y)?C.accentLight+"44":C.border}`, cursor:"pointer" }}>
+            {y}年
+          </div>
+        ))}
+      </div>
+
+      {/* 年間サマリー */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+        <div style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px" }}>
+          <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>{selectedYear}年 年間売上</div>
+          <div style={{ fontSize:20, fontWeight:900, color:C.accentLight }}>{yearTotal>0?fmt(yearTotal):"—"}<span style={{ fontSize:10, marginLeft:2, color:C.muted }}>円</span></div>
+        </div>
+        <div style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px" }}>
+          <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>{selectedYear}年 出番回数</div>
+          <div style={{ fontSize:20, fontWeight:900, color:C.gold }}>{yearRides>0?yearRides:"—"}<span style={{ fontSize:10, marginLeft:2, color:C.muted }}>回</span></div>
+        </div>
+      </div>
+
+      {/* 12ヶ月棒グラフ */}
+      <div style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"16px 12px", marginBottom:16 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:C.muted, marginBottom:12 }}>月別売上グラフ</div>
+        <div style={{ display:"flex", alignItems:"flex-end", gap:3, height:90 }}>
+          {monthlyData.map((d,i) => {
+            const isFuture = isCurrentYear && d.month > now.getMonth()+1;
+            const barH = d.totalSales > 0 ? Math.max(8, Math.round((d.totalSales / maxSales) * 70)) : 0;
+            const isSelected = selectedMonth === d.month;
+            const isCurrent = isCurrentYear && d.month === now.getMonth()+1;
+            const color = isCurrent ? C.accentLight : isSelected ? C.gold : C.accentLight+"88";
+            return (
+              <div key={d.month} onClick={()=>setSelectedMonth(selectedMonth===d.month?null:d.month)}
+                style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", cursor:"pointer" }}>
+                <div style={{ width:"100%", height:barH, backgroundColor:isFuture?"transparent":color, borderRadius:"4px 4px 0 0", border:isSelected?`2px solid ${C.gold}`:"none", transition:"height 0.2s" }}/>
+                <div style={{ fontSize:8, color:isCurrent?C.accentLight:isSelected?C.gold:C.muted, marginTop:3, fontWeight:isSelected||isCurrent?700:400 }}>{d.label}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 月詳細 */}
+      {detail ? (
+        <div style={{ backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}33`, borderRadius:14, padding:"16px" }}>
+          <div style={{ fontSize:13, fontWeight:800, marginBottom:12 }}>{selectedYear}年{detail.month}月の詳細</div>
+          {detail.reps === 0 ? (
+            <div style={{ fontSize:13, color:C.muted, textAlign:"center", padding:"12px 0" }}>この月のデータはありません</div>
+          ) : (
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+              {[
+                { label:"月間売上", value:`${fmt(detail.totalSales)}円`, color:C.accentLight },
+                { label:"出番回数", value:`${detail.reps}回`, color:C.gold },
+                { label:"総営業回数", value:`${detail.totalRides}回`, color:C.green },
+                { label:"日平均売上", value:`${fmt(Math.round(detail.totalSales/detail.reps))}円`, color:C.text },
+                { label:"平均実車率", value:`${detail.avgOcc}%`, color:detail.avgOcc>=55?C.green:detail.avgOcc>=45?C.gold:C.red },
+              ].map(({label,value,color})=>(
+                <div key={label} style={{ backgroundColor:C.surface, borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
+                  <div style={{ fontSize:13, fontWeight:800, color }}>{value}</div>
+                  <div style={{ fontSize:9, color:C.muted, marginTop:2 }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ backgroundColor:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"16px", textAlign:"center" }}>
+          <div style={{ fontSize:13, color:C.muted }}>月を選択すると詳細が表示されます</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── 日報一覧 ───
 export default function ReportList({ reports, onSelect, onEdit }) {
+  const [view, setView]   = useState("list"); // "list" | "monthly"
   const [filter, setFilter] = useState("all");
   const [sort, setSort] = useState("date");
   const avg = reports.length ? Math.round(reports.reduce((s,r)=>s+r.gross_sales,0)/reports.length) : 0;
@@ -238,6 +345,18 @@ export default function ReportList({ reports, onSelect, onEdit }) {
     .sort((a,b) => sort==="sales"?b.gross_sales-a.gross_sales:sort==="occ"?occ(b)-occ(a):b.date.localeCompare(a.date));
   return (
     <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
+      {/* ビュー切り替えタブ */}
+      <div style={{ display:"flex", gap:6, marginBottom:14, backgroundColor:C.card, borderRadius:12, padding:4, border:`1px solid ${C.border}` }}>
+        {[["list","📋 日報一覧"],["monthly","📅 月別統計"]].map(([v,l])=>(
+          <div key={v} onClick={()=>setView(v)} style={{ flex:1, textAlign:"center", padding:"8px 0", borderRadius:9, fontSize:12, fontWeight:view===v?700:400, backgroundColor:view===v?C.accentLight:C.surface, color:view===v?"#fff":C.muted, cursor:"pointer", transition:"all 0.15s" }}>{l}</div>
+        ))}
+      </div>
+
+      {/* 月別統計ビュー */}
+      {view === "monthly" && <MonthlyStats reports={reports}/>}
+
+      {/* 日報一覧ビュー */}
+      {view === "list" && <>
       <div style={{ display:"flex", gap:8, marginBottom:10, alignItems:"center" }}>
         {[["all","すべて"],["high","高売上"],["low","要改善"]].map(([v,l])=>(
           <div key={v} onClick={()=>setFilter(v)} style={{ padding:"6px 12px", borderRadius:99, fontSize:12, fontWeight:filter===v?700:400, backgroundColor:filter===v?C.accentLight+"22":C.card, color:filter===v?C.accentLight:C.muted, border:`1px solid ${filter===v?C.accentLight+"44":C.border}`, cursor:"pointer" }}>{l}</div>
@@ -284,6 +403,7 @@ export default function ReportList({ reports, onSelect, onEdit }) {
           </Card>
         );
       })}
+      </>}
     </div>
   );
 }

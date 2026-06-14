@@ -57,9 +57,9 @@ export function BottomNav({ tab, setTab, userAreas=[] }) {
 // モード選択ボトムシート
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const MODES = [
-  { id:"simple",   icon:"🟢", label:"かんたん", desc:"大きな文字・シンプル表示" },
-  { id:"standard", icon:"🔵", label:"通常",     desc:"標準的な表示" },
-  { id:"analysis", icon:"🟣", label:"分析",     desc:"詳細データ・グラフ表示" },
+  { id:"simple",       icon:"🟢", label:"かんたん",      desc:"シンプル表示・標準文字サイズ" },
+  { id:"simple_large", icon:"🔵", label:"かんたん（大）", desc:"シンプル表示・文字を大きく" },
+  { id:"analysis",     icon:"🟣", label:"分析",          desc:"詳細データ・グラフ・AI分析" },
 ];
 
 function ModeSheet({ appMode, onModeChange, onClose }) {

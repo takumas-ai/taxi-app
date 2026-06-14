@@ -437,6 +437,75 @@ function AiAdviceCard({ reports, appMode }) {
   );
 }
 
+// ━━━ 分析モード：今日の売上＆着地予想 ━━━━━━━━━━
+function AnalysisTodayCard({ reports }) {
+  // 集計表示のON/OFF（ユーザー選択を永続保存）
+  const [show, setShow] = useState(() => loadS("taxi_analysis_today_show", true));
+  const toggle = () => setShow(p => { saveS("taxi_analysis_today_show", !p); return !p; });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const todayReport = reports.find(r => r.date === today);
+  const todaySales = todayReport?.gross_sales ?? 0;
+
+  // 着地予想：過去の平均単価 × 想定営業回数
+  const withSales = reports.filter(r => r.gross_sales > 0 && r.ride_count > 0);
+  const avgPerRide = withSales.length
+    ? Math.round(withSales.reduce((s,r) => s + r.gross_sales / r.ride_count, 0) / withSales.length)
+    : 0;
+  const avgRideCount = withSales.length
+    ? Math.round(withSales.reduce((s,r) => s + r.ride_count, 0) / withSales.length)
+    : 0;
+  const landingForecast = avgPerRide > 0 && avgRideCount > 0 ? avgPerRide * avgRideCount : 0;
+
+  return (
+    <div style={{ marginBottom:14 }}>
+      {/* ヘッダー：タイトル＋表示切替ボタン */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:C.muted }}>📊 本日の営業状況</div>
+        <button onClick={toggle} style={{ fontSize:10, color:show?C.muted:C.accentLight, background:"none", border:`1px solid ${C.border}`, borderRadius:6, padding:"3px 10px", cursor:"pointer" }}>
+          {show ? "非表示" : "表示"}
+        </button>
+      </div>
+
+      {show && (
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+          {/* 本日の売上 */}
+          <div style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 14px" }}>
+            <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>本日の売上（税抜き）</div>
+            {todaySales > 0 ? (
+              <div style={{ fontSize:22, fontWeight:900, color:C.accentLight }}>
+                {fmt(todaySales)}<span style={{ fontSize:11, marginLeft:2 }}>円</span>
+              </div>
+            ) : (
+              <div style={{ fontSize:13, color:C.muted, fontWeight:600 }}>未入力</div>
+            )}
+            {todayReport?.ride_count > 0 && (
+              <div style={{ fontSize:10, color:C.muted, marginTop:4 }}>{todayReport.ride_count}回営業</div>
+            )}
+          </div>
+
+          {/* 着地予想 */}
+          <div style={{ backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}33`, borderRadius:12, padding:"14px 14px" }}>
+            <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>着地予想（税抜き）</div>
+            {landingForecast > 0 ? (
+              <>
+                <div style={{ fontSize:22, fontWeight:900, color:C.accentLight }}>
+                  {fmt(landingForecast)}<span style={{ fontSize:11, marginLeft:2 }}>円</span>
+                </div>
+                <div style={{ fontSize:10, color:C.muted, marginTop:4 }}>
+                  平均単価{fmt(avgPerRide)}×{avgRideCount}回ペース
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize:13, color:C.muted, fontWeight:600 }}>データ不足</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ━━━ 月間カレンダー ━━━━━━━━━━━━━━━━━━━━━━━━━━
 function MonthCalendar({ reports, monthTarget }) {
   const [open, setOpen] = useState(false);
@@ -550,22 +619,25 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   const estimatedTake = Math.max(0, Math.round(monthTotal * takePay.rate / 100 - takePay.deduction));
   const achColor      = achievement >= 100 ? C.green : achievement >= 80 ? C.gold : achievement >= 60 ? C.orange : C.red;
 
-  const isSimple   = appMode === "simple";
-  const isAnalysis = appMode === "analysis";
+  const isSimple      = appMode === "simple" || appMode === "simple_large";
+  const isSimpleLarge = appMode === "simple_large";
+  const isAnalysis    = appMode === "analysis";
 
-  // ── 残りシフト・1本必要額 ──
+  // ── 残りシフト・今日必要な売上 ──
   const today         = new Date();
   const daysInMonth   = new Date(THIS_YEAR, THIS_MONTH, 0).getDate();
   const remainingDays = Math.max(0, daysInMonth - today.getDate());
   const shiftsPerDay  = (user.workType === "隔日勤務") ? 0.5 : 0.75;
   const remainingShifts = Math.round(remainingDays * shiftsPerDay);
   const remainingAmount = Math.max(0, monthTarget - monthTotal);
+  // 今日必要な売上 = 残り目標額 ÷ 残り出番日数（税抜き表示）
   const neededPerShift  = remainingShifts > 0 ? Math.round(remainingAmount / remainingShifts) : 0;
+  const neededToday     = remainingDays > 0 ? Math.round(remainingAmount / remainingDays) : 0;
 
   // ━━━ かんたんモード ━━━━━━━━━━━━━━━━━━━━━━━━━
   if (isSimple) {
     return (
-      <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
+      <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px", fontSize: isSimpleLarge ? "110%" : "100%" }}>
         <UpdateBanner />
         <AreaFilterBanner userAreas={user.areas || []} onManage={onManageArea} />
         <WeatherWidget />
@@ -598,8 +670,8 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
                   <div style={{ fontSize:22, fontWeight:900, color:C.text }}>{remainingShifts}<span style={{ fontSize:12, marginLeft:2 }}>回</span></div>
                 </div>
                 <div style={{ flex:1, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}33`, borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
-                  <div style={{ fontSize:10, color:C.muted, marginBottom:3 }}>1本あたり必要</div>
-                  <div style={{ fontSize:22, fontWeight:900, color:C.accentLight }}>{fmt(neededPerShift)}<span style={{ fontSize:12, marginLeft:2 }}>円</span></div>
+                  <div style={{ fontSize:10, color:C.muted, marginBottom:3 }}>今日必要な売上<span style={{ fontSize:8, marginLeft:2 }}>(税抜)</span></div>
+                  <div style={{ fontSize:22, fontWeight:900, color:C.accentLight }}>{fmt(neededToday)}<span style={{ fontSize:12, marginLeft:2 }}>円</span></div>
                 </div>
               </div>
             )}
@@ -672,8 +744,8 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
               <div style={{ fontSize:18, fontWeight:900, color:C.text }}>{remainingShifts}<span style={{ fontSize:10, marginLeft:2 }}>回</span></div>
             </div>
             <div style={{ flex:1, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}33`, borderRadius:9, padding:"8px 10px", textAlign:"center" }}>
-              <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>1本あたり必要</div>
-              <div style={{ fontSize:18, fontWeight:900, color:C.accentLight }}>{fmt(neededPerShift)}<span style={{ fontSize:10, marginLeft:2 }}>円</span></div>
+              <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>今日必要な売上<span style={{ fontSize:7, marginLeft:1 }}>(税抜)</span></div>
+              <div style={{ fontSize:18, fontWeight:900, color:C.accentLight }}>{fmt(neededToday)}<span style={{ fontSize:10, marginLeft:2 }}>円</span></div>
             </div>
             <div style={{ flex:1, backgroundColor:C.surface, borderRadius:9, padding:"8px 10px", textAlign:"center" }}>
               <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>残り日数</div>
@@ -717,7 +789,10 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
       {/* ④ 翌日発表（分析モードのみ常に展開、通常は折りたたみ） */}
       <YesterdayCard userAreas={user.areas || []} rankPrefs={rankPrefs} reports={reports} />
 
-      {/* ⑤ 売上グラフ */}
+      {/* ⑤ 今日の売上＆着地予想（分析モードのみ） */}
+      {isAnalysis && <AnalysisTodayCard reports={reports} />}
+
+      {/* ⑥ 売上グラフ */}
       <SalesChart reports={reports} />
 
       {/* ⑥ AIアドバイス（3件以上でモード別表示） */}
