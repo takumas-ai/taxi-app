@@ -33,7 +33,7 @@ import OnboardingScreen   from "./screens/Onboarding";
 import CommunityScreen    from "./screens/Community";
 
 // Components
-import { BottomNav, Header } from "./components/Navigation";
+import { BottomNav, Header, TakuroFAB } from "./components/Navigation";
 import { AreaSettingModal }  from "./components/AreaFilter";
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -458,6 +458,7 @@ export default function App() {
       case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")}/>;
       case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports}/>;
       case "community": return <CommunityScreen />;
+      case "feedback":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection="feedback"/>;
       default:          return null;
     }
   };
@@ -467,6 +468,7 @@ export default function App() {
       <Header user={user} tab={tab} setTab={setTab} appMode={appMode} onModeChange={setAppMode} />
       {renderScreen()}
       <ReportModal key={selected ? `${selected.id}-${selectedForEdit}` : "none"} report={selected} onClose={()=>{setSelected(null);setSelectedForEdit(false);}} onUpdate={handleUpdateReport} startInEdit={selectedForEdit}/>
+      <TakuroFAB setTab={setTab} />
       <BottomNav tab={tab} setTab={setTab} userAreas={userAreas}/>
       {showAreaModal && <AreaSettingModal userAreas={userAreas} onSave={areas=>setUser(u=>({...u,areas}))} onClose={()=>setShowAreaModal(false)}/>}
     </div>
