@@ -243,7 +243,7 @@ function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSet
   const items = [
     { icon:"🎁", label:"友達を招待",       action:()=>{ onNavigateSettings("referral"); onClose(); } },
     { icon:"🗺️", label:"エリア設定",       action:()=>{ onManageArea?.(); onClose(); } },
-    { icon:"📍", label:"営業ポイント管理", action:()=>{ onOpenBizPoints(); onClose(); } },
+    { icon:"📍", label:"マイポイント",       action:()=>{ onOpenBizPoints(); onClose(); } },
     { icon:"👤", label:"プロフィール",     action:()=>{ onNavigateSettings("profile"); onClose(); } },
     { icon:"💴", label:"手取り設定",       action:()=>{ onNavigateSettings("takepay"); onClose(); } },
   ];
