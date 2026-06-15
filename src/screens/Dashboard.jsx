@@ -296,27 +296,70 @@ function RecentReports({ reports, onOpenReport, simple }) {
   );
 }
 
-// ━━━ シフト表カード（プレースホルダー） ━━━━━━━
-function ShiftSummaryCard() {
+// ━━━ シフト表カード ━━━━━━━━━━━━━━━━━━━━━━━━
+function ShiftSummaryCard({ onGoShift }) {
   const [open, setOpen] = useState(false);
   const today = new Date();
-  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-  const remaining = daysInMonth - today.getDate();
+  const y = today.getFullYear(), m = today.getMonth() + 1;
+  const todayStr = `${y}-${String(m).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+  const allShifts = loadS("taxi_shifts", []);
+  const monthShifts = allShifts.filter(s => {
+    const d = new Date(s.date);
+    return d.getFullYear() === y && d.getMonth() + 1 === m;
+  }).sort((a,b) => a.date.localeCompare(b.date));
+  const upcoming = monthShifts.filter(s => s.date >= todayStr).slice(0, 4);
+  const remaining = monthShifts.filter(s => s.date >= todayStr).length;
+  const todayShift = monthShifts.find(s => s.date === todayStr);
+  const DOW = ["日","月","火","水","木","金","土"];
+
   return (
     <Card style={{ marginBottom:14, padding:"12px 16px" }}>
       <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
-        <div style={{ fontSize:13, fontWeight:700 }}>📆 シフト表</div>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <span style={{ fontSize:13, fontWeight:700 }}>📆 シフト表</span>
+          {todayShift && <span style={{ fontSize:10, backgroundColor:C.green+"22", color:C.green, fontWeight:700, padding:"2px 8px", borderRadius:99 }}>本日出勤</span>}
+        </div>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <span style={{ fontSize:11, color:C.muted }}>残り{remaining}日</span>
+          {monthShifts.length > 0
+            ? <span style={{ fontSize:11, color:C.muted }}>残り{remaining}勤</span>
+            : <span style={{ fontSize:11, color:C.red }}>未登録</span>
+          }
           <span style={{ fontSize:11, color:C.muted }}>{open?"▲":"▼"}</span>
         </div>
       </div>
       {open && (
         <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.border}` }}>
-          <div style={{ fontSize:12, color:C.muted, textAlign:"center", padding:"12px 0", lineHeight:1.8 }}>
-            📋 シフト管理機能は近日公開予定です
-            <div style={{ fontSize:11, marginTop:4 }}>出勤予定の入力・AIアドバイス機能を準備中</div>
-          </div>
+          {monthShifts.length === 0 ? (
+            <div style={{ textAlign:"center", padding:"12px 0" }}>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>シフト表がまだ登録されていません</div>
+              <button onClick={e=>{e.stopPropagation();onGoShift?.();}} style={{ backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:9, padding:"8px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                シフトを登録する →
+              </button>
+            </div>
+          ) : (
+            <>
+              <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:10 }}>
+                {upcoming.map(s => {
+                  const wd = DOW[new Date(s.date).getDay()];
+                  const isToday = s.date === todayStr;
+                  return (
+                    <div key={s.date} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", backgroundColor:isToday?C.green+"18":C.bg, borderRadius:8, border:`1px solid ${isToday?C.green+"55":C.border}` }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        <span style={{ fontSize:13, fontWeight:700, color:isToday?C.green:C.text }}>{s.date.slice(5)}</span>
+                        <span style={{ fontSize:11, color:C.muted }}>（{wd}）</span>
+                        {isToday && <span style={{ fontSize:10, color:C.green, fontWeight:700 }}>今日</span>}
+                      </div>
+                      <span style={{ fontSize:11, color:C.sub }}>{s.clockIn}〜{s.clockOut}</span>
+                    </div>
+                  );
+                })}
+                {remaining > 4 && <div style={{ fontSize:11, color:C.muted, textAlign:"center" }}>他 {remaining - 4} 勤務</div>}
+              </div>
+              <button onClick={e=>{e.stopPropagation();onGoShift?.();}} style={{ width:"100%", backgroundColor:"transparent", border:`1px solid ${C.border}`, borderRadius:9, padding:"8px 0", fontSize:12, color:C.sub, cursor:"pointer" }}>
+                シフト表を開く →
+              </button>
+            </>
+          )}
         </div>
       )}
     </Card>
@@ -630,7 +673,7 @@ function MonthCalendar({ reports, monthTarget }) {
 }
 
 // ━━━ Dashboard メイン ━━━━━━━━━━━━━━━━━━━━━━━━━
-export default function Dashboard({ reports, user, onOpenReport, onManageArea, rankPrefs = { showMyRank:false, showTopSales:false }, appMode = "standard" }) {
+export default function Dashboard({ reports, user, onOpenReport, onManageArea, rankPrefs = { showMyRank:false, showTopSales:false }, appMode = "standard", onGoShift }) {
   const monthReports = reports.filter(r => {
     const d = new Date(r.date);
     return d.getFullYear() === THIS_YEAR && d.getMonth() + 1 === THIS_MONTH;
@@ -672,7 +715,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         <UpdateBanner />
 
         {/* ③ シフト表（アコーディオン） */}
-        <ShiftSummaryCard />
+        <ShiftSummaryCard onGoShift={onGoShift} />
 
         <AreaFilterBanner userAreas={user.areas || []} onManage={onManageArea} />
         <WeatherWidget />

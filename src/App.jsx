@@ -469,7 +469,7 @@ export default function App() {
 
   const renderScreen = () => {
     switch (tab) {
-      case "dashboard": return <Dashboard reports={reports} user={user} onOpenReport={setSelected} onManageArea={()=>setShowAreaModal(true)} rankPrefs={rankPrefs} appMode={appMode}/>;
+      case "dashboard": return <Dashboard reports={reports} user={user} onOpenReport={setSelected} onManageArea={()=>setShowAreaModal(true)} rankPrefs={rankPrefs} appMode={appMode} onGoShift={()=>handleSetTab("shift")}/>;
       case "list":      return <ReportList reports={reports} onSelect={r=>{setSelectedForEdit(false);setSelected(r);}} onEdit={r=>{setSelectedForEdit(true);setSelected(r);}}/>;
       case "upload":    return <UploadScreen uploadCount={user.uploadCount||0} onSave={handleSave} reports={reports}/>;
       case "info":      return <InfoCenter notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} userAreas={userAreas} onManageArea={()=>setShowAreaModal(true)}/>;
