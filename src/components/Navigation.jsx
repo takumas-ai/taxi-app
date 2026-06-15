@@ -84,64 +84,148 @@ function ModeSheet({ appMode, onModeChange, onClose }) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 営業ポイント管理モーダル
+// 営業ポイント管理モーダル（GPS対応）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function BusinessPointModal({ onClose }) {
-  const [points, setPoints] = useState(() => loadS("taxi_biz_points", []));
-  const [input, setInput] = useState("");
+  // 旧形式(string[])と新形式({name,lat,lng,memo,timestamp}[])を両対応
+  const [points, setPoints] = useState(() => {
+    const raw = loadS("taxi_biz_points", []);
+    return raw.map(p => typeof p === "string" ? { name: p, lat: null, lng: null, memo: "", timestamp: null } : p);
+  });
+  const [input, setInput]     = useState("");
+  const [memo, setMemo]       = useState("");
   const [editIdx, setEditIdx] = useState(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError]     = useState("");
+  const [pendingCoords, setPendingCoords] = useState(null); // { lat, lng }
 
   const save = (next) => { setPoints(next); saveS("taxi_biz_points", next); };
 
   const handleAdd = () => {
     const v = input.trim();
     if (!v) return;
+    const entry = { name: v, lat: pendingCoords?.lat ?? null, lng: pendingCoords?.lng ?? null, memo: memo.trim(), timestamp: new Date().toISOString() };
     if (editIdx !== null) {
-      const next = points.map((p,i) => i===editIdx ? v : p);
-      save(next); setEditIdx(null);
+      save(points.map((p, i) => i === editIdx ? entry : p));
+      setEditIdx(null);
     } else {
-      save([...points, v]);
+      save([...points, entry]);
     }
-    setInput("");
+    setInput(""); setMemo(""); setPendingCoords(null);
   };
 
-  const handleEdit = (i) => { setInput(points[i]); setEditIdx(i); };
-  const handleDelete = (i) => save(points.filter((_,j)=>j!==i));
+  const handleEdit = (i) => {
+    const p = points[i];
+    setInput(p.name); setMemo(p.memo || "");
+    setPendingCoords(p.lat ? { lat: p.lat, lng: p.lng } : null);
+    setEditIdx(i);
+  };
+  const handleDelete = (i) => save(points.filter((_, j) => j !== i));
+
+  // GPS取得 → Nominatim逆ジオコーディング
+  const handleGPS = () => {
+    if (!navigator.geolocation) { setGpsError("このデバイスはGPSに対応していません"); return; }
+    setGpsLoading(true); setGpsError("");
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        setPendingCoords({ lat, lng });
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ja`,
+            { headers: { "User-Agent": "TakuroApp/1.0" } }
+          );
+          const data = await res.json();
+          const addr = data.address;
+          // 市区町村レベルの地名を組み合わせる
+          const area = [addr.suburb || addr.neighbourhood, addr.city_district || addr.quarter, addr.city || addr.town || addr.village]
+            .filter(Boolean).slice(0, 2).join("・") || data.display_name?.split(",")[0] || `${lat.toFixed(4)},${lng.toFixed(4)}`;
+          setInput(area);
+        } catch {
+          setInput(`${lat.toFixed(4)},${lng.toFixed(4)}`);
+        }
+        setGpsLoading(false);
+      },
+      (err) => {
+        setGpsError(err.code === 1 ? "位置情報の許可が必要です" : "位置情報を取得できませんでした");
+        setGpsLoading(false);
+      },
+      { timeout: 10000, maximumAge: 30000 }
+    );
+  };
+
+  const fmtDate = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  };
 
   return (
     <div style={{ position:"fixed", inset:0, backgroundColor:"#00000088", zIndex:300 }} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{ position:"absolute", bottom:0, left:0, right:0, backgroundColor:C.surface, borderRadius:"20px 20px 0 0", padding:24, paddingBottom:44, maxWidth:480, margin:"0 auto", maxHeight:"80vh", overflowY:"auto" }}>
+      <div onClick={e=>e.stopPropagation()} style={{ position:"absolute", bottom:0, left:0, right:0, backgroundColor:C.surface, borderRadius:"20px 20px 0 0", padding:24, paddingBottom:44, maxWidth:480, margin:"0 auto", maxHeight:"85vh", overflowY:"auto" }}>
         <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 16px" }}/>
-        <div style={{ fontSize:15, fontWeight:800, marginBottom:4 }}>📍 営業ポイント管理</div>
-        <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>よく行く乗り場・エリアを登録しておくと記録時に選択できます</div>
+        <div style={{ fontSize:15, fontWeight:800, marginBottom:4 }}>📍 営業ポイント記録</div>
+        <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>稼げた場所をGPSで記録。日報の営業エリア選択にも使えます</div>
 
-        {/* 入力欄 */}
-        <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+        {/* GPS取得ボタン */}
+        <button
+          onClick={handleGPS}
+          disabled={gpsLoading}
+          style={{ width:"100%", marginBottom:10, padding:"12px 0", borderRadius:10, fontSize:14, fontWeight:700, cursor:gpsLoading?"not-allowed":"pointer", border:`1.5px solid ${C.accentLight}`, backgroundColor:C.accentGlow, color:C.accentLight, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}
+        >
+          {gpsLoading ? "📡 現在地を取得中..." : "📡 現在地から自動入力"}
+        </button>
+        {gpsError && <div style={{ fontSize:12, color:C.red, marginBottom:8 }}>{gpsError}</div>}
+        {pendingCoords && (
+          <div style={{ fontSize:11, color:C.muted, marginBottom:8 }}>
+            📌 GPS: {pendingCoords.lat.toFixed(5)}, {pendingCoords.lng.toFixed(5)}
+            {" · "}
+            <a href={`https://www.google.com/maps?q=${pendingCoords.lat},${pendingCoords.lng}`} target="_blank" rel="noopener noreferrer" style={{ color:C.accentLight }}>地図で確認</a>
+          </div>
+        )}
+
+        {/* 手動入力欄 */}
+        <div style={{ display:"flex", gap:8, marginBottom:8 }}>
           <input
             value={input}
             onChange={e=>setInput(e.target.value)}
             onKeyDown={e=>e.key==="Enter"&&handleAdd()}
-            placeholder="例：銀座駅付近、新橋駅前"
+            placeholder="場所名（例：銀座駅付近、新橋駅前）"
             style={{ flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:14, outline:"none" }}
           />
           <button onClick={handleAdd} style={{ backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:9, padding:"0 18px", fontSize:14, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
-            {editIdx!==null ? "更新" : "追加"}
+            {editIdx !== null ? "更新" : "追加"}
           </button>
         </div>
-        {editIdx!==null && (
-          <button onClick={()=>{setEditIdx(null);setInput("");}} style={{ fontSize:12, color:C.muted, background:"none", border:"none", cursor:"pointer", marginBottom:12, padding:0 }}>× キャンセル</button>
+        <input
+          value={memo}
+          onChange={e=>setMemo(e.target.value)}
+          placeholder="メモ（例：終電後、雨の日に需要高い）"
+          style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"9px 12px", color:C.text, fontSize:13, outline:"none", marginBottom:12 }}
+        />
+        {editIdx !== null && (
+          <button onClick={()=>{setEditIdx(null);setInput("");setMemo("");setPendingCoords(null);}} style={{ fontSize:12, color:C.muted, background:"none", border:"none", cursor:"pointer", marginBottom:12, padding:0 }}>× キャンセル</button>
         )}
 
         {/* ポイント一覧 */}
         {points.length === 0 ? (
           <div style={{ textAlign:"center", padding:"24px 0", color:C.muted, fontSize:13 }}>まだ登録されていません</div>
         ) : (
-          points.map((p,i) => (
-            <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:12, marginBottom:8 }}>
-              <span style={{ fontSize:16 }}>📍</span>
-              <span style={{ flex:1, fontSize:14, color:C.text, fontWeight:500 }}>{p}</span>
-              <button onClick={()=>handleEdit(i)} style={{ fontSize:12, color:C.accentLight, background:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer" }}>編集</button>
-              <button onClick={()=>handleDelete(i)} style={{ fontSize:12, color:C.red, background:C.redGlow||C.red+"11", border:`1px solid ${C.red}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer" }}>削除</button>
+          points.map((p, i) => (
+            <div key={i} style={{ padding:"12px 14px", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:12, marginBottom:8 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom: p.memo ? 4 : 0 }}>
+                <span style={{ fontSize:15 }}>{p.lat ? "📡" : "📍"}</span>
+                <span style={{ flex:1, fontSize:14, color:C.text, fontWeight:600 }}>{p.name}</span>
+                <button onClick={()=>handleEdit(i)} style={{ fontSize:11, color:C.accentLight, background:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:6, padding:"3px 9px", cursor:"pointer" }}>編集</button>
+                <button onClick={()=>handleDelete(i)} style={{ fontSize:11, color:C.red, background:(C.redGlow||C.red+"11"), border:`1px solid ${C.red}44`, borderRadius:6, padding:"3px 9px", cursor:"pointer" }}>削除</button>
+              </div>
+              {p.memo && <div style={{ fontSize:12, color:C.muted, marginLeft:23, marginBottom:2 }}>{p.memo}</div>}
+              <div style={{ fontSize:11, color:C.muted, marginLeft:23, display:"flex", gap:10 }}>
+                {p.timestamp && <span>🕐 {fmtDate(p.timestamp)}</span>}
+                {p.lat && (
+                  <a href={`https://www.google.com/maps?q=${p.lat},${p.lng}`} target="_blank" rel="noopener noreferrer" style={{ color:C.accentLight }}>🗺 地図</a>
+                )}
+              </div>
             </div>
           ))
         )}

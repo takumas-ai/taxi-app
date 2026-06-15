@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { C, fmt, occ, dow, hourly, FREE_LIMIT } from "../lib/constants";
-import { generateReportComment } from "../lib/ai";
+import { generateReportComment, runReportOCR } from "../lib/ai";
 import { Card, Btn, ProgressBar } from "../components/UI";
 import { WORK_AREAS_BY_PARENT } from "../data/mockData";
 import { supabase } from "../lib/supabase";
@@ -133,22 +133,19 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
       await new Promise(r => setTimeout(r, 300));
       addLine("日付・売上データを抽出中...", 55);
 
-      // canvas.toDataURL は常にJPEG出力なので media_type は固定
-      const { data, error } = await supabase.functions.invoke("ocr-report", {
-        body: { image_base64: base64, media_type: "image/jpeg" },
-      });
-
-      if (error) throw new Error(error.message || "OCRエラー");
+      // claude-proxy経由でOCR（work_area対応プロンプトを使用）
+      const result = await runReportOCR(base64, "image/jpeg");
+      if (!result) throw new Error("OCRエラー");
 
       addLine("走行距離・乗務時間を確認中...", 80);
       await new Promise(r => setTimeout(r, 300));
       addLine("読み取り完了 ✓", 100);
       await new Promise(r => setTimeout(r, 400));
 
-      const f = data?.fields ?? {};
+      const f = result?.fields ?? {};
       const today = new Date().toISOString().slice(0, 10);
       setForm({
-        date:               f.date              ?? today,
+        date:               f.report_date ?? f.date ?? today,
         gross_sales:        f.gross_sales        != null ? String(f.gross_sales)        : "",
         cash_sales:         f.cash_sales         != null ? String(f.cash_sales)         : "",
         card_sales:         f.card_sales         != null ? String(f.card_sales)         : "",
@@ -160,7 +157,7 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
         break_hours:        f.break_hours        != null ? String(f.break_hours)        : "1.0",
         highway_fee:        f.highway_fee        != null ? String(f.highway_fee)        : "0",
         trouble_note:       "",
-        work_area:          "",
+        work_area:          f.work_area          ?? "",
       });
       setStep("confirm");
     } catch (err) {
