@@ -93,9 +93,10 @@ function RecordModal({ onClose, onSave, editTarget }) {
   const [memo,           setMemo]           = useState(editTarget?.memo ?? "");
   const [lat,            setLat]            = useState(editTarget?.lat ?? null);
   const [lng,            setLng]            = useState(editTarget?.lng ?? null);
-  const [gpsLoading,     setGpsLoading]     = useState(false);
-  const [gpsFor,         setGpsFor]         = useState("");
-  const [gpsError,       setGpsError]       = useState("");
+  const [gpsLoading,       setGpsLoading]       = useState(false);
+  const [gpsFor,           setGpsFor]           = useState("");
+  const [gpsError,         setGpsError]         = useState("");
+  const [showPickupDrop,   setShowPickupDrop]   = useState(false);
 
   // 登録済み営業ポイント（ハンバーガーメニュー #19 で管理）
   const bizPoints = (() => {
@@ -199,7 +200,7 @@ function RecordModal({ onClose, onSave, editTarget }) {
         </div>
 
         {/* 乗車場所 */}
-        <div style={sectionStyle}>
+        <div style={{ ...sectionStyle, position:"relative" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
             <label style={{ ...labelStyle, marginBottom:0 }}>乗車場所</label>
             <button onClick={()=>fetchGps("pickup")} disabled={gpsLoading}
@@ -207,19 +208,44 @@ function RecordModal({ onClose, onSave, editTarget }) {
               {gpsFor==="pickup" ? "取得中..." : "📡 現在地"}
             </button>
           </div>
-          {/* 登録済みポイントのクイック選択 */}
-          {bizPoints.length > 0 && (
-            <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
-              {bizPoints.map((p,i) => (
-                <button key={i} onClick={()=>setPickupLocation(typeof p==="string"?p:p.name)}
-                  style={{ fontSize:11, color:C.accentLight, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:99, padding:"4px 10px", cursor:"pointer", whiteSpace:"nowrap" }}>
-                  📍 {typeof p==="string"?p:p.name}
-                </button>
-              ))}
+          <input
+            type="text"
+            value={pickupLocation}
+            onChange={e=>{ setPickupLocation(e.target.value); setShowPickupDrop(true); }}
+            onFocus={()=>{ if(bizPoints.length>0) setShowPickupDrop(true); }}
+            onBlur={()=>setTimeout(()=>setShowPickupDrop(false), 150)}
+            placeholder="場所を入力 または マイポイントから選択"
+            style={{ ...inputStyle, borderColor: showPickupDrop && bizPoints.length>0 ? C.accentLight : C.border }}
+          />
+          {/* マイポイントのドロップダウン候補 */}
+          {showPickupDrop && bizPoints.length > 0 && (
+            <div style={{ position:"absolute", left:0, right:0, top:"100%", backgroundColor:C.surface, border:`1.5px solid ${C.accentLight}`, borderRadius:10, zIndex:50, overflow:"hidden", boxShadow:"0 4px 16px #00000033" }}>
+              {bizPoints
+                .filter(p => {
+                  const name = typeof p==="string" ? p : p.name;
+                  return !pickupLocation || name.includes(pickupLocation);
+                })
+                .map((p,i) => {
+                  const name = typeof p==="string" ? p : p.name;
+                  return (
+                    <div key={i}
+                      onMouseDown={()=>{ setPickupLocation(name); setShowPickupDrop(false); }}
+                      style={{ padding:"11px 14px", fontSize:14, color:C.text, cursor:"pointer", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:8 }}
+                      onMouseEnter={e=>e.currentTarget.style.backgroundColor=C.accentGlow}
+                      onMouseLeave={e=>e.currentTarget.style.backgroundColor="transparent"}
+                    >
+                      <span style={{ fontSize:16 }}>📍</span>
+                      <span>{name}</span>
+                    </div>
+                  );
+                })}
+              {bizPoints.length > 0 && (
+                <div style={{ padding:"8px 14px", fontSize:11, color:C.muted, backgroundColor:C.bg }}>
+                  マイポイントから選択（ハンバーガーメニューで管理）
+                </div>
+              )}
             </div>
           )}
-          <input type="text" value={pickupLocation} onChange={e=>setPickupLocation(e.target.value)}
-            placeholder="場所を入力" style={inputStyle} />
         </div>
 
         {/* 降車日時 */}
