@@ -426,14 +426,38 @@ function XpCard({ user }) {
 }
 
 // ━━━ 休憩時間カード ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function BreakTimeCard({ reports }) {
+function BreakTimeCard({ reports, onUpdateReport }) {
   const [showAll, setShowAll] = useState(false);
-  const withBreak = [...reports]
-    .filter(r => r.break_hours != null && r.break_hours !== "")
-    .sort((a, b) => b.date.localeCompare(a.date));
-  if (withBreak.length === 0) return null;
-  const displayed = showAll ? withBreak : withBreak.slice(0, 3);
-  const hasMore = withBreak.length > 3;
+  const [editingId, setEditingId] = useState(null);
+  const [editVal, setEditVal] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // break_hoursがある日報 + 直近で break_hours未入力の日報も含める（入力できるように）
+  const sorted = [...reports].sort((a, b) => b.date.localeCompare(a.date));
+  // 最新5件を表示対象にして、うち break_hours があるものを優先
+  const recent = sorted.slice(0, 10);
+  if (recent.length === 0) return null;
+
+  const displayed = showAll ? sorted : recent.slice(0, 3);
+  const hasMore = sorted.length > 3;
+
+  const startEdit = (r) => {
+    setEditingId(r.id);
+    setEditVal(r.break_hours != null ? String(r.break_hours) : "");
+  };
+
+  const cancelEdit = () => { setEditingId(null); setEditVal(""); };
+
+  const saveEdit = async (r) => {
+    const val = parseFloat(editVal);
+    if (isNaN(val) || val < 0) return;
+    setSaving(true);
+    await onUpdateReport?.({ ...r, break_hours: val });
+    setSaving(false);
+    setEditingId(null);
+    setEditVal("");
+  };
+
   return (
     <Card style={{ marginBottom:14, padding:"12px 16px" }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
@@ -441,21 +465,49 @@ function BreakTimeCard({ reports }) {
         {hasMore && (
           <button onClick={() => setShowAll(p => !p)}
             style={{ fontSize:11, color:C.accentLight, background:"none", border:`1px solid ${C.accentLight}55`, borderRadius:7, padding:"3px 10px", cursor:"pointer" }}>
-            {showAll ? "閉じる" : `詳細 (${withBreak.length}件)`}
+            {showAll ? "閉じる" : `詳細 (${sorted.length}件)`}
           </button>
         )}
       </div>
       {displayed.map(r => (
-        <div key={r.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 0", borderBottom:`1px solid ${C.border}` }}>
-          <div style={{ fontSize:12, color:C.sub }}>{r.date}（{dow(r.date)}）</div>
-          <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-            {r.work_hours != null && <span style={{ fontSize:11, color:C.muted }}>勤務 {r.work_hours}h</span>}
-            <span style={{ fontSize:13, fontWeight:700, color:C.text }}>休憩 {r.break_hours}h</span>
-          </div>
+        <div key={r.id} style={{ padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
+          {editingId === r.id ? (
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <div style={{ fontSize:12, color:C.sub, flex:1 }}>{r.date}（{dow(r.date)}）</div>
+              <input
+                type="number" step="0.5" min="0" max="24"
+                value={editVal}
+                onChange={e => setEditVal(e.target.value)}
+                style={{ width:64, padding:"5px 8px", borderRadius:7, border:`1.5px solid ${C.accentLight}`, backgroundColor:C.card, color:C.text, fontSize:13, textAlign:"center" }}
+                autoFocus
+              />
+              <span style={{ fontSize:12, color:C.muted }}>h</span>
+              <button onClick={() => saveEdit(r)} disabled={saving}
+                style={{ padding:"5px 12px", borderRadius:7, backgroundColor:C.accentLight, color:"#fff", border:"none", fontSize:12, fontWeight:700, cursor:"pointer", opacity:saving?0.6:1 }}>
+                保存
+              </button>
+              <button onClick={cancelEdit}
+                style={{ padding:"5px 10px", borderRadius:7, backgroundColor:"transparent", color:C.muted, border:`1px solid ${C.border}`, fontSize:12, cursor:"pointer" }}>
+                ×
+              </button>
+            </div>
+          ) : (
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}
+              onClick={() => startEdit(r)} role="button" style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
+              <div style={{ fontSize:12, color:C.sub }}>{r.date}（{dow(r.date)}）</div>
+              <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+                {r.work_hours != null && <span style={{ fontSize:11, color:C.muted }}>勤務 {r.work_hours}h</span>}
+                <span style={{ fontSize:13, fontWeight:700, color: r.break_hours != null ? C.text : C.muted }}>
+                  {r.break_hours != null ? `休憩 ${r.break_hours}h` : "タップして入力"}
+                </span>
+                <span style={{ fontSize:11, color:C.accentLight }}>✏️</span>
+              </div>
+            </div>
+          )}
         </div>
       ))}
       {!showAll && hasMore && (
-        <div style={{ fontSize:11, color:C.muted, textAlign:"center", paddingTop:8 }}>他 {withBreak.length - 3} 件</div>
+        <div style={{ fontSize:11, color:C.muted, textAlign:"center", paddingTop:8 }}>他 {sorted.length - 3} 件</div>
       )}
     </Card>
   );
@@ -709,7 +761,7 @@ function MonthCalendar({ reports, monthTarget }) {
 }
 
 // ━━━ Dashboard メイン ━━━━━━━━━━━━━━━━━━━━━━━━━
-export default function Dashboard({ reports, user, onOpenReport, onManageArea, rankPrefs = { showMyRank:false, showTopSales:false }, appMode = "standard", onGoShift }) {
+export default function Dashboard({ reports, user, onOpenReport, onManageArea, rankPrefs = { showMyRank:false, showTopSales:false }, appMode = "standard", onGoShift, onUpdateReport }) {
   const monthReports = reports.filter(r => {
     const d = new Date(r.date);
     return d.getFullYear() === THIS_YEAR && d.getMonth() + 1 === THIS_MONTH;
@@ -758,7 +810,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         <SalesPointCard />
 
         {/* 休憩時間 */}
-        <BreakTimeCard reports={reports} />
+        <BreakTimeCard reports={reports} onUpdateReport={onUpdateReport} />
 
         {/* 売上メインカード（大きな文字） */}
         <Card style={{ marginBottom:14, padding:"24px 20px", borderColor:C.gold+"33" }}>
