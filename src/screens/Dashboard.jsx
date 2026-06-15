@@ -296,6 +296,33 @@ function RecentReports({ reports, onOpenReport, simple }) {
   );
 }
 
+// ━━━ シフト表カード（プレースホルダー） ━━━━━━━
+function ShiftSummaryCard() {
+  const [open, setOpen] = useState(false);
+  const today = new Date();
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const remaining = daysInMonth - today.getDate();
+  return (
+    <Card style={{ marginBottom:14, padding:"12px 16px" }}>
+      <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
+        <div style={{ fontSize:13, fontWeight:700 }}>📆 シフト表</div>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:11, color:C.muted }}>残り{remaining}日</span>
+          <span style={{ fontSize:11, color:C.muted }}>{open?"▲":"▼"}</span>
+        </div>
+      </div>
+      {open && (
+        <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.border}` }}>
+          <div style={{ fontSize:12, color:C.muted, textAlign:"center", padding:"12px 0", lineHeight:1.8 }}>
+            📋 シフト管理機能は近日公開予定です
+            <div style={{ fontSize:11, marginTop:4 }}>出勤予定の入力・AIアドバイス機能を準備中</div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ━━━ XP・ミッションカード（折りたたみ対応） ━━━
 function XpCard({ user }) {
   const [open, setOpen] = useState(false);
@@ -637,8 +664,16 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   // ━━━ かんたんモード ━━━━━━━━━━━━━━━━━━━━━━━━━
   if (isSimple) {
     return (
-      <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px", fontSize: isSimpleLarge ? "110%" : "100%" }}>
+      <div style={{ maxWidth:600, margin:"0 auto", padding:"16px 16px 100px", zoom: isSimpleLarge ? 1.15 : 1 }}>
+        {/* ① レベル欄 */}
+        <XpCard user={user} />
+
+        {/* ② お知らせ欄（×で消去可） */}
         <UpdateBanner />
+
+        {/* ③ シフト表（アコーディオン） */}
+        <ShiftSummaryCard />
+
         <AreaFilterBanner userAreas={user.areas || []} onManage={onManageArea} />
         <WeatherWidget />
 
@@ -681,9 +716,6 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         {/* カレンダー */}
         <MonthCalendar reports={monthReports} monthTarget={monthTarget} />
 
-        {/* XP（コンパクト・折りたたみ） */}
-        <XpCard user={user} />
-
         {/* AIアドバイス */}
         <AiAdviceCard reports={monthReports} appMode={appMode} />
 
@@ -703,8 +735,16 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
 
   // ━━━ 通常・分析モード ━━━━━━━━━━━━━━━━━━━━━━
   return (
-    <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
+    <div style={{ maxWidth:600, margin:"0 auto", padding:"16px 16px 100px" }}>
+      {/* ① レベル欄 */}
+      <XpCard user={user} />
+
+      {/* ② お知らせ欄 */}
       <UpdateBanner />
+
+      {/* ③ シフト表（アコーディオン） */}
+      <ShiftSummaryCard />
+
       <AreaFilterBanner userAreas={user.areas || []} onManage={onManageArea} />
       <WeatherWidget />
 
@@ -782,9 +822,6 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         <KpiCard label="平均実車率" value={avgOcc}         unit="%" accent={avgOcc >= 55 ? C.green : avgOcc >= 45 ? C.gold : C.orange} />
         <KpiCard label="無料残り"   value={remaining}      unit="件" accent={remaining <= 1 ? C.red : C.gold} />
       </div>
-
-      {/* ③ XP・ミッション（折りたたみ） */}
-      <XpCard user={user} />
 
       {/* ④ 翌日発表（分析モードのみ常に展開、通常は折りたたみ） */}
       <YesterdayCard userAreas={user.areas || []} rankPrefs={rankPrefs} reports={reports} />

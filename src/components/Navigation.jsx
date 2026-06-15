@@ -6,7 +6,7 @@ import { C, loadS, saveS } from "../lib/constants";
 import { MOCK_DELAYS } from "../data/mockData";
 
 // ボトムナビ（5タブ）
-export function BottomNav({ tab, setTab, userAreas=[] }) {
+export function BottomNav({ tab, setTab, userAreas=[], alertsSeen=false }) {
   const alertCount = MOCK_DELAYS.filter(d =>
     d.status !== "normal" && d.opportunity && d.severity === "high" &&
     (userAreas.length === 0 || d.areas.some(a => userAreas.includes(a)))
@@ -39,7 +39,7 @@ export function BottomNav({ tab, setTab, userAreas=[] }) {
             <>
               <div style={{ position:"relative" }}>
                 <div style={{ fontSize:20, opacity:isActive(item.id)?1:0.45 }}>{item.icon}</div>
-                {item.id === "dashboard" && alertCount > 0 && (
+                {item.id === "dashboard" && alertCount > 0 && !alertsSeen && (
                   <div style={{ position:"absolute", top:-4, right:-6, backgroundColor:C.red, color:"#fff", fontSize:9, fontWeight:700, borderRadius:99, minWidth:16, height:16, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{alertCount}</div>
                 )}
               </div>
@@ -155,12 +155,12 @@ function BusinessPointModal({ onClose }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ハンバーガーメニュー（左ドロワー）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints }) {
+function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSettings }) {
   const items = [
+    { icon:"🎁", label:"友達を招待",       action:()=>{ onNavigateSettings("referral"); onClose(); } },
     { icon:"📍", label:"営業ポイント管理", action:()=>{ onOpenBizPoints(); onClose(); } },
-    { icon:"💬", label:"コミュニティ",     action:()=>{ setTab("community"); onClose(); } },
-    { icon:"📍", label:"ガイド",           action:()=>{ setTab("guide"); onClose(); } },
-    { icon:"💡", label:"ヘルプ・FAQ",      action:()=>{ setTab("settings"); onClose(); } },
+    { icon:"👤", label:"プロフィール",     action:()=>{ onNavigateSettings("profile"); onClose(); } },
+    { icon:"💴", label:"手取り設定",       action:()=>{ onNavigateSettings("takepay"); onClose(); } },
   ];
 
   return (
@@ -241,7 +241,7 @@ export function TakuroFAB({ setTab }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ヘッダー
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-export function Header({ user, tab, setTab, appMode="simple", onModeChange }) {
+export function Header({ user, tab, setTab, appMode="simple", onModeChange, alertsSeen=false, onNavigateSettings }) {
   const [showDrawer, setShowDrawer]     = useState(false);
   const [showModeSheet, setShowModeSheet] = useState(false);
   const [showBizPoints, setShowBizPoints] = useState(false);
@@ -285,7 +285,7 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange }) {
           {/* 通知 */}
           <div onClick={() => setTab("info")} style={{ position:"relative", cursor:"pointer", padding:"6px 8px", borderRadius:10, backgroundColor:tab==="info"?C.accentGlow:"transparent" }}>
             <span style={{ fontSize:19, opacity:tab==="info"?1:0.6 }}>🔔</span>
-            {alertCount > 0 && <div style={{ position:"absolute", top:2, right:4, width:8, height:8, borderRadius:"50%", backgroundColor:C.red }} />}
+            {alertCount > 0 && !alertsSeen && <div style={{ position:"absolute", top:2, right:4, width:8, height:8, borderRadius:"50%", backgroundColor:C.red }} />}
           </div>
         </div>
       </div>
@@ -297,6 +297,7 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange }) {
           onClose={() => setShowDrawer(false)}
           setTab={setTab}
           onOpenBizPoints={() => setShowBizPoints(true)}
+          onNavigateSettings={onNavigateSettings}
         />
       )}
 

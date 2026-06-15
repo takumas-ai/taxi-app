@@ -12,8 +12,8 @@ const SUPABASE_READY = !!(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-export default function Settings({ user, onUpdate, onLogout, onManageArea, notifSettings, onUpdateNotif, appMode="standard", onModeChange, themeMode="auto", onThemeChange, reports=[] }) {
-  const [subTab, setSubTab] = useState("");
+export default function Settings({ user, onUpdate, onLogout, onManageArea, notifSettings, onUpdateNotif, appMode="standard", onModeChange, themeMode="auto", onThemeChange, reports=[], initialSection="" }) {
+  const [subTab, setSubTab] = useState(initialSection);
   const [form, setForm] = useState({ name:user.name||"", company:user.company||"", workType:user.workType||"隔日勤務", target:user.target||"380000" });
   const [saved, setSaved] = useState(false);
   const [rankPrefs, setRankPrefs] = useState({ showMyRank:false, showTopSales:false });
@@ -40,7 +40,7 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
   ];
 
   return (
-    <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
+    <div style={{ maxWidth:600, margin:"0 auto", padding:"16px 16px 100px" }}>
       {!subTab ? (
         <>
           <div style={{ fontSize:16, fontWeight:800, marginBottom:16 }}>⚙️ 設定</div>
@@ -412,6 +412,11 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
 
       {subTab==="takepay" && (() => {
         const preview = (sales) => Math.max(0, Math.round(sales * takePay.rate / 100 - takePay.deduction));
+        const [wantedTake, setWantedTake] = useState("");
+        const requiredSales = wantedTake
+          ? Math.round((parseInt(wantedTake.replace(/,/g,"")) + takePay.deduction) / (takePay.rate / 100))
+          : 0;
+        const fmt2 = (n) => n.toLocaleString();
         return (
           <div>
             <Card style={{ marginBottom:12 }}>
@@ -448,7 +453,7 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
             </Card>
 
             <Card>
-              <div style={{ fontSize:12, fontWeight:700, color:C.muted, marginBottom:10 }}>📊 シミュレーション</div>
+              <div style={{ fontSize:12, fontWeight:700, color:C.muted, marginBottom:10 }}>📊 シミュレーション（売上→手取り）</div>
               {[200000,300000,380000,450000,500000].map(sales=>(
                 <div key={sales} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:`1px solid ${C.border}` }}>
                   <span style={{ fontSize:13, color:C.muted }}>売上 {(sales/10000).toFixed(0)}万円</span>
@@ -456,6 +461,33 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
                 </div>
               ))}
               <div style={{ fontSize:10, color:C.muted, marginTop:8 }}>※ 概算です。実際の手取りは会社の規定により異なります。</div>
+            </Card>
+
+            {/* 逆算ツール */}
+            <Card style={{ marginTop:12 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:C.muted, marginBottom:10 }}>🔄 逆算（欲しい手取り→必要な売上）</div>
+              <div style={{ fontSize:11, color:C.muted, marginBottom:10 }}>目標手取り額を入力すると必要な売上を計算します</div>
+              <div style={{ display:"flex", gap:8, marginBottom:12, alignItems:"center" }}>
+                <input
+                  type="number"
+                  value={wantedTake}
+                  onChange={e => setWantedTake(e.target.value)}
+                  placeholder="例: 200000"
+                  style={{ flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}
+                />
+                <span style={{ fontSize:13, color:C.muted, flexShrink:0 }}>円</span>
+              </div>
+              {requiredSales > 0 && (
+                <div style={{ backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:10, padding:"14px 16px" }}>
+                  <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>必要な月間売上（税抜）</div>
+                  <div style={{ fontSize:28, fontWeight:900, color:C.accentLight }}>
+                    {fmt2(requiredSales)}<span style={{ fontSize:13, marginLeft:4 }}>円</span>
+                  </div>
+                  <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
+                    手取り目標 {fmt2(parseInt(wantedTake)||0)}円 ÷ 歩合{takePay.rate}% + 控除{fmt2(takePay.deduction)}円
+                  </div>
+                </div>
+              )}
             </Card>
           </div>
         );
@@ -956,26 +988,36 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
       {subTab==="terms" && (
         <div style={{ fontSize:13, color:C.sub, lineHeight:1.8 }}>
           <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:16 }}>タクロー 利用規約</div>
-          <div style={{ fontSize:11, color:C.muted, marginBottom:20 }}>最終更新日：2026年6月</div>
+          <div style={{ fontSize:11, color:C.muted, marginBottom:20 }}>最終更新日：2026年6月1日　施行日：2026年6月1日</div>
 
           {[
-            { title:"第1条（目的）", body:"本規約は、タクロー（以下「本アプリ」）の利用条件を定めるものです。ユーザーは本規約に同意のうえ、本アプリをご利用ください。" },
-            { title:"第2条（免責事項）", body:"本アプリの利用による労働環境・健康状態・収益への影響について、運営者は一切の責任を負いません。本アプリはあくまで情報管理ツールであり、営業成果を保証するものではありません。" },
-            { title:"第3条（ランキング・競争機能）", body:"ランキングは参考情報であり、無理な営業を推奨するものではありません。ランキング上位を目指すあまり、安全運転を損なう行為は禁止します。" },
-            { title:"第4条（健康・安全に関する注意）", body:"ドライバーは適切な休息を取り、疲労状態での運転を行わないでください。本アプリは連続乗務や過労を助長することを意図していません。体調に異変を感じた場合は直ちに運転を中止してください。" },
-            { title:"第5条（データの正確性）", body:"日報データの正確性はユーザー自身の責任において管理してください。虚偽・誤ったデータの入力による不利益について、運営者は責任を負いません。" },
-            { title:"第6条（不正利用の禁止）", body:"データの改ざん・虚偽入力・不正なアクセス・システムへの攻撃等の行為は禁止します。これらが確認された場合、アカウントを停止または削除することがあります。" },
-            { title:"第7条（サービスの変更・終了）", body:"運営者は予告なくサービス内容を変更・停止・終了することがあります。これによりユーザーに生じた損害について、運営者は責任を負いません。" },
-            { title:"第8条（準拠法）", body:"本規約は日本法に準拠し、本アプリに関する紛争は東京地方裁判所を専属的合意管轄裁判所とします。" },
+            { title:"第1条（目的・適用範囲）", body:"本規約は、タクロー運営者（以下「運営者」）が提供するスマートフォン・ウェブアプリケーション「タクロー」（以下「本アプリ」）の利用条件を定めるものです。ユーザーは本規約に同意のうえ、本アプリをご利用ください。本規約は本アプリを利用するすべてのユーザーに適用されます。本アプリの利用を開始した時点で、本規約に同意したものとみなします。" },
+            { title:"第2条（アカウントの作成・管理）", body:"ユーザーは正確な情報を入力してアカウントを作成しなければなりません。アカウントのID・パスワードは自己の責任において管理してください。第三者によるアカウントの不正利用が発生した場合、運営者は責任を負いません。ユーザーは一人につき一つのアカウントのみ保有できます。虚偽情報によるアカウント作成は禁止します。" },
+            { title:"第3条（免責事項）", body:"本アプリの利用による労働環境・健康状態・収益への影響について、運営者は一切の責任を負いません。本アプリはあくまで情報管理ツールであり、営業成果・収益を保証するものではありません。AIによる分析・アドバイスは参考情報であり、その正確性・有用性について運営者は保証しません。ユーザーは自己の判断と責任においてアプリを利用するものとします。" },
+            { title:"第4条（ランキング・競争機能）", body:"ランキングは参考情報であり、無理な営業を推奨するものではありません。ランキング上位を目指すあまり、安全運転を損なう行為は禁止します。ランキングデータは統計的に処理されており、一部モック（サンプル）データを含む場合があります。" },
+            { title:"第5条（健康・安全に関する注意）", body:"ドライバーは適切な休息を取り、疲労状態での運転を行わないでください。本アプリは連続乗務・過労・速度超過・ながら運転を助長することを意図していません。体調に異変を感じた場合は直ちに運転を中止し、適切な対応をとってください。運転中のアプリ操作は法令および安全上の観点から禁止します。" },
+            { title:"第6条（データの正確性・管理）", body:"日報データの正確性はユーザー自身の責任において管理してください。虚偽・誤ったデータの入力による不利益について、運営者は責任を負いません。ユーザーはデータのバックアップを自身で管理することが推奨されます。アプリのデータはユーザーの端末・クラウドサービスに保存されますが、障害・データ損失のリスクをユーザーは理解したうえでご利用ください。" },
+            { title:"第7条（禁止事項）", body:"以下の行為を禁止します。\n・システムへの不正アクセス・リバースエンジニアリング\n・データの改ざん・虚偽入力による不正なランキング操作\n・他ユーザーへの誹謗中傷・ハラスメント\n・コミュニティ機能での個人情報の無断掲載\n・営業目的でのスパム投稿\n・運営者の許可なく本アプリのコンテンツを複製・転用する行為\n・法令に違反する行為、公序良俗に反する行為\nこれらが確認された場合、アカウントを停止または削除することがあります。" },
+            { title:"第8条（コミュニティ・投稿コンテンツ）", body:"ユーザーがコミュニティ機能に投稿したコンテンツの著作権はユーザーに帰属します。ただしユーザーは運営者に対し、サービス改善・品質向上の目的で当該コンテンツを使用する非独占的ライセンスを無償で付与するものとします。運営者は、不適切と判断した投稿を予告なく削除できます。" },
+            { title:"第9条（知的財産権）", body:"本アプリのロゴ・デザイン・コード・コンテンツの著作権・商標権その他の知的財産権は運営者に帰属します。ユーザーは本規約の範囲内においてのみ本アプリを利用する権限を有します。本アプリの内容を運営者の許可なく転載・販売・再配布することを禁じます。" },
+            { title:"第10条（有料サービス・決済）", body:"有料プランの料金・内容は運営者が定め、事前に告知します。決済は第三者決済サービスを経由して行われます。支払い済みの料金は原則返金しません。ただし法令上の権利は妨げません。有料プランの内容は予告のうえ変更されることがあります。" },
+            { title:"第11条（サービスの変更・停止・終了）", body:"運営者は予告なくサービス内容を変更・停止・終了することがあります。ただし重要な変更については事前にアプリ内通知または登録メールアドレスへの連絡を行うよう努めます。これによりユーザーに生じた損害について、運営者は故意・重過失がある場合を除き責任を負いません。" },
+            { title:"第12条（損害賠償の制限）", body:"運営者がユーザーに対して損害賠償責任を負う場合、その範囲はユーザーが本アプリに対して直近1ヶ月に支払った利用料金の総額を上限とします。ただし、運営者の故意・重過失による損害はこの限りではありません。間接損害・逸失利益・機会損失については運営者は一切責任を負いません。" },
+            { title:"第13条（通知・連絡）", body:"運営者からユーザーへの通知は、アプリ内通知または登録メールアドレスへのメール送信をもって行います。ユーザーが登録した連絡先が無効の場合、当該通知は到達したものとみなします。" },
+            { title:"第14条（規約の変更）", body:"本規約は運営者の判断により改定されることがあります。重要な変更の場合は30日前までにアプリ内で告知します。改定後も本アプリを継続してご利用いただいた場合、改定後の規約に同意したものとみなします。" },
+            { title:"第15条（分離可能性）", body:"本規約の一部条項が法令により無効または執行不能と判断された場合でも、その他の条項は引き続き有効に存続します。" },
+            { title:"第16条（準拠法・管轄）", body:"本規約は日本法に準拠し、本アプリに関する紛争は東京地方裁判所を専属的合意管轄裁判所とします。" },
           ].map(({title, body}) => (
             <div key={title} style={{ marginBottom:18 }}>
               <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>{title}</div>
-              <div style={{ fontSize:12, color:C.sub, lineHeight:1.8 }}>{body}</div>
+              {body.split("\n").map((line, i) => (
+                <div key={i} style={{ fontSize:12, color:C.sub, lineHeight:1.8 }}>{line}</div>
+              ))}
             </div>
           ))}
 
           <div style={{ marginTop:24, padding:14, backgroundColor:C.card, borderRadius:10, fontSize:11, color:C.muted }}>
-            ※ 本規約は運営者の判断により改定されることがあります。改定後も本アプリを継続してご利用いただいた場合、改定後の規約に同意したものとみなします。
+            ※ 本規約はタクシードライバーの安全・健康を最優先に設計されています。不明な点はアプリ内意見箱よりお問い合わせください。
           </div>
         </div>
       )}
