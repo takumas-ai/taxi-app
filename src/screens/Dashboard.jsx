@@ -368,8 +368,7 @@ function BreakTimeCard({ reports, onUpdateReport }) {
     .filter(r => r.break_hours != null && r.break_hours !== "")
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  const latest1 = withBreak.slice(0, 1);
-  const hasMore = withBreak.length > 1;
+  const totalBreak = Math.round(withBreak.reduce((s, r) => s + parseFloat(r.break_hours || 0), 0) * 10) / 10;
 
   const inp = { padding:"8px 10px", borderRadius:8, border:`1.5px solid ${C.border}`, backgroundColor:C.card, color:C.text, fontSize:13 };
 
@@ -476,19 +475,21 @@ function BreakTimeCard({ reports, onUpdateReport }) {
           </div>
         )}
 
-        {/* 最新1件 */}
-        {latest1.length === 0 ? (
+        {/* 合計表示 */}
+        {withBreak.length === 0 ? (
           <div style={{ textAlign:"center", padding:"8px 0", color:C.muted, fontSize:12 }}>まだ記録がありません</div>
         ) : (
-          <>
-            {latest1.map(r => <BreakRow key={r.id} r={r} compact />)}
-            {hasMore && (
-              <button onClick={() => setShowDetail(true)}
-                style={{ width:"100%", marginTop:10, padding:"9px 0", borderRadius:9, fontSize:12, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.sub }}>
-                一覧・詳細 ({withBreak.length}件) →
-              </button>
-            )}
-          </>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div style={{ display:"flex", alignItems:"baseline", gap:4 }}>
+              <span style={{ fontSize:28, fontWeight:900, color:C.text }}>{totalBreak}</span>
+              <span style={{ fontSize:13, color:C.muted }}>h</span>
+              <span style={{ fontSize:11, color:C.muted, marginLeft:4 }}>（{withBreak.length}件合計）</span>
+            </div>
+            <button onClick={() => setShowDetail(true)}
+              style={{ padding:"7px 16px", borderRadius:9, fontSize:12, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.sub }}>
+              詳細
+            </button>
+          </div>
         )}
       </Card>
 
