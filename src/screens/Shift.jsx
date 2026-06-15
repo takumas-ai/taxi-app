@@ -341,17 +341,26 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
         <KpiCard label="残り出勤" value={remainingShifts} unit="日" accent={remainingShifts<=3?C.red:C.accentLight}/>
         <KpiCard label="日報入力済" value={monthReports.length} unit="日" accent={C.gold}/>
       </div>
-      <label
+      <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        style={{display:"block",border:`2px dashed ${isDragOver ? C.accentLight : C.border}`,borderRadius:14,padding:"28px 24px",textAlign:"center",cursor:"pointer",marginBottom:12,transition:"border-color 0.2s, background-color 0.2s",backgroundColor:isDragOver ? C.accentLight+"18" : "transparent"}}
+        style={{position:"relative",border:`2px dashed ${isDragOver ? C.accentLight : C.border}`,borderRadius:14,padding:"28px 24px",textAlign:"center",cursor:"pointer",marginBottom:12,transition:"border-color 0.2s, background-color 0.2s",backgroundColor:isDragOver ? C.accentLight+"18" : "transparent"}}
       >
-        <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{display:"none"}}/>
-        <div style={{fontSize:36,marginBottom:10}}>{isDragOver ? "📂" : "📋"}</div>
-        <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>シフト表を読み込む</div>
-        <div style={{fontSize:11,color:C.muted,marginTop:6}}>クリックまたは画像をここにドロップ</div>
-      </label>
+        {/* file inputをエリア全体に重ねて直接クリックを受ける */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileSelect}
+          style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:0,cursor:"pointer",zIndex:1}}
+        />
+        <div style={{position:"relative",zIndex:0,pointerEvents:"none"}}>
+          <div style={{fontSize:36,marginBottom:10}}>{isDragOver ? "📂" : "📋"}</div>
+          <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>シフト表を読み込む</div>
+          <div style={{fontSize:11,color:C.muted,marginTop:6}}>クリックまたは画像をここにドロップ</div>
+        </div>
+      </div>
       {monthShifts.length>0&&(
         <>
           <div style={{fontSize:12,color:C.muted,marginBottom:10}}>今月の出勤予定</div>
