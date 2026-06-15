@@ -353,6 +353,7 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
           type="file"
           accept="image/*"
           onChange={handleFileSelect}
+          onClick={()=>console.log("[Shift] file input clicked")}
           style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:0,cursor:"pointer",zIndex:1}}
         />
         <div style={{position:"relative",zIndex:0,pointerEvents:"none"}}>
