@@ -12,6 +12,15 @@ const SUPABASE_READY = !!(
 );
 
 const MONTH_DAYS = (y,m) => new Date(y,m,0).getDate();
+
+function BackBar({ onBack }) {
+  if (!onBack) return null;
+  return (
+    <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:C.sub,fontSize:13,fontWeight:600,cursor:"pointer",padding:"0 0 12px",marginLeft:-2}}>
+      <span style={{fontSize:16}}>‹</span> ホームに戻る
+    </button>
+  );
+}
 const OCR_LINES = ["画像を読み込み中...","AIに送信中...","出勤日を検出中...","出庫・帰庫時刻を読み取り中...","読み取り完了 ✓"];
 
 function ShiftCalendar({ year, month, shifts, reports, onSelectDay }) {
@@ -57,24 +66,82 @@ function ShiftCalendar({ year, month, shifts, reports, onSelectDay }) {
   );
 }
 
-function DayDetailModal({ dateStr, shift, report, onClose, onDeleteShift, onGoUpload }) {
+function DayDetailModal({ dateStr, shift, report, onClose, onDeleteShift, onGoUpload, onSaveShift }) {
   const d = new Date(dateStr), wd = ["日","月","火","水","木","金","土"][d.getDay()], isPast = dateStr < TODAY;
+  const [editing, setEditing] = useState(!shift); // シフトなし → すぐ入力フォーム
+  const [form, setForm]       = useState({ clockIn: shift?.clockIn||"", clockOut: shift?.clockOut||"", note: shift?.note||"" });
+  const [saving, setSaving]   = useState(false);
+
+  const inp = { backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:"9px 11px", color:C.text, fontSize:14, outline:"none", width:"100%", boxSizing:"border-box" };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSaveShift({
+      id:       shift?.id || ("manual_" + Date.now()),
+      date:     dateStr,
+      clockIn:  form.clockIn,
+      clockOut: form.clockOut,
+      isNight:  false,
+      note:     form.note,
+    });
+    setSaving(false);
+    onClose();
+  };
+
   return (
     <div style={{ position:"fixed", inset:0, backgroundColor:"#00000090", zIndex:150, display:"flex", alignItems:"flex-end" }} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:24, paddingBottom:36 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:24, paddingBottom:36, maxHeight:"85vh", overflowY:"auto" }}>
         <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 16px" }}/>
         <div style={{ fontSize:18, fontWeight:800, marginBottom:16 }}>{dateStr}（{wd}）</div>
-        {shift ? (
-          <div style={{ backgroundColor:C.green+"18", border:`1px solid ${C.green}44`, borderRadius:10, padding:14, marginBottom:12 }}>
-            <div style={{ fontSize:12, color:C.green, fontWeight:700, marginBottom:6 }}>📅 出勤予定</div>
-            <div style={{ display:"flex", gap:20 }}>
-              <div><div style={{ fontSize:10, color:C.muted }}>出庫</div><div style={{ fontSize:16, fontWeight:700 }}>{shift.clockIn}</div></div>
-              <div><div style={{ fontSize:10, color:C.muted }}>帰庫</div><div style={{ fontSize:16, fontWeight:700 }}>{shift.clockOut}</div></div>
+
+        {/* シフト入力・編集フォーム */}
+        {editing ? (
+          <div style={{ backgroundColor:C.green+"12", border:`1px solid ${C.green}44`, borderRadius:12, padding:16, marginBottom:12 }}>
+            <div style={{ fontSize:12, color:C.green, fontWeight:700, marginBottom:12 }}>📅 {shift ? "シフトを編集" : "シフトを追加"}</div>
+            <div style={{ display:"flex", gap:10, marginBottom:10 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>出庫時刻</div>
+                <input value={form.clockIn} onChange={e=>setForm(p=>({...p,clockIn:e.target.value}))} placeholder="例: 07:00" style={inp}/>
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>帰庫時刻</div>
+                <input value={form.clockOut} onChange={e=>setForm(p=>({...p,clockOut:e.target.value}))} placeholder="例: 20:00" style={inp}/>
+              </div>
             </div>
-            {shift.note&&<div style={{ fontSize:12, color:C.sub, marginTop:8 }}>📝 {shift.note}</div>}
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>メモ（任意）</div>
+              <textarea
+                value={form.note}
+                onChange={e=>setForm(p=>({...p,note:e.target.value}))}
+                placeholder={"急な変更・当番など自由に\n複数行OK"}
+                rows={3}
+                style={{ ...inp, resize:"vertical", lineHeight:1.6 }}
+              />
+            </div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={handleSave} disabled={saving}
+                style={{ flex:1, backgroundColor:C.green, color:"#fff", border:"none", borderRadius:9, padding:"11px 0", fontSize:14, fontWeight:700, cursor:saving?"not-allowed":"pointer", opacity:saving?0.6:1 }}>
+                {saving ? "保存中..." : shift ? "更新する" : "追加する"}
+              </button>
+              {shift && <button onClick={()=>setEditing(false)} style={{ flex:1, backgroundColor:"transparent", border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 0", fontSize:13, color:C.muted, cursor:"pointer" }}>キャンセル</button>}
+            </div>
+          </div>
+        ) : shift ? (
+          <div style={{ backgroundColor:C.green+"18", border:`1px solid ${C.green}44`, borderRadius:10, padding:14, marginBottom:12 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+              <div style={{ fontSize:12, color:C.green, fontWeight:700 }}>📅 出勤予定</div>
+              <button onClick={()=>setEditing(true)} style={{ fontSize:11, color:C.accentLight, background:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:6, padding:"3px 10px", cursor:"pointer", fontWeight:600 }}>編集</button>
+            </div>
+            <div style={{ display:"flex", gap:20, marginBottom: shift.note ? 8 : 0 }}>
+              <div><div style={{ fontSize:10, color:C.muted }}>出庫</div><div style={{ fontSize:16, fontWeight:700 }}>{shift.clockIn||"—"}</div></div>
+              <div><div style={{ fontSize:10, color:C.muted }}>帰庫</div><div style={{ fontSize:16, fontWeight:700 }}>{shift.clockOut||"—"}</div></div>
+            </div>
+            {shift.note && <div style={{ fontSize:12, color:C.sub, whiteSpace:"pre-wrap", backgroundColor:C.bg, borderRadius:7, padding:"8px 10px" }}>📝 {shift.note}</div>}
             <button onClick={()=>onDeleteShift(shift)} style={{ marginTop:10, backgroundColor:"transparent", border:`1px solid ${C.red}44`, borderRadius:8, padding:"6px 14px", fontSize:11, color:C.red, cursor:"pointer", fontWeight:600 }}>このシフトを削除</button>
           </div>
-        ) : <div style={{ backgroundColor:C.border+"44", borderRadius:10, padding:14, marginBottom:12, textAlign:"center" }}><div style={{ fontSize:13, color:C.muted }}>出勤予定なし</div></div>}
+        ) : null}
+
+        {/* 日報 */}
         {report ? (
           <div style={{ backgroundColor:C.goldGlow, border:`1px solid ${C.gold}44`, borderRadius:10, padding:14, marginBottom:12 }}>
             <div style={{ fontSize:12, color:C.gold, fontWeight:700, marginBottom:6 }}>💴 日報入力済み</div>
@@ -83,12 +150,13 @@ function DayDetailModal({ dateStr, shift, report, onClose, onDeleteShift, onGoUp
               <div><div style={{ fontSize:10, color:C.muted }}>営業回数</div><div style={{ fontSize:18, fontWeight:800 }}>{report.ride_count}回</div></div>
             </div>
           </div>
-        ) : shift && isPast ? (
+        ) : shift && isPast && !editing ? (
           <div style={{ backgroundColor:C.orangeGlow, border:`1px solid ${C.orange}44`, borderRadius:10, padding:14, marginBottom:12 }}>
             <div style={{ fontSize:12, color:C.orange, fontWeight:700, marginBottom:4 }}>⚠️ 日報が未入力です</div>
             <button onClick={onGoUpload} style={{ width:"100%", backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:9, padding:"10px 0", fontSize:13, fontWeight:700, cursor:"pointer" }}>日報をアップロードする →</button>
           </div>
         ) : null}
+
         <button onClick={onClose} style={{ width:"100%", backgroundColor:"transparent", border:`1px solid ${C.border}`, borderRadius:11, padding:"13px 0", fontSize:14, fontWeight:600, color:C.muted, cursor:"pointer" }}>閉じる</button>
       </div>
     </div>
@@ -105,7 +173,7 @@ const dbToLocal = (row) => ({
   note:     row.note      || "",
 });
 
-export default function ShiftScreen({ reports, onGoUpload, user }) {
+export default function ShiftScreen({ reports, onGoUpload, user, onBack }) {
   // Supabase使用時はlocalStorageを初期値に使わない（古いデータが残る原因）
   const [shifts, setShifts]         = useState(SUPABASE_READY ? [] : ()=>loadS("taxi_shifts",[]));
   const [loading, setLoading]       = useState(SUPABASE_READY);
@@ -228,9 +296,10 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
       console.error("[ShiftOCR]", err);
       setOcrError(err.message || "読み取りに失敗しました");
       setOcrStep("ocr_error");
-    } finally {
-      ocrRunningRef.current = false; // 二重実行防止リセット
+      ocrRunningRef.current = false; // エラー時のみリセット（再試行を許可）
     }
+    // ※ 成功時は confirm/done 表示中に onChange が再発火しても OCR が走らないよう
+    //    ocrRunningRef.current = true のままにする。「やり直す」押下時にリセット。
   };
 
   const handleSaveShifts = async () => {
@@ -261,13 +330,14 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
 
   if (ocrStep==="ocr_error") {
     return (
-      <div style={{maxWidth:480,margin:"0 auto",padding:"40px 16px 100px",textAlign:"center"}}>
+      <div style={{maxWidth:480,margin:"0 auto",padding:"16px 16px 100px",textAlign:"center"}}>
+        <BackBar onBack={onBack}/>
         <Card style={{padding:32}}>
           <div style={{fontSize:48,marginBottom:12}}>⚠️</div>
           <div style={{fontSize:16,fontWeight:700,marginBottom:8}}>読み取りに失敗しました</div>
           <div style={{fontSize:13,color:C.muted,marginBottom:20}}>{ocrError || "もう一度試してください"}</div>
-          <Btn onClick={()=>fileInputRef.current?.click()} style={{marginBottom:10}}>もう一度撮影する</Btn>
-          <Btn onClick={()=>setOcrStep("idle")} variant="ghost">キャンセル</Btn>
+          <Btn onClick={()=>{ ocrRunningRef.current = false; fileInputRef.current?.click(); }} style={{marginBottom:10}}>もう一度撮影する</Btn>
+          <Btn onClick={()=>{ ocrRunningRef.current = false; setOcrStep("idle"); }} variant="ghost">キャンセル</Btn>
           <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{display:"none"}}/>
         </Card>
       </div>
@@ -276,7 +346,8 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
 
   if (ocrStep==="reading") {
     return (
-      <div style={{maxWidth:480,margin:"0 auto",padding:"40px 16px 100px"}}>
+      <div style={{maxWidth:480,margin:"0 auto",padding:"16px 16px 100px"}}>
+        <BackBar onBack={onBack}/>
         <div style={{textAlign:"center",marginBottom:24}}><div style={{fontSize:36,marginBottom:10}}>🤖</div><div style={{fontSize:15,fontWeight:700}}>シフト表を読み取り中...</div></div>
         <Card><ProgressBar value={ocrLines.length} max={OCR_LINES.length} color={C.accentLight} height={6}/><div style={{marginTop:14}}>{ocrLines.map((l,i)=><div key={i} style={{fontSize:13,color:i===ocrLines.length-1?C.text:C.muted,padding:"5px 0",borderBottom:i<ocrLines.length-1?`1px solid ${C.border}`:"none"}}>{l}</div>)}</div></Card>
       </div>
@@ -284,8 +355,19 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
   }
 
   if (ocrStep==="confirm") {
+    // 月ごとにグループ化
+    const sorted = [...editShifts].sort((a,b)=>a.date.localeCompare(b.date));
+    const byMonth = {};
+    sorted.forEach((s,idx)=>{
+      const m = s.date.slice(0,7);
+      if (!byMonth[m]) byMonth[m] = [];
+      byMonth[m].push({...s, _idx: editShifts.indexOf(s)});
+    });
+    const monthKeys = Object.keys(byMonth).sort();
+
     return (
       <div style={{maxWidth:480,margin:"0 auto",padding:"16px 16px 100px"}}>
+        <BackBar onBack={onBack}/>
         <div style={{fontSize:13,color:C.muted,marginBottom:4}}>📅 読み取り結果を確認してください</div>
         <div style={{fontSize:11,color:C.sub,marginBottom:12}}>
           {ocrResult?.dateFrom && ocrResult?.dateTo
@@ -294,53 +376,70 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
           {` / 信頼度 ${ocrResult?.confidence}% / ${editShifts.length}出勤日`}
         </div>
         {ocrResult?.notes&&<Card style={{padding:12,marginBottom:12}}><div style={{fontSize:11,color:C.muted}}>🤖 {ocrResult.notes}</div></Card>}
-        <div style={{fontSize:12,color:C.muted,marginBottom:8}}>出勤日一覧（修正可）</div>
-        {editShifts.map((s,idx)=>{
-          const wd=["日","月","火","水","木","金","土"][new Date(s.date).getDay()];
+        {monthKeys.map(mk=>{
+          const [y,m] = mk.split("-");
           return (
-            <div key={s.id} style={{backgroundColor:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-              <div style={{minWidth:70}}><div style={{fontSize:13,fontWeight:700}}>{s.date.slice(5)}</div><div style={{fontSize:10,color:C.muted}}>（{wd}）</div></div>
-              <div style={{display:"flex",gap:12,flex:1}}>
-                <div><div style={{fontSize:9,color:C.muted}}>出庫</div><input value={s.clockIn} onChange={e=>setEditShifts(prev=>prev.map((x,j)=>j===idx?{...x,clockIn:e.target.value}:x))} style={{backgroundColor:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",color:C.text,fontSize:13,width:60,outline:"none"}}/></div>
-                <div><div style={{fontSize:9,color:C.muted}}>帰庫</div><input value={s.clockOut} onChange={e=>setEditShifts(prev=>prev.map((x,j)=>j===idx?{...x,clockOut:e.target.value}:x))} style={{backgroundColor:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",color:C.text,fontSize:13,width:72,outline:"none"}}/></div>
+            <div key={mk}>
+              <div style={{fontSize:12,fontWeight:700,color:C.accentLight,marginBottom:8,marginTop:monthKeys.indexOf(mk)>0?16:0}}>
+                {parseInt(y)}年{parseInt(m)}月
               </div>
-              <button onClick={()=>setEditShifts(prev=>prev.filter((_,j)=>j!==idx))} style={{backgroundColor:"transparent",border:"none",color:C.red,fontSize:16,cursor:"pointer"}}>×</button>
+              {byMonth[mk].map((s)=>{
+                const idx = s._idx;
+                const wd=["日","月","火","水","木","金","土"][new Date(s.date).getDay()];
+                return (
+                  <div key={s.id} style={{backgroundColor:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
+                    <div style={{minWidth:70}}><div style={{fontSize:13,fontWeight:700}}>{s.date.slice(5)}</div><div style={{fontSize:10,color:C.muted}}>（{wd}）</div></div>
+                    <div style={{display:"flex",gap:12,flex:1}}>
+                      <div><div style={{fontSize:9,color:C.muted}}>出庫</div><input value={s.clockIn} onChange={e=>setEditShifts(prev=>prev.map((x,j)=>j===idx?{...x,clockIn:e.target.value}:x))} style={{backgroundColor:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",color:C.text,fontSize:13,width:60,outline:"none"}}/></div>
+                      <div><div style={{fontSize:9,color:C.muted}}>帰庫</div><input value={s.clockOut} onChange={e=>setEditShifts(prev=>prev.map((x,j)=>j===idx?{...x,clockOut:e.target.value}:x))} style={{backgroundColor:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",color:C.text,fontSize:13,width:72,outline:"none"}}/></div>
+                    </div>
+                    <button onClick={()=>setEditShifts(prev=>prev.filter((_,j)=>j!==idx))} style={{backgroundColor:"transparent",border:"none",color:C.red,fontSize:16,cursor:"pointer"}}>×</button>
+                  </div>
+                );
+              })}
             </div>
           );
         })}
         <Btn onClick={handleSaveShifts}>{editShifts.length}日分のシフトを保存する</Btn>
-        <Btn onClick={()=>setOcrStep("idle")} variant="ghost" style={{marginTop:10}}>やり直す</Btn>
+        <Btn onClick={()=>{ ocrRunningRef.current = false; setOcrStep("idle"); }} variant="ghost" style={{marginTop:10}}>やり直す</Btn>
       </div>
     );
   }
 
   if (ocrStep==="done") {
     return (
-      <div style={{maxWidth:480,margin:"0 auto",padding:"20px 16px 100px",textAlign:"center"}}>
+      <div style={{maxWidth:480,margin:"0 auto",padding:"16px 16px 100px",textAlign:"center"}}>
+        <BackBar onBack={onBack}/>
         <Card style={{padding:32}}>
           <div style={{fontSize:48,marginBottom:12}}>✅</div>
           <div style={{fontSize:18,fontWeight:700,marginBottom:6}}>シフトを保存しました</div>
           <div style={{fontSize:13,color:C.sub,marginBottom:20}}>{editShifts.length}日分の出勤予定が登録されました</div>
-          <Btn onClick={()=>setOcrStep("idle")}>カレンダーを確認する</Btn>
+          <Btn onClick={()=>{ ocrRunningRef.current = false; setOcrStep("idle"); }}>カレンダーを確認する</Btn>
         </Card>
       </div>
     );
   }
 
+  // 月跨ぎ検出: viewMonth の翌月にもシフトがあれば2ヶ月表示
+  const nextM = viewMonth.month===12?{year:viewMonth.year+1,month:1}:{year:viewMonth.year,month:viewMonth.month+1};
+  const nextMonthShifts  = shifts.filter(s=>{const d=new Date(s.date);return d.getFullYear()===nextM.year&&d.getMonth()+1===nextM.month;});
+  const nextMonthReports = reports.filter(r=>{const d=new Date(r.date);return d.getFullYear()===nextM.year&&d.getMonth()+1===nextM.month;});
+  const showTwoMonths = nextMonthShifts.length > 0;
+
   return (
     <div style={{maxWidth:480,margin:"0 auto",padding:"16px 16px 100px"}}>
+      <BackBar onBack={onBack}/>
       {missing.length>0&&(
         <div style={{backgroundColor:C.orangeGlow,border:`1px solid ${C.orange}44`,borderRadius:12,padding:"10px 14px",marginBottom:12}}>
           <div style={{fontSize:11,color:C.orange,fontWeight:700,marginBottom:4}}>📝 日報が未入力の出勤日があります</div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{missing.map(s=><span key={s.id} onClick={onGoUpload} style={{fontSize:11,backgroundColor:C.orange+"22",color:C.orange,padding:"3px 8px",borderRadius:99,cursor:"pointer",fontWeight:600}}>{s.date.slice(5)}</span>)}</div>
         </div>
       )}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <button onClick={prevMonth} style={{backgroundColor:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 14px",color:C.sub,cursor:"pointer",fontSize:16}}>‹</button>
-        <div style={{textAlign:"center"}}><div style={{fontSize:17,fontWeight:800}}>{viewMonth.year}年{viewMonth.month}月</div><div style={{fontSize:11,color:C.muted}}>{monthShifts.length}出勤日 / 残り{remainingShifts}日</div></div>
-        <button onClick={nextMonth} style={{backgroundColor:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 14px",color:C.sub,cursor:"pointer",fontSize:16}}>›</button>
+      {/* カレンダーはホーム画面（統合カレンダー）で確認できます */}
+      <div style={{fontSize:11,color:C.muted,backgroundColor:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 14px",marginBottom:14,textAlign:"center"}}>
+        📅 カレンダーはホーム画面で確認・編集できます
       </div>
-      <Card><ShiftCalendar year={viewMonth.year} month={viewMonth.month} shifts={monthShifts} reports={monthReports} onSelectDay={(ds,sh,rep)=>{setSelectedDay(ds);setDayShift(sh||null);setDayReport(rep||null);}}/></Card>
+
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
         <KpiCard label="今月出勤数" value={monthShifts.length} unit="日" accent={C.green}/>
         <KpiCard label="残り出勤" value={remainingShifts} unit="日" accent={remainingShifts<=3?C.red:C.accentLight}/>
@@ -385,7 +484,21 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
           })}
         </>
       )}
-      {selectedDay&&<DayDetailModal dateStr={selectedDay} shift={dayShift} report={dayReport} onClose={()=>setSelectedDay(null)} onDeleteShift={async sh=>{setShifts(prev=>prev.filter(x=>x.id!==sh.id));setSelectedDay(null);if(SUPABASE_READY&&user?.id)await deleteShift(user.id,sh.date);}} onGoUpload={()=>{setSelectedDay(null);onGoUpload();}}/>}
+      {selectedDay&&<DayDetailModal
+        dateStr={selectedDay}
+        shift={dayShift}
+        report={dayReport}
+        onClose={()=>setSelectedDay(null)}
+        onDeleteShift={async sh=>{setShifts(prev=>prev.filter(x=>x.id!==sh.id));setSelectedDay(null);if(SUPABASE_READY&&user?.id)await deleteShift(user.id,sh.date);}}
+        onGoUpload={()=>{setSelectedDay(null);onGoUpload();}}
+        onSaveShift={async s=>{
+          setShifts(prev=>{
+            const idx=prev.findIndex(x=>x.date===s.date);
+            return idx>=0 ? prev.map((x,i)=>i===idx?s:x) : [...prev,s];
+          });
+          if(SUPABASE_READY&&user?.id) await upsertShifts(user.id,[s]);
+        }}
+      />}
 
     </div>
   );

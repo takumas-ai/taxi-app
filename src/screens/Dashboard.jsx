@@ -2,13 +2,19 @@
 // Dashboard.jsx — ダッシュボード
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 import { useState, useEffect } from "react";
-import { C, fmt, occ, dow, hourly, THIS_YEAR, THIS_MONTH, FREE_LIMIT, loadS, saveS } from "../lib/constants";
+import { C, fmt, occ, dow, hourly, THIS_YEAR, THIS_MONTH, FREE_LIMIT, loadS, saveS, getClosingPeriod } from "../lib/constants";
 import { Card, Btn, ProgressBar, Badge, KpiCard } from "../components/UI";
 import { MOCK_YESTERDAY_SUMMARY, AREA_MASTER } from "../data/mockData";
 import { levelFromXp, getTitle, MISSIONS, getMissionState } from "../lib/xp";
 import { CURRENT_VERSION, CHANGELOG } from "../lib/changelog";
 import { getCachedWeather, weatherMeta } from "../lib/weather";
 import { SalesPointCard } from "../components/SalesPointCard";
+import { upsertShifts, deleteShift } from "../lib/supabase";
+
+const SUPABASE_READY = !!(
+  import.meta.env.VITE_SUPABASE_URL &&
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 // ━━━ 更新通知バナー ━━━━━━━━━━━━━━━━━━━━━━━━
 export function UpdateBanner() {
@@ -136,76 +142,19 @@ function WeatherWidget() {
   );
 }
 
-// ━━━ 翌日発表カード ━━━━━━━━━━━━━━━━━━━━━━━━
-function YesterdayCard({ userAreas, rankPrefs, reports }) {
-  const [open, setOpen] = useState(false);
+// ━━━ ランキング新着バナー（通知ONのユーザーのみ） ━━
+// 集計が出た日だけホームに小さく表示。タップでランキング画面へ。
+export function RankingNoticeBanner({ onGoRanking }) {
   const s = MOCK_YESTERDAY_SUMMARY;
-  const myReport = reports.find(r => r.date === s.date);
-  const myAreaStats = s.areaStats.filter(a => userAreas.length === 0 || userAreas.includes(a.area));
-  const trendIcon = t => t === "up" ? "📈" : t === "down" ? "📉" : "➡️";
-
   return (
-    <div style={{ backgroundColor:C.accentGlow, border:`1.5px solid ${C.accentLight}44`, borderRadius:14, padding:"14px 16px", marginBottom:14 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: open ? 10 : 0 }}>
-        <div>
-          <div style={{ fontSize:11, color:C.accentLight, fontWeight:700, marginBottom:2 }}>📣 翌日発表 — {s.date}</div>
-          <div style={{ fontSize:13, fontWeight:700 }}>{s.totalDrivers}人参加の集計結果</div>
-        </div>
-        <button onClick={() => setOpen(p => !p)} style={{ backgroundColor:C.accentLight+"22", border:`1px solid ${C.accentLight}44`, borderRadius:8, padding:"5px 12px", color:C.accentLight, fontSize:12, fontWeight:700, cursor:"pointer" }}>
-          {open ? "閉じる" : "詳細 →"}
-        </button>
+    <div onClick={onGoRanking}
+      style={{ display:"flex", alignItems:"center", gap:10, backgroundColor:C.accentGlow, border:`1.5px solid ${C.accentLight}44`, borderRadius:12, padding:"10px 14px", marginBottom:14, cursor:"pointer" }}>
+      <span style={{ fontSize:20 }}>🏆</span>
+      <div style={{ flex:1 }}>
+        <div style={{ fontSize:11, color:C.accentLight, fontWeight:700 }}>集計結果が出ました</div>
+        <div style={{ fontSize:12, color:C.text }}>{s.date} 分 · {s.totalDrivers}人参加</div>
       </div>
-      {open && (
-        <>
-          {myReport && rankPrefs.showMyRank && (
-            <div style={{ backgroundColor:C.accentLight+"18", border:`1px solid ${C.accentLight}33`, borderRadius:10, padding:"10px 12px", marginBottom:10 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div>
-                  <div style={{ fontSize:10, color:C.muted, marginBottom:2 }}>あなたの昨日</div>
-                  <div style={{ fontSize:20, fontWeight:800 }}>{fmt(s.myResult.sales)}<span style={{ fontSize:11, color:C.muted, marginLeft:3 }}>円</span></div>
-                </div>
-                <div style={{ textAlign:"right" }}>
-                  <div style={{ fontSize:22, fontWeight:900, color:C.gold }}>第{s.myResult.rank}位</div>
-                  <div style={{ fontSize:10, color:C.muted }}>上位{s.myResult.percentile}%</div>
-                </div>
-              </div>
-            </div>
-          )}
-          <div style={{ marginBottom:12 }}>
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>エリア別平均売上</div>
-            {(userAreas.length > 0 ? myAreaStats : s.areaStats).map(a => {
-              const meta = AREA_MASTER[a.area];
-              return (
-                <div key={a.area} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 0", borderBottom:`1px solid ${C.border}` }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <span style={{ fontSize:15 }}>{meta?.emoji || "📍"}</span>
-                    <span style={{ fontSize:13, fontWeight:600 }}>{a.area}</span>
-                    <span style={{ fontSize:10, color:C.muted }}>{a.count}人</span>
-                  </div>
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <span style={{ fontSize:13, fontWeight:700 }}>{fmt(a.avg)}円</span>
-                    <span style={{ fontSize:16 }}>{trendIcon(a.trend)}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {rankPrefs.showTopSales && (
-            <div>
-              <div style={{ fontSize:11, color:C.gold, fontWeight:700, marginBottom:8 }}>🏆 昨日のトップ5（匿名）</div>
-              {s.topSales.map(t => (
-                <div key={t.rank} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 0", borderBottom:`1px solid ${C.border}` }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <span style={{ fontSize:14 }}>{t.badge}</span>
-                    <span style={{ fontSize:12, color:C.sub }}>{t.area}</span>
-                  </div>
-                  <span style={{ fontSize:14, fontWeight:700, color:C.gold }}>{fmt(t.sales)}円</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
+      <span style={{ fontSize:13, color:C.accentLight, fontWeight:700 }}>見る →</span>
     </div>
   );
 }
@@ -297,7 +246,7 @@ function RecentReports({ reports, onOpenReport, simple }) {
 }
 
 // ━━━ シフト表カード ━━━━━━━━━━━━━━━━━━━━━━━━
-function ShiftSummaryCard({ onGoShift }) {
+function ShiftSummaryCard({ reports = [], user, onOpenReport, monthTarget = 380000, onGoShift }) {
   const [open, setOpen] = useState(false);
   const today = new Date();
   const y = today.getFullYear(), m = today.getMonth() + 1;
@@ -306,61 +255,41 @@ function ShiftSummaryCard({ onGoShift }) {
   const monthShifts = allShifts.filter(s => {
     const d = new Date(s.date);
     return d.getFullYear() === y && d.getMonth() + 1 === m;
-  }).sort((a,b) => a.date.localeCompare(b.date));
-  const upcoming = monthShifts.filter(s => s.date >= todayStr).slice(0, 4);
+  });
   const remaining = monthShifts.filter(s => s.date >= todayStr).length;
   const todayShift = monthShifts.find(s => s.date === todayStr);
-  const DOW = ["日","月","火","水","木","金","土"];
 
   return (
     <Card style={{ marginBottom:14, padding:"12px 16px" }}>
-      <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span style={{ fontSize:13, fontWeight:700 }}>📆 シフト表</span>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        {/* 左: タイトル + 本日出勤バッジ */}
+        <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", flex:1 }}>
+          <span style={{ fontSize:13, fontWeight:700 }}>📅 カレンダー・シフト表</span>
           {todayShift && <span style={{ fontSize:10, backgroundColor:C.green+"22", color:C.green, fontWeight:700, padding:"2px 8px", borderRadius:99 }}>本日出勤</span>}
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          {monthShifts.length > 0
-            ? <span style={{ fontSize:11, color:C.muted }}>残り{remaining}勤</span>
-            : <span style={{ fontSize:11, color:C.red }}>未登録</span>
-          }
-          <span style={{ fontSize:11, color:C.muted }}>{open?"▲":"▼"}</span>
+        {/* 右: 読み取りボタン + 残り勤務 + 開閉 */}
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <button
+            onClick={e=>{ e.stopPropagation(); onGoShift?.(); }}
+            style={{ fontSize:11, padding:"4px 10px", borderRadius:8, border:`1px solid ${C.accentLight}55`, backgroundColor:C.accentLight+"18", color:C.accentLight, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}
+          >📷 読み取る</button>
+          <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer" }}>
+            {monthShifts.length > 0
+              ? <span style={{ fontSize:11, color:C.muted }}>残り{remaining}勤</span>
+              : <span style={{ fontSize:11, color:C.red }}>未登録</span>
+            }
+            <span style={{ fontSize:11, color:C.muted }}>{open?"▲":"▼"}</span>
+          </div>
         </div>
       </div>
       {open && (
-        <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.border}` }}>
-          {monthShifts.length === 0 ? (
-            <div style={{ textAlign:"center", padding:"12px 0" }}>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>シフト表がまだ登録されていません</div>
-              <button onClick={e=>{e.stopPropagation();onGoShift?.();}} style={{ backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:9, padding:"8px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
-                シフトを登録する →
-              </button>
-            </div>
-          ) : (
-            <>
-              <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:10 }}>
-                {upcoming.map(s => {
-                  const wd = DOW[new Date(s.date).getDay()];
-                  const isToday = s.date === todayStr;
-                  return (
-                    <div key={s.date} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", backgroundColor:isToday?C.green+"18":C.bg, borderRadius:8, border:`1px solid ${isToday?C.green+"55":C.border}` }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                        <span style={{ fontSize:13, fontWeight:700, color:isToday?C.green:C.text }}>{s.date.slice(5)}</span>
-                        <span style={{ fontSize:11, color:C.muted }}>（{wd}）</span>
-                        {isToday && <span style={{ fontSize:10, color:C.green, fontWeight:700 }}>今日</span>}
-                      </div>
-                      <span style={{ fontSize:11, color:C.sub }}>{s.clockIn}〜{s.clockOut}</span>
-                    </div>
-                  );
-                })}
-                {remaining > 4 && <div style={{ fontSize:11, color:C.muted, textAlign:"center" }}>他 {remaining - 4} 勤務</div>}
-              </div>
-              <button onClick={e=>{e.stopPropagation();onGoShift?.();}} style={{ width:"100%", backgroundColor:"transparent", border:`1px solid ${C.border}`, borderRadius:9, padding:"8px 0", fontSize:12, color:C.sub, cursor:"pointer" }}>
-                シフト表を開く →
-              </button>
-            </>
-          )}
-        </div>
+        <UnifiedCalendar
+          reports={reports}
+          monthTarget={monthTarget}
+          user={user}
+          onOpenReport={onOpenReport}
+          noCard
+        />
       )}
     </Card>
   );
@@ -427,18 +356,21 @@ function XpCard({ user }) {
 
 // ━━━ 休憩時間カード ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function BreakTimeCard({ reports, onUpdateReport }) {
-  const [showInput, setShowInput] = useState(false);
+  const [showInput,  setShowInput]  = useState(false);
   const [showDetail, setShowDetail] = useState(false);
-  const [inputDate, setInputDate] = useState(() => new Date().toISOString().slice(0,10));
-  const [inputVal,  setInputVal]  = useState("");
-  const [saving,    setSaving]    = useState(false);
+  const [inputDate,  setInputDate]  = useState(() => new Date().toISOString().slice(0,10));
+  const [inputVal,   setInputVal]   = useState("");
+  const [saving,     setSaving]     = useState(false);
+  const [editingId,  setEditingId]  = useState(null); // 編集中レコードid
+  const [editVal,    setEditVal]    = useState("");
 
   const withBreak = [...reports]
     .filter(r => r.break_hours != null && r.break_hours !== "")
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  const latest1 = withBreak.slice(0, 1);
-  const hasMore = withBreak.length > 1;
+  const totalBreak = Math.round(withBreak.reduce((s, r) => s + parseFloat(r.break_hours || 0), 0) * 10) / 10;
+
+  const inp = { padding:"8px 10px", borderRadius:8, border:`1.5px solid ${C.border}`, backgroundColor:C.card, color:C.text, fontSize:13 };
 
   const handleSave = async () => {
     const val = parseFloat(inputVal);
@@ -450,6 +382,65 @@ function BreakTimeCard({ reports, onUpdateReport }) {
     setSaving(false);
     setShowInput(false);
     setInputVal("");
+  };
+
+  const handleEdit = async (r) => {
+    const val = parseFloat(editVal);
+    if (isNaN(val) || val < 0) return;
+    setSaving(true);
+    await onUpdateReport?.({ ...r, break_hours: val });
+    setSaving(false);
+    setEditingId(null);
+    setEditVal("");
+  };
+
+  const handleDelete = async (r) => {
+    if (!window.confirm(`${r.date} の休憩時間（${r.break_hours}h）を削除しますか？`)) return;
+    await onUpdateReport?.({ ...r, break_hours: null });
+  };
+
+  // 1件表示用の行コンポーネント（カード内・モーダル共用）
+  const BreakRow = ({ r, compact }) => {
+    const isEditing = editingId === r.id;
+    return (
+      <div style={{ backgroundColor: compact ? "transparent" : C.bg, borderRadius: compact ? 0 : 12, padding: compact ? "9px 0" : "12px 14px", marginBottom: compact ? 0 : 10, borderBottom: compact ? `1px solid ${C.border}` : "none" }}>
+        {isEditing ? (
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <input type="number" step="0.5" min="0" max="24" value={editVal}
+              onChange={e => setEditVal(e.target.value)} autoFocus
+              style={{ ...inp, flex:1 }} />
+            <span style={{ fontSize:12, color:C.muted }}>h</span>
+            <button onClick={() => handleEdit(r)} disabled={saving || !editVal}
+              style={{ padding:"7px 14px", borderRadius:8, backgroundColor:C.accentLight, color:"#fff", border:"none", fontSize:12, fontWeight:700, cursor:"pointer", opacity:(saving||!editVal)?0.5:1 }}>
+              {saving ? "…" : "保存"}
+            </button>
+            <button onClick={() => setEditingId(null)}
+              style={{ padding:"7px 10px", borderRadius:8, backgroundColor:"transparent", border:`1px solid ${C.border}`, fontSize:12, color:C.muted, cursor:"pointer" }}>
+              ✕
+            </button>
+          </div>
+        ) : (
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div>
+              <div style={{ fontSize: compact ? 13 : 14, fontWeight:700, color:C.text }}>休憩 {r.break_hours}h</div>
+              <div style={{ fontSize:10, color:C.muted, marginTop:1 }}>{r.date}（{dow(r.date)}）{r.work_hours ? `· 勤務 ${r.work_hours}h` : ""}</div>
+            </div>
+            {onUpdateReport && (
+              <div style={{ display:"flex", gap:6 }}>
+                <button onClick={() => { setEditingId(r.id); setEditVal(String(r.break_hours)); }}
+                  style={{ fontSize:11, color:C.accentLight, background:C.accentGlow||"transparent", border:`1px solid ${C.accentLight}44`, borderRadius:7, padding:"4px 10px", cursor:"pointer", fontWeight:600 }}>
+                  編集
+                </button>
+                <button onClick={() => handleDelete(r)}
+                  style={{ fontSize:11, color:C.red, background:"transparent", border:`1px solid ${C.red}44`, borderRadius:7, padding:"4px 10px", cursor:"pointer", fontWeight:600 }}>
+                  削除
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -469,12 +460,12 @@ function BreakTimeCard({ reports, onUpdateReport }) {
           <div style={{ backgroundColor:C.bg, borderRadius:10, padding:"12px 14px", marginBottom:12 }}>
             <div style={{ marginBottom:8 }}>
               <input type="date" value={inputDate} onChange={e => setInputDate(e.target.value)}
-                style={{ width:"100%", boxSizing:"border-box", padding:"9px 10px", borderRadius:9, border:`1.5px solid ${C.border}`, backgroundColor:C.card, color:C.text, fontSize:13 }} />
+                style={{ ...inp, width:"100%", boxSizing:"border-box" }} />
             </div>
             <div style={{ display:"flex", gap:8, alignItems:"center" }}>
               <input type="number" step="0.5" min="0" max="24" value={inputVal}
                 onChange={e => setInputVal(e.target.value)} placeholder="例) 1.0"
-                style={{ flex:1, padding:"9px 10px", borderRadius:9, border:`1.5px solid ${C.border}`, backgroundColor:C.card, color:C.text, fontSize:13 }} />
+                style={{ ...inp, flex:1 }} />
               <span style={{ fontSize:13, color:C.muted }}>h</span>
               <button onClick={handleSave} disabled={saving || !inputVal}
                 style={{ padding:"9px 18px", borderRadius:9, backgroundColor:C.accentLight, color:"#fff", border:"none", fontSize:13, fontWeight:700, cursor:"pointer", opacity:(saving||!inputVal)?0.5:1 }}>
@@ -484,26 +475,21 @@ function BreakTimeCard({ reports, onUpdateReport }) {
           </div>
         )}
 
-        {/* 最新1件 */}
-        {latest1.length === 0 ? (
+        {/* 合計表示 */}
+        {withBreak.length === 0 ? (
           <div style={{ textAlign:"center", padding:"8px 0", color:C.muted, fontSize:12 }}>まだ記録がありません</div>
         ) : (
-          <>
-            {latest1.map(r => (
-              <div key={r.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:`1px solid ${C.border}` }}>
-                <div>
-                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>休憩 {r.break_hours}h</div>
-                  <div style={{ fontSize:10, color:C.muted, marginTop:1 }}>{r.date}（{dow(r.date)}）{r.work_hours ? `· 勤務 ${r.work_hours}h` : ""}</div>
-                </div>
-              </div>
-            ))}
-            {hasMore && (
-              <button onClick={() => setShowDetail(true)}
-                style={{ width:"100%", marginTop:10, padding:"9px 0", borderRadius:9, fontSize:12, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.sub }}>
-                一覧・詳細 ({withBreak.length}件) →
-              </button>
-            )}
-          </>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div style={{ display:"flex", alignItems:"baseline", gap:4 }}>
+              <span style={{ fontSize:28, fontWeight:900, color:C.text }}>{totalBreak}</span>
+              <span style={{ fontSize:13, color:C.muted }}>h</span>
+              <span style={{ fontSize:11, color:C.muted, marginLeft:4 }}>（{withBreak.length}件合計）</span>
+            </div>
+            <button onClick={() => setShowDetail(true)}
+              style={{ padding:"7px 16px", borderRadius:9, fontSize:12, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.sub }}>
+              詳細
+            </button>
+          </div>
         )}
       </Card>
 
@@ -541,17 +527,8 @@ function BreakTimeCard({ reports, onUpdateReport }) {
               );
             })()}
 
-            {/* 一覧 */}
-            {withBreak.map(r => (
-              <div key={r.id} style={{ backgroundColor:C.bg, borderRadius:12, padding:"12px 14px", marginBottom:10 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                  <div>
-                    <div style={{ fontSize:14, fontWeight:800, color:C.text }}>休憩 {r.break_hours}h</div>
-                    <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{r.date}（{dow(r.date)}）{r.work_hours ? `· 勤務 ${r.work_hours}h` : ""}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
+            {/* 一覧（編集・削除付き） */}
+            {withBreak.map(r => <BreakRow key={r.id} r={r} compact={false} />)}
           </div>
         </div>
       )}
@@ -710,108 +687,234 @@ function AnalysisTodayCard({ reports }) {
   );
 }
 
-// ━━━ 月間カレンダー ━━━━━━━━━━━━━━━━━━━━━━━━━━
-function MonthCalendar({ reports, monthTarget }) {
-  const [open, setOpen] = useState(false);
+// ━━━ 統合カレンダー（シフト予定 ＋ 売上実績） ━━━━━
+function UnifiedDayModal({ dateStr, shift, report, onClose, onSaveShift, onDeleteShift, onOpenReport }) {
+  const d = new Date(dateStr);
+  const wd = ["日","月","火","水","木","金","土"][d.getDay()];
+  const todayStr = new Date().toISOString().slice(0,10);
+  const isPast = dateStr < todayStr;
+
+  const [editing, setEditing] = useState(!shift);
+  const [form, setForm] = useState({ clockIn:shift?.clockIn||"", clockOut:shift?.clockOut||"", note:shift?.note||"" });
+  const [saving, setSaving] = useState(false);
+
+  const inp = { backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:"9px 11px", color:C.text, fontSize:13, outline:"none", width:"100%", boxSizing:"border-box" };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSaveShift({ id:shift?.id||("manual_"+Date.now()), date:dateStr, clockIn:form.clockIn, clockOut:form.clockOut, isNight:false, note:form.note });
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, backgroundColor:"#00000090", zIndex:200, display:"flex", alignItems:"flex-end" }} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:24, paddingBottom:36, maxHeight:"85vh", overflowY:"auto" }}>
+        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 16px" }}/>
+        <div style={{ fontSize:18, fontWeight:800, marginBottom:16 }}>{dateStr}（{wd}）</div>
+
+        {/* シフト */}
+        {editing ? (
+          <div style={{ backgroundColor:C.accentLight+"12", border:`1px solid ${C.accentLight}33`, borderRadius:12, padding:16, marginBottom:12 }}>
+            <div style={{ fontSize:12, color:C.accentLight, fontWeight:700, marginBottom:12 }}>📅 {shift?"シフトを編集":"シフトを追加"}</div>
+            <div style={{ display:"flex", gap:10, marginBottom:10 }}>
+              <div style={{ flex:1 }}><div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>出庫</div><input value={form.clockIn} onChange={e=>setForm(p=>({...p,clockIn:e.target.value}))} placeholder="07:00" style={inp}/></div>
+              <div style={{ flex:1 }}><div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>帰庫</div><input value={form.clockOut} onChange={e=>setForm(p=>({...p,clockOut:e.target.value}))} placeholder="20:00" style={inp}/></div>
+            </div>
+            <div style={{ marginBottom:12 }}><div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>メモ</div><textarea value={form.note} onChange={e=>setForm(p=>({...p,note:e.target.value}))} rows={2} placeholder="急な変更など" style={{ ...inp, resize:"vertical" }}/></div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={handleSave} disabled={saving} style={{ flex:1, backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:9, padding:"11px 0", fontSize:13, fontWeight:700, cursor:"pointer", opacity:saving?0.6:1 }}>{saving?"保存中...":shift?"更新する":"追加する"}</button>
+              {shift && <button onClick={()=>setEditing(false)} style={{ flex:1, backgroundColor:"transparent", border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 0", fontSize:13, color:C.muted, cursor:"pointer" }}>キャンセル</button>}
+            </div>
+          </div>
+        ) : shift ? (
+          <div style={{ backgroundColor:C.green+"12", border:`1px solid ${C.green}44`, borderRadius:12, padding:14, marginBottom:12 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+              <div style={{ fontSize:12, color:C.green, fontWeight:700 }}>📅 出勤予定</div>
+              <button onClick={()=>setEditing(true)} style={{ fontSize:11, color:C.accentLight, background:"transparent", border:`1px solid ${C.accentLight}44`, borderRadius:6, padding:"3px 10px", cursor:"pointer", fontWeight:600 }}>編集</button>
+            </div>
+            <div style={{ display:"flex", gap:20, marginBottom:shift.note?8:0 }}>
+              <div><div style={{ fontSize:10, color:C.muted }}>出庫</div><div style={{ fontSize:16, fontWeight:700 }}>{shift.clockIn||"—"}</div></div>
+              <div><div style={{ fontSize:10, color:C.muted }}>帰庫</div><div style={{ fontSize:16, fontWeight:700 }}>{shift.clockOut||"—"}</div></div>
+            </div>
+            {shift.note&&<div style={{ fontSize:12, color:C.sub, whiteSpace:"pre-wrap", backgroundColor:C.bg, borderRadius:7, padding:"8px 10px" }}>📝 {shift.note}</div>}
+            <button onClick={()=>onDeleteShift(shift)} style={{ marginTop:10, background:"transparent", border:`1px solid ${C.red}44`, borderRadius:8, padding:"6px 14px", fontSize:11, color:C.red, cursor:"pointer", fontWeight:600 }}>削除</button>
+          </div>
+        ) : (
+          <div style={{ backgroundColor:C.border+"33", borderRadius:10, padding:"10px 14px", marginBottom:12, textAlign:"center", fontSize:12, color:C.muted }}>出勤予定なし</div>
+        )}
+
+        {/* 日報 */}
+        {report ? (
+          <div style={{ backgroundColor:C.goldGlow||C.gold+"12", border:`1px solid ${C.gold}44`, borderRadius:12, padding:14, marginBottom:12 }}>
+            <div style={{ fontSize:12, color:C.gold, fontWeight:700, marginBottom:8 }}>💴 日報入力済み</div>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div><div style={{ fontSize:10, color:C.muted }}>総売上</div><div style={{ fontSize:22, fontWeight:900, color:C.gold }}>{fmt(report.gross_sales)}円</div></div>
+              <div><div style={{ fontSize:10, color:C.muted }}>営業回数</div><div style={{ fontSize:22, fontWeight:900 }}>{report.ride_count}回</div></div>
+            </div>
+            <button onClick={()=>{ onOpenReport(report); onClose(); }} style={{ marginTop:10, width:"100%", backgroundColor:C.gold+"22", color:C.gold, border:`1px solid ${C.gold}44`, borderRadius:9, padding:"9px 0", fontSize:12, fontWeight:700, cursor:"pointer" }}>日報の詳細を見る →</button>
+          </div>
+        ) : isPast && shift ? (
+          <div style={{ backgroundColor:C.orange+"12", border:`1px solid ${C.orange}44`, borderRadius:12, padding:14, marginBottom:12 }}>
+            <div style={{ fontSize:12, color:C.orange, fontWeight:700, marginBottom:4 }}>⚠️ 日報が未入力です</div>
+            <div style={{ fontSize:11, color:C.muted }}>「記録する（＋）」から日報を登録してください</div>
+          </div>
+        ) : null}
+
+        <button onClick={onClose} style={{ width:"100%", backgroundColor:"transparent", border:`1px solid ${C.border}`, borderRadius:11, padding:"13px 0", fontSize:14, fontWeight:600, color:C.muted, cursor:"pointer" }}>閉じる</button>
+      </div>
+    </div>
+  );
+}
+
+function UnifiedCalendar({ reports, monthTarget, user, onOpenReport, noCard = false }) {
   const today = new Date();
-  const year  = today.getFullYear();
-  const month = today.getMonth(); // 0-indexed
-  const daysInMonth   = new Date(year, month + 1, 0).getDate();
-  const firstDayOfWeek = new Date(year, month, 1).getDay(); // 0=日
+  const todayStr = today.toISOString().slice(0,10);
+  const [viewYear,  setViewYear]  = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth()); // 0-indexed
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [dayShift,    setDayShift]    = useState(null);
+  const [dayReport,   setDayReport]   = useState(null);
+  const [shifts, setShifts] = useState(() => loadS("taxi_shifts", []));
+
+  const ym = `${viewYear}-${String(viewMonth+1).padStart(2,"0")}`;
+  const monthReports = reports.filter(r => r.date?.startsWith(ym));
+  const monthShifts  = shifts.filter(s => s.date?.startsWith(ym));
+
+  const reportByDate = {};  monthReports.forEach(r => { reportByDate[r.date] = r; });
+  const shiftByDate  = {};  monthShifts.forEach(s  => { shiftByDate[s.date]  = s; });
+
+  const daysInMonth    = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
   const DAYS = ["日","月","火","水","木","金","土"];
 
-  // reports を日付 → 売上 のマップに
-  const byDate = {};
-  reports.forEach(r => { byDate[r.date] = (byDate[r.date] || 0) + (r.gross_sales || 0); });
+  const prevMonth = () => viewMonth===0 ? (setViewYear(y=>y-1), setViewMonth(11)) : setViewMonth(m=>m-1);
+  const nextMonth = () => viewMonth===11? (setViewYear(y=>y+1), setViewMonth(0))  : setViewMonth(m=>m+1);
 
-  const targetPerDay = monthTarget / daysInMonth;
+  const handleSaveShift = async (s) => {
+    const next = (() => {
+      const idx = shifts.findIndex(x => x.date === s.date);
+      return idx >= 0 ? shifts.map((x,i) => i===idx?s:x) : [...shifts, s];
+    })();
+    setShifts(next);
+    saveS("taxi_shifts", next);
+    if (SUPABASE_READY && user?.id) await upsertShifts(user.id, [s]);
+  };
 
-  const cellColor = (sales) => {
-    if (!sales) return null;
-    if (sales >= 65000) return C.green;
-    if (sales >= targetPerDay) return C.accentLight;
-    if (sales >= 50000) return C.gold;
-    return C.orange;
+  const handleDeleteShift = async (sh) => {
+    const next = shifts.filter(x => x.id !== sh.id);
+    setShifts(next);
+    saveS("taxi_shifts", next);
+    if (SUPABASE_READY && user?.id) await deleteShift(user.id, sh.date);
+    setSelectedDay(null);
   };
 
   const cells = [];
   for (let i = 0; i < firstDayOfWeek; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
-  return (
-    <Card style={{ marginBottom:14, padding:"12px 14px" }}>
-      <div onClick={()=>setOpen(p=>!p)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", marginBottom: open ? 14 : 0 }}>
-        <div style={{ fontSize:13, fontWeight:700 }}>📅 {month+1}月 実績カレンダー</div>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ display:"flex", gap:6 }}>
-            {[{c:C.green,l:"65k↑"},{c:C.accentLight,l:"目標↑"},{c:C.gold,l:"50k↑"},{c:C.orange,l:"低"}].map(({c,l})=>(
-              <div key={l} style={{ display:"flex", alignItems:"center", gap:3 }}>
-                <div style={{ width:7, height:7, borderRadius:2, backgroundColor:c }}/>
-                <span style={{ fontSize:9, color:C.muted }}>{l}</span>
-              </div>
-            ))}
+  const calendarBody = (
+    <>
+      {/* ヘッダー */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+        <button onClick={prevMonth} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"5px 12px", color:C.sub, cursor:"pointer", fontSize:15 }}>‹</button>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontSize:14, fontWeight:800 }}>📅 {viewYear}年{viewMonth+1}月</div>
+          <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>
+            出勤 {monthShifts.length}日 · 日報 {monthReports.length}件
           </div>
-          <span style={{ fontSize:11, color:C.muted }}>{open?"▲":"▼"}</span>
         </div>
+        <button onClick={nextMonth} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"5px 12px", color:C.sub, cursor:"pointer", fontSize:15 }}>›</button>
       </div>
 
-      {open && (
-        <>
-          {/* 曜日ヘッダー */}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3, marginBottom:4 }}>
-            {DAYS.map((d,i)=>(
-              <div key={d} style={{ textAlign:"center", fontSize:10, color: i===0?C.red:i===6?C.accentLight:C.muted, fontWeight:700, paddingBottom:4 }}>{d}</div>
-            ))}
+      {/* 凡例 */}
+      <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" }}>
+        {[
+          { color:C.green,      label:"出勤+日報済" },
+          { color:C.orange,     label:"日報未入力"  },
+          { color:C.accentLight,label:"出勤予定"    },
+          { color:C.gold,       label:"日報のみ"    },
+        ].map(({color,label}) => (
+          <div key={label} style={{ display:"flex", alignItems:"center", gap:3 }}>
+            <div style={{ width:8, height:8, borderRadius:2, backgroundColor:color }}/>
+            <span style={{ fontSize:9, color:C.muted }}>{label}</span>
           </div>
+        ))}
+      </div>
 
-          {/* 日付グリッド */}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3 }}>
-            {cells.map((d, i) => {
-              if (!d) return <div key={i}/>;
-              const dateStr  = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-              const sales    = byDate[dateStr];
-              const color    = cellColor(sales);
-              const isToday  = d === today.getDate();
-              const isFuture = d > today.getDate();
-              return (
-                <div key={i} style={{
-                  borderRadius: 6,
-                  padding: "5px 2px",
-                  textAlign: "center",
-                  backgroundColor: color ? color + "22" : isFuture ? "transparent" : C.surface,
-                  border: isToday ? `2px solid ${C.accentLight}` : `1px solid ${color ? color+"55" : C.border}`,
-                  opacity: isFuture ? 0.4 : 1,
-                }}>
-                  <div style={{ fontSize:10, color: isToday ? C.accentLight : C.muted, fontWeight: isToday ? 800 : 400 }}>{d}</div>
-                  {sales ? (
-                    <div style={{ fontSize:8, color: color, fontWeight:700, marginTop:1, lineHeight:1.1 }}>
-                      {Math.round(sales/1000)}k
-                    </div>
-                  ) : (
-                    <div style={{ fontSize:8, color:C.border, marginTop:1 }}>—</div>
-                  )}
+      {/* 曜日ヘッダー */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2, marginBottom:3 }}>
+        {DAYS.map((d,i) => (
+          <div key={d} style={{ textAlign:"center", fontSize:9, color:i===0?C.red:i===6?C.accentLight:C.muted, fontWeight:700, paddingBottom:3 }}>{d}</div>
+        ))}
+      </div>
+
+      {/* 日付グリッド */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 }}>
+        {cells.map((d, i) => {
+          if (!d) return <div key={i}/>;
+          const dateStr  = `${viewYear}-${String(viewMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+          const shift    = shiftByDate[dateStr];
+          const report   = reportByDate[dateStr];
+          const isFuture = dateStr > todayStr;
+          const isToday  = dateStr === todayStr;
+          const isPast   = dateStr < todayStr;
+
+          // セル色
+          let bg = null;
+          if (shift && report)        bg = C.green;
+          else if (shift && isPast)   bg = C.orange;
+          else if (shift)             bg = C.accentLight;
+          else if (report)            bg = C.gold;
+
+          return (
+            <div key={i}
+              onClick={() => { setSelectedDay(dateStr); setDayShift(shift||null); setDayReport(report||null); }}
+              style={{
+                borderRadius:6, padding:"4px 2px", textAlign:"center", cursor:"pointer",
+                backgroundColor: bg ? bg+"22" : isFuture ? "transparent" : C.surface,
+                border: isToday ? `2px solid ${C.accentLight}` : `1px solid ${bg ? bg+"55" : C.border}`,
+                minHeight:54, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-start", gap:1,
+                opacity: isFuture && !shift ? 0.4 : 1,
+              }}
+            >
+              <div style={{ fontSize:10, color:isToday?C.accentLight:C.text, fontWeight:isToday?800:400 }}>{d}</div>
+              {shift && (
+                <div style={{ fontSize:7, color:bg||C.muted, fontWeight:600, lineHeight:1.3 }}>
+                  {shift.clockIn&&shift.clockIn.slice(0,5)}<br/>{shift.clockOut&&shift.clockOut.slice(0,5)}
                 </div>
-              );
-            })}
-          </div>
+              )}
+              {report && (
+                <div style={{ fontSize:8, color:C.gold, fontWeight:700, marginTop:1 }}>
+                  {(report.gross_sales/10000).toFixed(1)}万
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
-          {/* 月間サマリー */}
-          <div style={{ marginTop:12, padding:"10px 12px", backgroundColor:C.bg, borderRadius:8, display:"flex", justifyContent:"space-between", fontSize:11, color:C.muted }}>
-            <span>記録日数: <b style={{ color:C.text }}>{Object.keys(byDate).filter(d=>d.startsWith(`${year}-${String(month+1).padStart(2,"0")}`)).length}日</b></span>
-            <span>日平均: <b style={{ color:C.text }}>{fmt(Object.values(byDate).length ? Math.round(Object.values(byDate).reduce((a,b)=>a+b,0)/Object.values(byDate).length) : 0)}円</b></span>
-          </div>
-        </>
+      {selectedDay && (
+        <UnifiedDayModal
+          dateStr={selectedDay}
+          shift={dayShift}
+          report={dayReport}
+          onClose={()=>setSelectedDay(null)}
+          onSaveShift={handleSaveShift}
+          onDeleteShift={handleDeleteShift}
+          onOpenReport={onOpenReport}
+        />
       )}
-    </Card>
+    </>
   );
+  if (noCard) return <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.border}` }}>{calendarBody}</div>;
+  return <Card style={{ marginBottom:14, padding:"12px 14px" }}>{calendarBody}</Card>;
 }
 
 // ━━━ Dashboard メイン ━━━━━━━━━━━━━━━━━━━━━━━━━
-export default function Dashboard({ reports, user, onOpenReport, onManageArea, rankPrefs = { showMyRank:false, showTopSales:false }, appMode = "standard", onGoShift, onUpdateReport }) {
-  const monthReports = reports.filter(r => {
-    const d = new Date(r.date);
-    return d.getFullYear() === THIS_YEAR && d.getMonth() + 1 === THIS_MONTH;
-  });
+export default function Dashboard({ reports, user, onOpenReport, onManageArea, rankPrefs = { showMyRank:false, showTopSales:false }, appMode = "standard", onGoShift, onUpdateReport, onGoRanking }) {
+  const { start: periodStart, end: periodEnd } = getClosingPeriod(user?.closing_day ?? 0);
+  const monthReports = reports.filter(r => r.date >= periodStart && r.date <= periodEnd);
 
   const monthTotal    = monthReports.reduce((s,r) => s + (r.gross_sales || 0), 0);
   const monthTarget   = parseInt(user.target) || 380000;
@@ -841,19 +944,19 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   // ━━━ かんたんモード ━━━━━━━━━━━━━━━━━━━━━━━━━
   if (isSimple) {
     return (
-      <div style={{ maxWidth:600, margin:"0 auto", padding:"16px 16px 100px", zoom: isSimpleLarge ? 1.15 : 1 }}>
+      <div style={{ maxWidth:600, margin:"0 auto", padding: isSimpleLarge ? "16px 10px 100px" : "16px 16px 100px", zoom: isSimpleLarge ? 1.32 : 1 }}>
         {/* ① レベル欄 */}
         <XpCard user={user} />
 
         {/* ② お知らせ欄（更新通知はInfoCenterのみ） */}
 
-        {/* ③ シフト表（アコーディオン） */}
-        <ShiftSummaryCard onGoShift={onGoShift} />
+        {/* ③ シフト表（開くとカレンダー展開） */}
+        <ShiftSummaryCard reports={monthReports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} onGoShift={onGoShift} />
 
         <WeatherWidget />
 
         {/* 営業ポイント記録 */}
-        <SalesPointCard />
+        <SalesPointCard user={user} />
 
         {/* 休憩時間 */}
         <BreakTimeCard reports={reports} onUpdateReport={onUpdateReport} />
@@ -894,9 +997,6 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
           </div>
         </Card>
 
-        {/* カレンダー */}
-        <MonthCalendar reports={monthReports} monthTarget={monthTarget} />
-
         {/* AIアドバイス */}
         <AiAdviceCard reports={monthReports} appMode={appMode} />
 
@@ -919,8 +1019,8 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
 
       {/* ② お知らせ欄（更新通知はInfoCenterのみ） */}
 
-      {/* ③ シフト表（アコーディオン） */}
-      <ShiftSummaryCard />
+      {/* ③ シフト表（開くとカレンダー展開） */}
+      <ShiftSummaryCard reports={reports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} onGoShift={onGoShift} />
 
       <WeatherWidget />
 
@@ -928,7 +1028,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
       <SalesPointCard />
 
       {/* 休憩時間 */}
-      <BreakTimeCard reports={reports} />
+      <BreakTimeCard reports={reports} onUpdateReport={onUpdateReport} />
 
       {/* ① 売上サマリー（最上位） */}
       <Card style={{ marginBottom:14, borderColor:C.gold+"33" }}>
@@ -995,9 +1095,6 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         )}
       </Card>
 
-      {/* カレンダー */}
-      <MonthCalendar reports={monthReports} monthTarget={monthTarget} />
-
       {/* ② KPI グリッド */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:14 }}>
         <KpiCard label="平均売上"   value={fmt(avgSales)} unit="円" accent={C.accentLight} />
@@ -1005,8 +1102,8 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         <KpiCard label="無料残り"   value={remaining}      unit="件" accent={remaining <= 1 ? C.red : C.gold} />
       </div>
 
-      {/* ④ 翌日発表（分析モードのみ常に展開、通常は折りたたみ） */}
-      <YesterdayCard userAreas={user.areas || []} rankPrefs={rankPrefs} reports={reports} />
+      {/* ④ ランキング新着バナー（通知ON時のみ App.jsx から onGoRanking が渡される） */}
+      {onGoRanking && <RankingNoticeBanner onGoRanking={onGoRanking} />}
 
       {/* ⑤ 今日の売上＆着地予想（分析モードのみ） */}
       {isAnalysis && <AnalysisTodayCard reports={reports} />}

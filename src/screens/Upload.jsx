@@ -1,13 +1,54 @@
 import { useState, useRef } from "react";
 import { C, fmt, occ, dow, hourly, FREE_LIMIT } from "../lib/constants";
-import { generateReportComment, runReportOCR } from "../lib/ai";
+import { generateReportComment, runReportOCR, runReportOCRP2 } from "../lib/ai";
 import { Card, Btn, ProgressBar } from "../components/UI";
+import { RideMatchModal } from "../components/RideMatchModal";
 import { WORK_AREAS_BY_PARENT } from "../data/mockData";
+import { ZONE_AREAS } from "../data/trafficZones";
 import { supabase } from "../lib/supabase";
 import { validateImageFile, validateReportForm, sanitizeReportData } from "../lib/validate";
 
 const OCR_SEQ = ["画像を解析中...","日付・勤務時間を読み取り中...","売上データを抽出中...","営業回数・走行距離を確認中...","フォーマット差異を吸収中...","読み取り完了 ✓"];
-const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"1.0", highway_fee:"0", trouble_note:"", work_area:"" };
+const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"1.0", highway_fee:"0", trouble_note:"", work_area:"", rides:[], break_times:[] };
+
+// 画像をリサイズしてbase64変換
+async function imageToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const MAX = 1600;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+          else { width = Math.round(width * MAX / height); height = MAX; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// break_times から break_hours を計算
+function calcBreakHours(breakTimes) {
+  if (!breakTimes || breakTimes.length === 0) return "1.0";
+  const total = breakTimes.reduce((sum, bt) => {
+    const [sh, sm] = bt.start.split(":").map(Number);
+    const [eh, em] = bt.end.split(":").map(Number);
+    let diff = (eh * 60 + em) - (sh * 60 + sm);
+    if (diff < 0) diff += 24 * 60; // 日付またぎ
+    return sum + diff;
+  }, 0);
+  return String(Math.round(total / 60 * 10) / 10);
+}
 
 // 撮影ガイドのチェックリスト
 const SHOT_GUIDE = [
@@ -60,9 +101,12 @@ function ShotGuideModal({ onShoot, onCancel }) {
   );
 }
 
-export default function UploadScreen({ uploadCount, onSave, reports }) {
+export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   const [step, setStep]     = useState("select");
   const [isManual, setIsManual] = useState(false);
+  const [isClosure, setIsClosure] = useState(false);
+  const [closureDate, setClosureDate] = useState(() => new Date().toISOString().slice(0,10));
+  const [closureCount, setClosureCount] = useState(0);
   const [showGuide, setShowGuide] = useState(false);
   const [form, setForm]     = useState(EMPTY);
   const [errors, setErrors] = useState({});
@@ -70,6 +114,7 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
   const [ocrLines, setOcrLines] = useState([]);
   const [ocrProg, setOcrProg]   = useState(0);
   const [ocrError, setOcrError] = useState("");
+  const [matchData, setMatchData] = useState(null); // { ocrRides, manualRecords }
   const fileInputRef = useRef(null);
   const remaining = FREE_LIMIT - uploadCount;
 
@@ -79,15 +124,14 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
     fileInputRef.current?.click();
   };
 
-  // ファイル選択後にOCR実行
+  // ファイル選択後にOCR実行（最大2枚）
   const handleFileSelect = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    // リセット
+    const files = Array.from(e.target.files || []).slice(0, 2);
+    if (files.length === 0) return;
     e.target.value = "";
 
-    // ファイルバリデーション
-    const fileCheck = validateImageFile(file);
+    // 1枚目のバリデーション
+    const fileCheck = validateImageFile(files[0]);
     if (!fileCheck.ok) {
       setOcrError(fileCheck.error);
       setStep("ocr_error");
@@ -104,67 +148,126 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
     };
 
     try {
-      // 画像を圧縮してbase64変換（スマホ写真はサイズ大のため）
-      addLine("画像を読み込み中...", 15);
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = reject;
-        reader.onload = (ev) => {
-          const img = new Image();
-          img.onerror = reject;
-          img.onload = () => {
-            const MAX = 1600;
-            let { width, height } = img;
-            if (width > MAX || height > MAX) {
-              if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
-              else { width = Math.round(width * MAX / height); height = MAX; }
-            }
-            const canvas = document.createElement("canvas");
-            canvas.width = width; canvas.height = height;
-            canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
-          };
-          img.src = ev.target.result;
-        };
-        reader.readAsDataURL(file);
-      });
+      // ── 1枚目 ──
+      addLine(files.length > 1 ? "1枚目を読み込み中..." : "画像を読み込み中...", 10);
+      const base64_1 = await imageToBase64(files[0]);
 
-      addLine("AIに画像を送信中...", 35);
+      addLine("AIに送信中（1枚目）...", 25);
+      await new Promise(r => setTimeout(r, 200));
+      addLine("日付・売上データを抽出中...", 40);
+
+      const result1 = await runReportOCR(base64_1, "image/jpeg");
+      if (!result1) throw new Error("1枚目のOCRに失敗しました");
+
+      const f = result1?.fields ?? {};
+      let rides = Array.isArray(f.rides) ? f.rides : [];
+      let breakTimes = Array.isArray(f.break_times) ? f.break_times : [];
+
+      // ── 2枚目（乗車記録の続き）──
+      if (files.length > 1) {
+        addLine("2枚目を読み込み中（乗車記録の続き）...", 60);
+        const base64_2 = await imageToBase64(files[1]);
+        addLine("2枚目の乗車記録を抽出中...", 75);
+        const result2 = await runReportOCRP2(base64_2, "image/jpeg");
+        const f2 = result2?.fields ?? {};
+        if (Array.isArray(f2.rides)) rides = [...rides, ...f2.rides];
+        if (Array.isArray(f2.break_times)) breakTimes = [...breakTimes, ...f2.break_times];
+      }
+
+      addLine("走行距離・乗務時間を確認中...", 88);
       await new Promise(r => setTimeout(r, 300));
-      addLine("日付・売上データを抽出中...", 55);
-
-      // claude-proxy経由でOCR（work_area対応プロンプトを使用）
-      const result = await runReportOCR(base64, "image/jpeg");
-      if (!result) throw new Error("OCRエラー");
-
-      addLine("走行距離・乗務時間を確認中...", 80);
-      await new Promise(r => setTimeout(r, 300));
-      addLine("読み取り完了 ✓", 100);
+      addLine(`読み取り完了 ✓（乗車${rides.length}件）`, 100);
       await new Promise(r => setTimeout(r, 400));
+      // ↓ matchDataがセットされた場合は照合モーダルが先に出るのでconfirmに飛ばさない
+      let hasMatch = false;
 
-      const f = result?.fields ?? {};
       const today = new Date().toISOString().slice(0, 10);
+      // break_hoursはbreak_timesから計算、なければOCR値かデフォルト
+      const computedBreakHours = breakTimes.length > 0
+        ? calcBreakHours(breakTimes)
+        : (f.break_hours != null ? String(f.break_hours) : "1.0");
+
+      const reportDate = f.report_date ?? f.date ?? today;
+
+      // 同じ日の手入力乗車記録を照合候補として取得
+      try {
+        const allManual = JSON.parse(localStorage.getItem("taxi_sales_records") || "[]");
+        const sameDay = allManual.filter(r => (r.workDate || r.boardingTime?.slice(0,10)) === reportDate);
+        if (sameDay.length > 0 && rides.length > 0) {
+          setMatchData({ ocrRides: rides, manualRecords: sameDay });
+          hasMatch = true;
+        }
+      } catch { /* ignore */ }
+
       setForm({
-        date:               f.report_date ?? f.date ?? today,
+        date:               reportDate,
         gross_sales:        f.gross_sales        != null ? String(f.gross_sales)        : "",
         cash_sales:         f.cash_sales         != null ? String(f.cash_sales)         : "",
         card_sales:         f.card_sales         != null ? String(f.card_sales)         : "",
         app_sales:          f.app_sales          != null ? String(f.app_sales)          : "",
-        ride_count:         f.ride_count         != null ? String(f.ride_count)         : "",
+        ride_count:         f.ride_count         != null ? String(f.ride_count)         : rides.length > 0 ? String(rides.length) : "",
         total_distance:     f.total_distance     != null ? String(f.total_distance)     : "",
-        occupied_distance:  f.occupied_distance  != null ? String(f.occupied_distance)  : "",
+        occupied_distance:  f.occupied_distance  != null ? String(f.occupied_distance)
+                          : rides.length > 0 ? String(Math.round(rides.reduce((s,r)=>s+(r.km||0),0)))
+                          : "",
         work_hours:         f.work_hours         != null ? String(f.work_hours)         : "",
-        break_hours:        f.break_hours        != null ? String(f.break_hours)        : "1.0",
+        break_hours:        computedBreakHours,
         highway_fee:        f.highway_fee        != null ? String(f.highway_fee)        : "0",
         trouble_note:       "",
         work_area:          f.work_area          ?? "",
+        rides,
+        break_times:        breakTimes,
       });
-      setStep("confirm");
+      setStep(hasMatch ? "select" : "confirm");
     } catch (err) {
       console.error("[OCR]", err);
       setOcrError(err.message || "読み取りに失敗しました");
       setStep("ocr_error");
     }
+  };
+
+  // 締め作業: 選択日の乗車記録を集計してconfirmへ
+  const handleClosureLoad = () => {
+    const allRecords = JSON.parse(localStorage.getItem("taxi_sales_records") || "[]");
+    const dayRecords = allRecords.filter(r =>
+      (r.workDate || r.boardingTime?.slice(0,10)) === closureDate
+    );
+    if (dayRecords.length === 0) {
+      alert("この日の乗車記録がありません\n先にホーム画面から乗車を記録してください");
+      return;
+    }
+    const sum = (arr, fn) => arr.reduce((s, r) => s + (fn(r) || 0), 0);
+    const grossSales   = sum(dayRecords, r => r.fare);
+    const cashSales    = sum(dayRecords.filter(r => r.paymentMethod === "現金"), r => r.fare);
+    const cardSales    = sum(dayRecords.filter(r => r.paymentMethod === "カード"), r => r.fare);
+    const appSales     = sum(dayRecords.filter(r => ["配車アプリ","アプリ"].includes(r.paymentMethod)), r => r.fare);
+    const highwayFee   = sum(dayRecords, r => r.highwayFee);
+    const rides = dayRecords.map((r, i) => ({
+      no:           i + 1,
+      pickup_time:  r.boardingTime  ? r.boardingTime.slice(11,16)  : null,
+      dropoff_time: r.dropoffTime   ? r.dropoffTime.slice(11,16)   : null,
+      pickup_area:  r.pickupLocation  || r.spotName || null,
+      dropoff_area: r.dropoffLocation || null,
+      amount:       r.fare || 0,
+      km:           null,
+      point_name:   r.pickupLocation  || r.spotName || null,
+      source:       "manual",
+    }));
+    setClosureCount(dayRecords.length);
+    setForm({
+      ...EMPTY,
+      date:         closureDate,
+      gross_sales:  String(grossSales),
+      cash_sales:   cashSales  > 0 ? String(cashSales)  : "",
+      card_sales:   cardSales  > 0 ? String(cardSales)  : "",
+      app_sales:    appSales   > 0 ? String(appSales)   : "",
+      ride_count:   String(dayRecords.length),
+      highway_fee:  String(highwayFee),
+      rides,
+    });
+    setIsManual(false);
+    setIsClosure(true);
+    setStep("confirm");
   };
 
   const handleSave = async () => {
@@ -174,7 +277,7 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
 
     setSaving(true);
     // サニタイズ（XSS対策・値のクランプ）
-    const data = { id: Date.now(), ...sanitizeReportData(form) };
+    const data = { id: Date.now(), ...sanitizeReportData(form), rides: form.rides ?? [], break_times: form.break_times ?? [] };
     // 3回以上記録が溜まってからAIコメント生成（データ不足での的外れコメントを防ぐ）
     const comment = reports.length >= 2 ? await generateReportComment(data, reports) : "";
     data.ai_comment = comment;
@@ -216,7 +319,7 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
   if (step === "ocring") {
     return (
       <div style={{ maxWidth:480, margin:"0 auto", padding:"40px 16px 100px" }}>
-        <div style={{ textAlign:"center", marginBottom:24 }}><div style={{ fontSize:36, marginBottom:10 }}>🤖</div><div style={{ fontSize:15, fontWeight:700 }}>AIが読み取り中...</div></div>
+        <div style={{ textAlign:"center", marginBottom:24 }}><div style={{ fontSize:36, marginBottom:10 }}>🤖</div><div style={{ fontSize:15, fontWeight:700 }}>タクローが読み取り中...</div></div>
         <Card>
           <ProgressBar value={ocrProg} max={100} color={C.accentLight} height={6}/>
           <div style={{ marginTop:14 }}>
@@ -245,7 +348,9 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
   if (step === "confirm") {
     return (
       <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
-        <div style={{ fontSize:13, color:C.muted, marginBottom:12 }}>{isManual ? "📝 日報を入力してください" : "📋 読み取り結果を確認・修正してください"}</div>
+        <div style={{ fontSize:13, color:C.muted, marginBottom:12 }}>
+          {isClosure ? `🚕 乗車記録 ${closureCount}件から自動集計 — 勤務時間を入力して保存` : isManual ? "📝 日報を入力してください" : "📋 読み取り結果を確認・修正してください"}
+        </div>
         <Card>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
             {F({label:"日付", fk:"date", type:"date", required:true, span:2})}
@@ -260,16 +365,24 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
             {F({label:"休憩時間（h）", fk:"break_hours", ph:"1.0"})}
             {F({label:"高速料金（円）", fk:"highway_fee", ph:"800", span:2})}
           </div>
-          {/* 営業エリア選択（統計データ収集用） */}
+          {/* 営業エリア選択（所属交通圏でフィルタ） */}
           <div style={{ marginTop:12 }}>
             <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>📍 今日のメインエリア（統計に使用）</div>
             <select value={form.work_area} onChange={e=>setForm(p=>({...p,work_area:e.target.value}))} style={{ width:"100%", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:form.work_area?C.text:C.muted, fontSize:14, outline:"none" }}>
               <option value="">選択してください（任意）</option>
-              {Object.entries(WORK_AREAS_BY_PARENT).map(([parent, areas]) => (
-                <optgroup key={parent} label={parent}>
-                  {areas.map(a => <option key={a} value={a}>{a}</option>)}
-                </optgroup>
-              ))}
+              {(() => {
+                const userZones = user?.areas || [];
+                // 所属交通圏が設定済みならその圏内エリアのみ表示
+                // 未設定なら全交通圏を表示
+                const zonesToShow = userZones.length > 0
+                  ? userZones.filter(z => ZONE_AREAS[z])
+                  : Object.keys(ZONE_AREAS);
+                return zonesToShow.map(zone => (
+                  <optgroup key={zone} label={zone}>
+                    {(ZONE_AREAS[zone] || []).map(a => <option key={a} value={a}>{a}</option>)}
+                  </optgroup>
+                ));
+              })()}
             </select>
             <div style={{ fontSize:10, color:C.muted, marginTop:4 }}>入力すると「エリア別単価ランキング」に反映されます</div>
           </div>
@@ -278,11 +391,28 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
             <textarea value={form.trouble_note} onChange={e=>setForm(p=>({...p,trouble_note:e.target.value}))} placeholder="特記事項があれば（任意）" rows={2} style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:13, outline:"none", resize:"none" }}/>
           </div>
         </Card>
+        {/* 乗車記録プレビュー */}
+        {form.rides && form.rides.length > 0 && (
+          <Card style={{ marginTop:10, padding:"10px 12px" }}>
+            <div style={{ fontSize:12, color:C.accentLight, fontWeight:700, marginBottom:8 }}>🚕 乗車記録 {form.rides.length}件（エリア統計に使用）</div>
+            <div style={{ maxHeight:180, overflowY:"auto" }}>
+              {form.rides.map((r, i) => (
+                <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 0", borderBottom:i<form.rides.length-1?`1px solid ${C.border}`:"none", fontSize:11 }}>
+                  <span style={{ color:C.muted, width:22, flexShrink:0 }}>#{r.no ?? i+1}</span>
+                  <span style={{ flex:1, color:C.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    {r.pickup_area ?? "?"} → {r.dropoff_area ?? "?"}
+                  </span>
+                  <span style={{ color:C.green, fontWeight:700, marginLeft:8, flexShrink:0 }}>¥{(r.amount ?? 0).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
         {form.total_distance && form.occupied_distance && parseInt(form.total_distance)>0 && (
           <Card style={{ padding:12, textAlign:"center" }}><span style={{ fontSize:12, color:C.muted }}>実車率（自動計算）: </span><span style={{ fontSize:16, fontWeight:700, color:C.green }}>{Math.round(parseInt(form.occupied_distance)/parseInt(form.total_distance)*100)}%</span></Card>
         )}
         <Btn onClick={handleSave} disabled={saving}>{saving?"保存中...":"保存する"}</Btn>
-        <Btn onClick={()=>{ setIsManual(false); setStep("select"); }} variant="ghost" style={{ marginTop:10 }}>戻る</Btn>
+        <Btn onClick={()=>{ setIsManual(false); setIsClosure(false); setStep("select"); }} variant="ghost" style={{ marginTop:10 }}>戻る</Btn>
       </div>
     );
   }
@@ -332,14 +462,51 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
       </div>
       <Btn onClick={()=>{ setIsManual(true); setForm(EMPTY); setStep("confirm"); }} variant="secondary">✏️ 手動で入力する</Btn>
 
+      {/* 個タク・締め作業 */}
+      <div style={{ marginTop:14, backgroundColor:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"16px 16px" }}>
+        <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>🚕 乗車記録から締める</div>
+        <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>個人タクシー・手入力オンリーの方向け。乗車記録を集計して日報を作成します。</div>
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <input
+            type="date"
+            value={closureDate}
+            onChange={e => setClosureDate(e.target.value)}
+            style={{ flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}
+          />
+          <button
+            onClick={handleClosureLoad}
+            style={{ flexShrink:0, padding:"10px 18px", borderRadius:9, backgroundColor:C.accentLight, color:"#fff", border:"none", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+            締める
+          </button>
+        </div>
+      </div>
+
       {/* 撮影ガイドモーダル */}
       {showGuide && <ShotGuideModal onShoot={handleOCR} onCancel={()=>setShowGuide(false)}/>}
 
-      {/* hidden file input（カメラ or ギャラリー選択） */}
+      {/* 乗車記録照合モーダル */}
+      {matchData && (
+        <RideMatchModal
+          ocrRides={matchData.ocrRides}
+          manualRecords={matchData.manualRecords}
+          onConfirm={mergedRides => {
+            setForm(f => ({ ...f, rides: mergedRides }));
+            setMatchData(null);
+            setStep("confirm");
+          }}
+          onSkip={() => {
+            setMatchData(null);
+            setStep("confirm");
+          }}
+        />
+      )}
+
+      {/* hidden file input（カメラ or ギャラリー選択、最大2枚） */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         onChange={handleFileSelect}
         style={{ display:"none" }}
       />
