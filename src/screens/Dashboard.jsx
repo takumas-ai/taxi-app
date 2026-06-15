@@ -438,8 +438,8 @@ function BreakTimeCard({ reports, onUpdateReport }) {
     .filter(r => r.break_hours != null && r.break_hours !== "")
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  const latest3  = withBreak.slice(0, 3);
-  const hasMore  = withBreak.length > 3;
+  const latest3  = withBreak.slice(0, 1);
+  const hasMore  = withBreak.length > 1;
 
   const handleSave = async () => {
     const val = parseFloat(inputVal);
