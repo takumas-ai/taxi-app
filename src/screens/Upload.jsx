@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { C, fmt, occ, dow, hourly, FREE_LIMIT } from "../lib/constants";
 import { generateReportComment, runReportOCR, runReportOCRP2 } from "../lib/ai";
 import { Card, Btn, ProgressBar } from "../components/UI";
+import { RideMatchModal } from "../components/RideMatchModal";
 import { WORK_AREAS_BY_PARENT } from "../data/mockData";
 import { ZONE_AREAS } from "../data/trafficZones";
 import { supabase } from "../lib/supabase";
@@ -110,6 +111,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   const [ocrLines, setOcrLines] = useState([]);
   const [ocrProg, setOcrProg]   = useState(0);
   const [ocrError, setOcrError] = useState("");
+  const [matchData, setMatchData] = useState(null); // { ocrRides, manualRecords }
   const fileInputRef = useRef(null);
   const remaining = FREE_LIMIT - uploadCount;
 
@@ -173,6 +175,8 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
       await new Promise(r => setTimeout(r, 300));
       addLine(`読み取り完了 ✓（乗車${rides.length}件）`, 100);
       await new Promise(r => setTimeout(r, 400));
+      // ↓ matchDataがセットされた場合は照合モーダルが先に出るのでconfirmに飛ばさない
+      let hasMatch = false;
 
       const today = new Date().toISOString().slice(0, 10);
       // break_hoursはbreak_timesから計算、なければOCR値かデフォルト
@@ -180,8 +184,20 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         ? calcBreakHours(breakTimes)
         : (f.break_hours != null ? String(f.break_hours) : "1.0");
 
+      const reportDate = f.report_date ?? f.date ?? today;
+
+      // 同じ日の手入力乗車記録を照合候補として取得
+      try {
+        const allManual = JSON.parse(localStorage.getItem("taxi_sales_records") || "[]");
+        const sameDay = allManual.filter(r => (r.workDate || r.boardingTime?.slice(0,10)) === reportDate);
+        if (sameDay.length > 0 && rides.length > 0) {
+          setMatchData({ ocrRides: rides, manualRecords: sameDay });
+          hasMatch = true;
+        }
+      } catch { /* ignore */ }
+
       setForm({
-        date:               f.report_date ?? f.date ?? today,
+        date:               reportDate,
         gross_sales:        f.gross_sales        != null ? String(f.gross_sales)        : "",
         cash_sales:         f.cash_sales         != null ? String(f.cash_sales)         : "",
         card_sales:         f.card_sales         != null ? String(f.card_sales)         : "",
@@ -199,7 +215,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         rides,
         break_times:        breakTimes,
       });
-      setStep("confirm");
+      if (!hasMatch) setStep("confirm");
     } catch (err) {
       console.error("[OCR]", err);
       setOcrError(err.message || "読み取りに失敗しました");
@@ -399,6 +415,23 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
 
       {/* 撮影ガイドモーダル */}
       {showGuide && <ShotGuideModal onShoot={handleOCR} onCancel={()=>setShowGuide(false)}/>}
+
+      {/* 乗車記録照合モーダル */}
+      {matchData && (
+        <RideMatchModal
+          ocrRides={matchData.ocrRides}
+          manualRecords={matchData.manualRecords}
+          onConfirm={mergedRides => {
+            setForm(f => ({ ...f, rides: mergedRides }));
+            setMatchData(null);
+            setStep("confirm");
+          }}
+          onSkip={() => {
+            setMatchData(null);
+            setStep("confirm");
+          }}
+        />
+      )}
 
       {/* hidden file input（カメラ or ギャラリー選択、最大2枚） */}
       <input
