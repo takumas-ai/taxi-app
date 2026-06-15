@@ -194,10 +194,18 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
       await new Promise(r => setTimeout(r, 400));
 
       const f = data?.fields ?? {};
+      const parsedShifts = Array.isArray(f.shifts) ? f.shifts : [];
+      // dateFrom/dateTo がある場合はそちらを使う（2ヶ月またぎ対応）
+      const dateFrom = f.dateFrom ?? null;
+      const dateTo   = f.dateTo   ?? null;
+      // year/month は後方互換のため dateFrom から取得
+      const startDate = dateFrom ? new Date(dateFrom) : new Date();
       const result = {
-        year: f.year ?? new Date().getFullYear(),
-        month: f.month ?? new Date().getMonth() + 1,
-        shifts: Array.isArray(f.shifts) ? f.shifts : [],
+        year:     f.year  ?? startDate.getFullYear(),
+        month:    f.month ?? (startDate.getMonth() + 1),
+        dateFrom,
+        dateTo,
+        shifts: parsedShifts,
         confidence: f.confidence ?? 80,
         notes: f.notes ?? "",
       };
@@ -212,7 +220,14 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
   };
 
   const handleSaveShifts = async () => {
-    const others = shifts.filter(s=>{const d=new Date(s.date);return !(d.getFullYear()===ocrResult.year&&d.getMonth()+1===ocrResult.month);});
+    // dateFrom/dateTo があればその期間を削除、なければ year/month で削除
+    const others = shifts.filter(s => {
+      if (ocrResult.dateFrom && ocrResult.dateTo) {
+        return s.date < ocrResult.dateFrom || s.date > ocrResult.dateTo;
+      }
+      const d = new Date(s.date);
+      return !(d.getFullYear() === ocrResult.year && d.getMonth() + 1 === ocrResult.month);
+    });
     const next = [...others, ...editShifts];
     setShifts(next);
     setViewMonth({year:ocrResult.year, month:ocrResult.month});
@@ -258,7 +273,12 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
     return (
       <div style={{maxWidth:480,margin:"0 auto",padding:"16px 16px 100px"}}>
         <div style={{fontSize:13,color:C.muted,marginBottom:4}}>📅 読み取り結果を確認してください</div>
-        <div style={{fontSize:11,color:C.sub,marginBottom:12}}>{ocrResult?.year}年{ocrResult?.month}月 / 信頼度 {ocrResult?.confidence}% / {editShifts.length}出勤日</div>
+        <div style={{fontSize:11,color:C.sub,marginBottom:12}}>
+          {ocrResult?.dateFrom && ocrResult?.dateTo
+            ? `${ocrResult.dateFrom} 〜 ${ocrResult.dateTo}`
+            : `${ocrResult?.year}年${ocrResult?.month}月`}
+          {` / 信頼度 ${ocrResult?.confidence}% / ${editShifts.length}出勤日`}
+        </div>
         {ocrResult?.notes&&<Card style={{padding:12,marginBottom:12}}><div style={{fontSize:11,color:C.muted}}>🤖 {ocrResult.notes}</div></Card>}
         <div style={{fontSize:12,color:C.muted,marginBottom:8}}>出勤日一覧（修正可）</div>
         {editShifts.map((s,idx)=>{
