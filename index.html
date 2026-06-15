@@ -29,20 +29,10 @@
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
-      // Service Worker: デプロイ後に自動で最新版を読み込む
+      // Service Worker: バックグラウンドで自動更新（強制リロードなし）
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then(reg => {
-            reg.addEventListener('updatefound', () => {
-              const newSW = reg.installing;
-              newSW.addEventListener('statechange', () => {
-                // 新しいSWがアクティブになったらリロード
-                if (newSW.state === 'activated' && navigator.serviceWorker.controller) {
-                  window.location.reload();
-                }
-              });
-            });
-          });
+          navigator.serviceWorker.register('/sw.js');
         });
       }
     </script>
