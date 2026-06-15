@@ -1,10 +1,10 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// SalesPointCard.jsx — 営業ポイント記録機能（指示書4 #13）
+// SalesPointCard.jsx — 乗車記録機能（指示書4 #13）
 // ホーム画面に設置。GPS自動入力・最新3件表示・全件一覧・統計分析
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-import { useState, useEffect, useCallback } from "react";
-import { C, fmt, loadS, saveS } from "../lib/constants";
-import { Card, Btn } from "../components/UI";
+import { useState, useEffect } from "react";
+import { C, fmt, loadS } from "../lib/constants";
+import { Card } from "../components/UI";
 
 const LS_KEY = "taxi_sales_records";
 
@@ -13,14 +13,28 @@ function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
-function nowTime() {
+function nowDatetime() {
   const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function nowDate() {
+function todayDate() {
   const d = new Date();
-  return d.toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", weekday: "short" });
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+function fmtDatetime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString("ja-JP", { month:"numeric", day:"numeric", weekday:"short", hour:"2-digit", minute:"2-digit" });
+}
+
+function fmtDate(dateStr) {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("ja-JP", { year:"numeric", month:"long", day:"numeric", weekday:"short" });
 }
 
 async function reverseGeocode(lat, lng) {
@@ -30,7 +44,6 @@ async function reverseGeocode(lat, lng) {
       { headers: { "Accept-Language": "ja" } }
     );
     const data = await res.json();
-    // 市区町村＋丁目レベルで返す
     const a = data.address || {};
     const parts = [a.city || a.town || a.village || a.county, a.suburb || a.neighbourhood, a.road].filter(Boolean);
     return parts.join(" ") || data.display_name?.split(",")[0] || `${lat.toFixed(4)},${lng.toFixed(4)}`;
@@ -59,107 +72,106 @@ function saveRecords(recs) {
   localStorage.setItem(LS_KEY, JSON.stringify(recs));
 }
 
+const PAYMENT_OPTIONS = ["現金", "カード", "アプリ", "QRコード", "その他"];
+const BOARDING_OPTIONS = ["流し", "付け待ち", "配車アプリ", "無線", "定額", "その他"];
+
 // ─── 記録モーダル ─────────────────────────────
 function RecordModal({ onClose, onSave, editTarget }) {
-  const [spotName, setSpotName]       = useState(editTarget?.spotName ?? "");
-  const [time, setTime]               = useState(editTarget?.time ?? nowTime());
-  const [pickup, setPickup]           = useState(editTarget?.pickupLocation ?? "");
-  const [dropoff, setDropoff]         = useState(editTarget?.dropoffLocation ?? "");
-  const [amount, setAmount]           = useState(editTarget?.amount ?? "");
-  const [lat, setLat]                 = useState(editTarget?.lat ?? null);
-  const [lng, setLng]                 = useState(editTarget?.lng ?? null);
-  const [gpsLoading, setGpsLoading]   = useState(false);
-  const [gpsLoadingFor, setGpsLoadingFor] = useState(""); // "pickup" | "dropoff"
-  const [gpsError, setGpsError]       = useState("");
-  const [autoFilled, setAutoFilled]   = useState(false);
+  const now = nowDatetime();
+  const today = todayDate();
 
-  // 登録済み営業ポイント（#19で管理）
+  const [workDate,       setWorkDate]       = useState(editTarget?.workDate ?? today);
+  const [boardingTime,   setBoardingTime]   = useState(editTarget?.boardingTime ?? now);
+  const [pickupLocation, setPickupLocation] = useState(editTarget?.pickupLocation ?? "");
+  const [dropoffTime,    setDropoffTime]    = useState(editTarget?.dropoffTime ?? now);
+  const [dropoffLocation,setDropoffLocation]= useState(editTarget?.dropoffLocation ?? "");
+  const [passengers,     setPassengers]     = useState(editTarget?.passengers ?? "");
+  const [fare,           setFare]           = useState(editTarget?.fare ?? editTarget?.amount ?? "");
+  const [highwayFee,     setHighwayFee]     = useState(editTarget?.highwayFee ?? "");
+  const [paymentMethod,  setPaymentMethod]  = useState(editTarget?.paymentMethod ?? "");
+  const [boardingMethod, setBoardingMethod] = useState(editTarget?.boardingMethod ?? "");
+  const [memo,           setMemo]           = useState(editTarget?.memo ?? "");
+  const [lat,            setLat]            = useState(editTarget?.lat ?? null);
+  const [lng,            setLng]            = useState(editTarget?.lng ?? null);
+  const [gpsLoading,     setGpsLoading]     = useState(false);
+  const [gpsFor,         setGpsFor]         = useState("");
+  const [gpsError,       setGpsError]       = useState("");
+
+  // 登録済み営業ポイント（ハンバーガーメニュー #19 で管理）
   const bizPoints = (() => {
     try { return JSON.parse(localStorage.getItem("taxi_biz_points") || "[]"); } catch { return []; }
   })();
 
-  // 初回: GPS自動取得（新規のみ）
+  // 新規登録時: GPS自動取得
   useEffect(() => {
-    if (!editTarget) autoFillGps();
+    if (!editTarget) fetchGps("pickup");
   }, []);
 
-  async function autoFillGps() {
+  async function fetchGps(target) {
     setGpsLoading(true);
-    setGpsError("");
-    try {
-      const pos = await getGps();
-      setLat(pos.lat);
-      setLng(pos.lng);
-      const addr = await reverseGeocode(pos.lat, pos.lng);
-      if (!spotName) setSpotName(addr);
-      if (!pickup)   setPickup(addr);
-      setAutoFilled(true);
-    } catch (e) {
-      setGpsError("GPS取得失敗。手動で入力してください。");
-    } finally {
-      setGpsLoading(false);
-    }
-  }
-
-  async function refetchGps(target) {
-    setGpsLoading(true);
-    setGpsLoadingFor(target);
+    setGpsFor(target);
     setGpsError("");
     try {
       const pos = await getGps();
       const addr = await reverseGeocode(pos.lat, pos.lng);
       if (target === "pickup") {
         setLat(pos.lat); setLng(pos.lng);
-        setPickup(addr);
+        if (!pickupLocation) setPickupLocation(addr);
       } else {
-        setDropoff(addr);
+        setDropoffLocation(addr);
       }
     } catch {
-      setGpsError("GPS取得失敗");
+      setGpsError("GPS取得失敗。手動で入力してください。");
     } finally {
       setGpsLoading(false);
-      setGpsLoadingFor("");
+      setGpsFor("");
     }
   }
 
   function handleSave() {
     const rec = {
-      id: editTarget?.id ?? genId(),
-      timestamp: editTarget?.timestamp ?? new Date().toISOString(),
-      spotName: spotName.trim() || "（未記入）",
-      time,
-      pickupLocation: pickup.trim(),
-      dropoffLocation: dropoff.trim(),
-      amount: parseInt(amount, 10) || 0,
+      id:              editTarget?.id ?? genId(),
+      timestamp:       editTarget?.timestamp ?? new Date().toISOString(),
+      workDate,
+      boardingTime,
+      pickupLocation:  pickupLocation.trim(),
+      dropoffTime,
+      dropoffLocation: dropoffLocation.trim(),
+      passengers:      parseInt(passengers, 10) || null,
+      fare:            parseInt(fare, 10) || 0,
+      amount:          parseInt(fare, 10) || 0, // 後方互換
+      highwayFee:      parseInt(highwayFee, 10) || null,
+      paymentMethod,
+      boardingMethod,
+      memo:            memo.trim(),
       lat,
       lng,
+      // 統計用に spotName も残す（乗車場所を代入）
+      spotName:        pickupLocation.trim() || "未記入",
     };
     onSave(rec);
     onClose();
   }
 
   const inputStyle = {
-    width: "100%", padding: "10px 12px", borderRadius: 10,
-    border: `1.5px solid ${C.border}`, backgroundColor: C.bg,
-    color: C.text, fontSize: 14, outline: "none", boxSizing: "border-box",
+    width:"100%", padding:"11px 12px", borderRadius:10,
+    border:`1.5px solid ${C.border}`, backgroundColor:C.bg,
+    color:C.text, fontSize:14, outline:"none", boxSizing:"border-box",
   };
-  const labelStyle = { fontSize: 11, color: C.muted, marginBottom: 4, display: "block" };
+  const labelStyle  = { fontSize:11, color:C.muted, marginBottom:4, display:"block" };
+  const sectionStyle = { marginBottom:14 };
 
   return (
-    <div
-      style={{ position:"fixed", inset:0, backgroundColor:"#00000099", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
-      onClick={onClose}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{ backgroundColor: C.surface, borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 480,
-                 maxHeight: "90vh", overflowY: "auto", padding: 22, paddingBottom: 36 }}
-      >
+    <div style={{ position:"fixed", inset:0, backgroundColor:"#00000099", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
+      onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()}
+        style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480,
+                 maxHeight:"92vh", overflowY:"auto", padding:22, paddingBottom:40 }}>
         {/* ハンドル */}
-        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 18px" }} />
+        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 18px" }}/>
 
-        <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 16 }}>
-          {editTarget ? "✏️ 営業ポイントを編集" : "📍 営業ポイントを記録"}
+        <div style={{ fontSize:16, fontWeight:800, marginBottom:16 }}>
+          {editTarget ? "✏️ 乗車記録を編集" : "🚕 乗車を記録"}
         </div>
 
         {/* GPS状態 */}
@@ -173,110 +185,130 @@ function RecordModal({ onClose, onSave, editTarget }) {
             ⚠️ {gpsError}
           </div>
         )}
-        {autoFilled && !gpsLoading && !gpsError && (
-          <div style={{ fontSize:12, color:C.green, marginBottom:12, padding:"8px 12px", backgroundColor:C.green+"18", borderRadius:9 }}>
-            ✅ GPS自動入力しました（修正可）
-          </div>
-        )}
 
-        {/* 時刻 */}
-        <div style={{ marginBottom:14 }}>
-          <label style={labelStyle}>時刻</label>
-          <input type="time" value={time} onChange={e => setTime(e.target.value)} style={inputStyle} />
+        {/* 乗務日 */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>乗務日</label>
+          <input type="date" value={workDate} onChange={e=>setWorkDate(e.target.value)} style={inputStyle} />
         </div>
 
-        {/* 営業ポイント名（GPS地名） */}
-        <div style={{ marginBottom:14 }}>
-          <label style={labelStyle}>営業ポイント名</label>
-          <input
-            type="text" value={spotName}
-            onChange={e => setSpotName(e.target.value)}
-            placeholder="例: 渋谷駅、新宿三丁目 ..."
-            style={inputStyle}
-          />
+        {/* 乗車日時 */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>乗車日時</label>
+          <input type="datetime-local" value={boardingTime} onChange={e=>setBoardingTime(e.target.value)} style={inputStyle} />
         </div>
 
         {/* 乗車場所 */}
-        <div style={{ marginBottom:14 }}>
+        <div style={sectionStyle}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
             <label style={{ ...labelStyle, marginBottom:0 }}>乗車場所</label>
-            <button
-              onClick={() => refetchGps("pickup")}
-              disabled={gpsLoading}
-              style={{ fontSize:10, color:C.accentLight, background:"none", border:"none", cursor:"pointer", padding:0 }}
-            >
-              {gpsLoadingFor === "pickup" ? "取得中..." : "📡 現在地"}
+            <button onClick={()=>fetchGps("pickup")} disabled={gpsLoading}
+              style={{ fontSize:10, color:C.accentLight, background:"none", border:"none", cursor:"pointer", padding:0 }}>
+              {gpsFor==="pickup" ? "取得中..." : "📡 現在地"}
             </button>
           </div>
-          {/* 登録済みポイントのクイック選択チップ */}
+          {/* 登録済みポイントのクイック選択 */}
           {bizPoints.length > 0 && (
             <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
-              {bizPoints.map((p, i) => (
-                <button
-                  key={i}
-                  onClick={() => { setPickup(typeof p === "string" ? p : p.name); }}
-                  style={{ fontSize:11, color:C.accentLight, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`,
-                           borderRadius:99, padding:"4px 10px", cursor:"pointer", whiteSpace:"nowrap" }}
-                >
-                  📍 {typeof p === "string" ? p : p.name}
+              {bizPoints.map((p,i) => (
+                <button key={i} onClick={()=>setPickupLocation(typeof p==="string"?p:p.name)}
+                  style={{ fontSize:11, color:C.accentLight, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:99, padding:"4px 10px", cursor:"pointer", whiteSpace:"nowrap" }}>
+                  📍 {typeof p==="string"?p:p.name}
                 </button>
               ))}
             </div>
           )}
-          <input
-            type="text" value={pickup}
-            onChange={e => setPickup(e.target.value)}
-            placeholder="例: 渋谷駅前"
-            style={inputStyle}
-          />
+          <input type="text" value={pickupLocation} onChange={e=>setPickupLocation(e.target.value)}
+            placeholder="場所を入力" style={inputStyle} />
+        </div>
+
+        {/* 降車日時 */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>降車日時</label>
+          <input type="datetime-local" value={dropoffTime} onChange={e=>setDropoffTime(e.target.value)} style={inputStyle} />
         </div>
 
         {/* 降車場所 */}
-        <div style={{ marginBottom:14 }}>
+        <div style={sectionStyle}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-            <label style={{ ...labelStyle, marginBottom:0 }}>降車場所（任意）</label>
-            <button
-              onClick={() => refetchGps("dropoff")}
-              disabled={gpsLoading}
-              style={{ fontSize:10, color:C.accentLight, background:"none", border:"none", cursor:"pointer", padding:0 }}
-            >
-              {gpsLoadingFor === "dropoff" ? "取得中..." : "📡 現在地"}
+            <label style={{ ...labelStyle, marginBottom:0 }}>降車場所</label>
+            <button onClick={()=>fetchGps("dropoff")} disabled={gpsLoading}
+              style={{ fontSize:10, color:C.accentLight, background:"none", border:"none", cursor:"pointer", padding:0 }}>
+              {gpsFor==="dropoff" ? "取得中..." : "📡 現在地"}
             </button>
           </div>
-          <input
-            type="text" value={dropoff}
-            onChange={e => setDropoff(e.target.value)}
-            placeholder="例: 六本木ヒルズ"
-            style={inputStyle}
-          />
+          <input type="text" value={dropoffLocation} onChange={e=>setDropoffLocation(e.target.value)}
+            placeholder="場所を入力" style={inputStyle} />
         </div>
 
-        {/* 金額 */}
+        {/* 乗車人数 */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>乗車人数</label>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <input type="number" inputMode="numeric" value={passengers} onChange={e=>setPassengers(e.target.value)}
+              placeholder="例) 1" style={{ ...inputStyle, flex:1 }} />
+            <span style={{ fontSize:14, color:C.muted, flexShrink:0 }}>人</span>
+          </div>
+        </div>
+
+        {/* 運賃 */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>運賃</label>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <input type="number" inputMode="numeric" value={fare} onChange={e=>setFare(e.target.value)}
+              placeholder="例) 500" style={{ ...inputStyle, flex:1 }} />
+            <span style={{ fontSize:14, color:C.muted, flexShrink:0 }}>円</span>
+          </div>
+        </div>
+
+        {/* 高速料金（任意） */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>高速料金 <span style={{ fontSize:10, backgroundColor:C.border, color:C.muted, borderRadius:4, padding:"1px 5px", marginLeft:4 }}>任意</span></label>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <input type="number" inputMode="numeric" value={highwayFee} onChange={e=>setHighwayFee(e.target.value)}
+              placeholder="例) 500" style={{ ...inputStyle, flex:1 }} />
+            <span style={{ fontSize:14, color:C.muted, flexShrink:0 }}>円</span>
+          </div>
+        </div>
+
+        {/* 支払い方法 */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>支払い方法</label>
+          <select value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)}
+            style={{ ...inputStyle, appearance:"none", backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`, backgroundRepeat:"no-repeat", backgroundPosition:"right 12px center" }}>
+            <option value="">選択してください</option>
+            {PAYMENT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+
+        {/* 乗車方法 */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>乗車方法</label>
+          <select value={boardingMethod} onChange={e=>setBoardingMethod(e.target.value)}
+            style={{ ...inputStyle, appearance:"none", backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`, backgroundRepeat:"no-repeat", backgroundPosition:"right 12px center" }}>
+            <option value="">選択してください</option>
+            {BOARDING_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+
+        {/* メモ（任意） */}
         <div style={{ marginBottom:22 }}>
-          <label style={labelStyle}>金額（円）</label>
-          <input
-            type="number" inputMode="numeric" value={amount}
-            onChange={e => setAmount(e.target.value)}
-            placeholder="1500"
-            style={inputStyle}
-          />
+          <label style={labelStyle}>メモ <span style={{ fontSize:10, backgroundColor:C.border, color:C.muted, borderRadius:4, padding:"1px 5px", marginLeft:4 }}>任意</span></label>
+          <textarea value={memo} onChange={e=>setMemo(e.target.value)}
+            placeholder="例) 空港定額料金適用"
+            rows={3}
+            style={{ ...inputStyle, resize:"vertical", lineHeight:1.6 }} />
         </div>
 
         {/* ボタン */}
         <div style={{ display:"flex", gap:10 }}>
-          <button
-            onClick={onClose}
-            style={{ flex:1, padding:"13px 0", borderRadius:11, fontSize:14, fontWeight:700,
-                     cursor:"pointer", border:`1.5px solid ${C.border}`, backgroundColor:"transparent", color:C.sub }}
-          >
+          <button onClick={onClose}
+            style={{ flex:1, padding:"13px 0", borderRadius:11, fontSize:14, fontWeight:700, cursor:"pointer", border:`1.5px solid ${C.border}`, backgroundColor:"transparent", color:C.sub }}>
             キャンセル
           </button>
-          <button
-            onClick={handleSave}
-            style={{ flex:2, padding:"13px 0", borderRadius:11, fontSize:14, fontWeight:700,
-                     cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff" }}
-          >
-            保存する
+          <button onClick={handleSave}
+            style={{ flex:2, padding:"13px 0", borderRadius:11, fontSize:14, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff" }}>
+            登録する
           </button>
         </div>
       </div>
@@ -287,40 +319,33 @@ function RecordModal({ onClose, onSave, editTarget }) {
 // ─── 詳細一覧モーダル ─────────────────────────
 function DetailModal({ records, onClose, onEdit, onDelete, onSendToReport }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
-
-  const sorted = [...records].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const sorted = [...records].sort((a,b) => b.timestamp.localeCompare(a.timestamp));
 
   // 統計
-  const totalAmount = records.reduce((s, r) => s + (r.amount || 0), 0);
-  const avgAmount = records.length ? Math.round(totalAmount / records.length) : 0;
+  const totalFare = records.reduce((s,r) => s + (r.fare || r.amount || 0), 0);
+  const avgFare   = records.length ? Math.round(totalFare / records.length) : 0;
 
-  // 営業ポイント別集計
+  // 乗車場所別集計
   const spotStats = {};
   records.forEach(r => {
-    const k = r.spotName || "不明";
-    if (!spotStats[k]) spotStats[k] = { count: 0, total: 0 };
+    const k = r.pickupLocation || r.spotName || "不明";
+    if (!spotStats[k]) spotStats[k] = { count:0, total:0 };
     spotStats[k].count++;
-    spotStats[k].total += r.amount || 0;
+    spotStats[k].total += r.fare || r.amount || 0;
   });
   const topSpots = Object.entries(spotStats)
-    .map(([name, s]) => ({ name, ...s, avg: Math.round(s.total / s.count) }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 5);
+    .map(([name,s]) => ({ name, ...s, avg:Math.round(s.total/s.count) }))
+    .sort((a,b) => b.total-a.total).slice(0,5);
 
   return (
-    <div
-      style={{ position:"fixed", inset:0, backgroundColor:"#00000099", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
-      onClick={onClose}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{ backgroundColor: C.surface, borderRadius: "20px 20px 0 0", width:"100%", maxWidth:480,
-                 maxHeight:"92vh", overflowY:"auto", padding:22, paddingBottom:40 }}
-      >
-        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 18px" }} />
+    <div style={{ position:"fixed", inset:0, backgroundColor:"#00000099", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
+      onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()}
+        style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, maxHeight:"92vh", overflowY:"auto", padding:22, paddingBottom:40 }}>
+        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 18px" }}/>
 
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-          <div style={{ fontSize:16, fontWeight:800 }}>📍 営業ポイント一覧</div>
+          <div style={{ fontSize:16, fontWeight:800 }}>🚕 乗車記録一覧</div>
           <div style={{ fontSize:12, color:C.muted }}>{records.length}件</div>
         </div>
 
@@ -330,12 +355,12 @@ function DetailModal({ records, onClose, onEdit, onDelete, onSendToReport }) {
             <div style={{ fontSize:12, fontWeight:700, color:C.sub, marginBottom:10 }}>📊 統計</div>
             <div style={{ display:"flex", gap:10, marginBottom:12 }}>
               <div style={{ flex:1, textAlign:"center" }}>
-                <div style={{ fontSize:10, color:C.muted }}>合計</div>
-                <div style={{ fontSize:18, fontWeight:900, color:C.gold }}>{fmt(totalAmount)}<span style={{ fontSize:11 }}>円</span></div>
+                <div style={{ fontSize:10, color:C.muted }}>累計運賃</div>
+                <div style={{ fontSize:18, fontWeight:900, color:C.gold }}>{fmt(totalFare)}<span style={{ fontSize:11 }}>円</span></div>
               </div>
               <div style={{ flex:1, textAlign:"center" }}>
-                <div style={{ fontSize:10, color:C.muted }}>平均</div>
-                <div style={{ fontSize:18, fontWeight:900, color:C.text }}>{fmt(avgAmount)}<span style={{ fontSize:11 }}>円</span></div>
+                <div style={{ fontSize:10, color:C.muted }}>平均運賃</div>
+                <div style={{ fontSize:18, fontWeight:900, color:C.text }}>{fmt(avgFare)}<span style={{ fontSize:11 }}>円</span></div>
               </div>
               <div style={{ flex:1, textAlign:"center" }}>
                 <div style={{ fontSize:10, color:C.muted }}>記録数</div>
@@ -344,8 +369,8 @@ function DetailModal({ records, onClose, onEdit, onDelete, onSendToReport }) {
             </div>
             {topSpots.length > 0 && (
               <>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:8 }}>📍 稼げたポイント TOP{topSpots.length}</div>
-                {topSpots.map((s, i) => (
+                <div style={{ fontSize:11, color:C.muted, marginBottom:8 }}>📍 稼げた乗車場所 TOP{topSpots.length}</div>
+                {topSpots.map((s,i) => (
                   <div key={s.name} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
                     <div style={{ fontSize:12, color:C.accentLight, fontWeight:800, width:18 }}>#{i+1}</div>
                     <div style={{ flex:1, fontSize:12, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.name}</div>
@@ -360,81 +385,60 @@ function DetailModal({ records, onClose, onEdit, onDelete, onSendToReport }) {
 
         {/* 記録一覧 */}
         {sorted.length === 0 ? (
-          <div style={{ textAlign:"center", padding:32, color:C.muted, fontSize:14 }}>
-            記録がありません
-          </div>
-        ) : (
-          sorted.map(r => (
-            <div key={r.id} style={{ backgroundColor:C.bg, borderRadius:12, padding:"12px 14px", marginBottom:10 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
-                <div>
-                  <div style={{ fontSize:14, fontWeight:800, color:C.text }}>{r.spotName}</div>
-                  <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>
-                    {new Date(r.timestamp).toLocaleDateString("ja-JP", { month:"numeric", day:"numeric", weekday:"short" })} {r.time}
-                  </div>
-                </div>
-                <div style={{ fontSize:18, fontWeight:900, color:C.gold }}>
-                  {r.amount ? `${fmt(r.amount)}円` : "—"}
+          <div style={{ textAlign:"center", padding:32, color:C.muted }}>記録がありません</div>
+        ) : sorted.map(r => (
+          <div key={r.id} style={{ backgroundColor:C.bg, borderRadius:12, padding:"12px 14px", marginBottom:10 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+              <div>
+                <div style={{ fontSize:13, fontWeight:800, color:C.text }}>{r.pickupLocation || r.spotName || "—"}</div>
+                <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>
+                  {r.workDate ? fmtDate(r.workDate) : new Date(r.timestamp).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric",weekday:"short"})}
+                  {r.boardingTime ? " " + new Date(r.boardingTime).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}) : ""}
                 </div>
               </div>
-              {(r.pickupLocation || r.dropoffLocation) && (
-                <div style={{ fontSize:11, color:C.sub, marginBottom:8 }}>
-                  {r.pickupLocation && <div>🚕 乗: {r.pickupLocation}</div>}
-                  {r.dropoffLocation && <div>🏁 降: {r.dropoffLocation}</div>}
-                </div>
-              )}
-              {r.lat && r.lng && (
-                <a
-                  href={`https://maps.google.com/?q=${r.lat},${r.lng}`}
-                  target="_blank" rel="noopener noreferrer"
-                  style={{ fontSize:10, color:C.accentLight, textDecoration:"none" }}
-                >
-                  🗺 Googleマップで見る
-                </a>
-              )}
-              <div style={{ display:"flex", gap:8, marginTop:8 }}>
-                {onSendToReport && (
-                  <button
-                    onClick={() => onSendToReport(r)}
-                    style={{ fontSize:11, color:C.accentLight, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`,
-                             borderRadius:7, padding:"4px 10px", cursor:"pointer" }}
-                  >
-                    📋 日報に送る
-                  </button>
-                )}
-                <button
-                  onClick={() => onEdit(r)}
-                  style={{ fontSize:11, color:C.sub, backgroundColor:"transparent", border:`1px solid ${C.border}`,
-                           borderRadius:7, padding:"4px 10px", cursor:"pointer" }}
-                >
-                  編集
-                </button>
-                <button
-                  onClick={() => setConfirmDelete(r.id)}
-                  style={{ fontSize:11, color:"#f87171", backgroundColor:"transparent", border:"1px solid #f8717144",
-                           borderRadius:7, padding:"4px 10px", cursor:"pointer", marginLeft:"auto" }}
-                >
-                  削除
-                </button>
+              <div style={{ fontSize:18, fontWeight:900, color:C.gold }}>
+                {(r.fare || r.amount) ? `${fmt(r.fare || r.amount)}円` : "—"}
               </div>
-
-              {/* 削除確認 */}
-              {confirmDelete === r.id && (
-                <div style={{ marginTop:8, padding:"10px 12px", backgroundColor:"#f8717114", borderRadius:9, display:"flex", gap:8, alignItems:"center" }}>
-                  <div style={{ flex:1, fontSize:12, color:"#f87171" }}>本当に削除しますか？</div>
-                  <button onClick={() => { onDelete(r.id); setConfirmDelete(null); }}
-                    style={{ fontSize:11, color:"#fff", backgroundColor:"#f87171", border:"none", borderRadius:7, padding:"4px 10px", cursor:"pointer" }}>
-                    削除
-                  </button>
-                  <button onClick={() => setConfirmDelete(null)}
-                    style={{ fontSize:11, color:C.sub, backgroundColor:"transparent", border:`1px solid ${C.border}`, borderRadius:7, padding:"4px 10px", cursor:"pointer" }}>
-                    ×
-                  </button>
-                </div>
-              )}
             </div>
-          ))
-        )}
+            {r.dropoffLocation && <div style={{ fontSize:11, color:C.sub, marginBottom:4 }}>🏁 → {r.dropoffLocation}</div>}
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap", fontSize:11, color:C.muted, marginBottom:6 }}>
+              {r.passengers && <span>👤 {r.passengers}人</span>}
+              {r.highwayFee > 0 && <span>🛣 高速 {fmt(r.highwayFee)}円</span>}
+              {r.paymentMethod && <span>💳 {r.paymentMethod}</span>}
+              {r.boardingMethod && <span>🚕 {r.boardingMethod}</span>}
+            </div>
+            {r.memo && <div style={{ fontSize:11, color:C.muted, backgroundColor:C.surface, borderRadius:7, padding:"5px 8px", marginBottom:6 }}>📝 {r.memo}</div>}
+            {r.lat && r.lng && (
+              <a href={`https://maps.google.com/?q=${r.lat},${r.lng}`} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize:10, color:C.accentLight, textDecoration:"none" }}>🗺 マップで見る</a>
+            )}
+            <div style={{ display:"flex", gap:8, marginTop:8 }}>
+              {onSendToReport && (
+                <button onClick={()=>onSendToReport(r)}
+                  style={{ fontSize:11, color:C.accentLight, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:7, padding:"4px 10px", cursor:"pointer" }}>
+                  📋 日報に送る
+                </button>
+              )}
+              <button onClick={()=>onEdit(r)}
+                style={{ fontSize:11, color:C.sub, backgroundColor:"transparent", border:`1px solid ${C.border}`, borderRadius:7, padding:"4px 10px", cursor:"pointer" }}>
+                編集
+              </button>
+              <button onClick={()=>setConfirmDelete(r.id)}
+                style={{ fontSize:11, color:"#f87171", backgroundColor:"transparent", border:"1px solid #f8717144", borderRadius:7, padding:"4px 10px", cursor:"pointer", marginLeft:"auto" }}>
+                削除
+              </button>
+            </div>
+            {confirmDelete === r.id && (
+              <div style={{ marginTop:8, padding:"10px 12px", backgroundColor:"#f8717114", borderRadius:9, display:"flex", gap:8, alignItems:"center" }}>
+                <div style={{ flex:1, fontSize:12, color:"#f87171" }}>本当に削除しますか？</div>
+                <button onClick={()=>{ onDelete(r.id); setConfirmDelete(null); }}
+                  style={{ fontSize:11, color:"#fff", backgroundColor:"#f87171", border:"none", borderRadius:7, padding:"4px 10px", cursor:"pointer" }}>削除</button>
+                <button onClick={()=>setConfirmDelete(null)}
+                  style={{ fontSize:11, color:C.sub, backgroundColor:"transparent", border:`1px solid ${C.border}`, borderRadius:7, padding:"4px 10px", cursor:"pointer" }}>×</button>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -442,63 +446,47 @@ function DetailModal({ records, onClose, onEdit, onDelete, onSendToReport }) {
 
 // ─── メインコンポーネント ─────────────────────
 export function SalesPointCard() {
-  const [records, setRecords]       = useState(() => loadRecords());
+  const [records,    setRecords]    = useState(() => loadRecords());
   const [showRecord, setShowRecord] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
 
-  // recordsが変わったらlocalStorageに保存
   useEffect(() => { saveRecords(records); }, [records]);
 
   function handleSave(rec) {
     setRecords(prev => {
       const exists = prev.find(r => r.id === rec.id);
-      if (exists) return prev.map(r => r.id === rec.id ? rec : r);
-      return [rec, ...prev];
+      return exists ? prev.map(r => r.id === rec.id ? rec : r) : [rec, ...prev];
     });
   }
 
-  function handleDelete(id) {
-    setRecords(prev => prev.filter(r => r.id !== id));
-  }
+  function handleDelete(id) { setRecords(prev => prev.filter(r => r.id !== id)); }
 
   function handleEdit(rec) {
-    setEditTarget(rec);
-    setShowDetail(false);
-    setShowRecord(true);
+    setEditTarget(rec); setShowDetail(false); setShowRecord(true);
   }
 
   function handleSendToReport(rec) {
-    // localStorage経由で日報作成画面に引き渡す（個タク向け）
     const draft = {
-      date: new Date(rec.timestamp).toISOString().slice(0, 10),
-      work_area: rec.spotName || "",
+      date:         rec.workDate || new Date(rec.timestamp).toISOString().slice(0,10),
+      work_area:    rec.pickupLocation || rec.spotName || "",
       trouble_note: rec.dropoffLocation ? `乗:${rec.pickupLocation} → 降:${rec.dropoffLocation}` : rec.pickupLocation,
     };
     localStorage.setItem("taxi_report_draft", JSON.stringify(draft));
-    alert(`「${rec.spotName}」の情報を日報作成画面に反映しました。\n日報ページから確認してください。`);
+    alert(`日報作成画面に反映しました。日報ページから確認してください。`);
   }
 
-  // 最新3件（新しい順）
-  const latest3 = [...records].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 3);
+  const latest3 = [...records].sort((a,b) => b.timestamp.localeCompare(a.timestamp)).slice(0,3);
 
   return (
     <>
-      <Card style={{ marginBottom: 14 }}>
+      <Card style={{ marginBottom:14 }}>
         {/* ヘッダー */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-            <span style={{ fontSize:18 }}>📍</span>
-            <div>
-              <div style={{ fontSize:14, fontWeight:800, color:C.text }}>営業ポイント</div>
-              <div style={{ fontSize:10, color:C.muted }}>稼げた場所を記録</div>
-            </div>
-          </div>
+          <div style={{ fontSize:14, fontWeight:800, color:C.text }}>🚕 乗車記録</div>
           <button
-            onClick={() => { setEditTarget(null); setShowRecord(true); }}
-            style={{ backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:10,
-                     padding:"8px 16px", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}
-          >
+            onClick={()=>{ setEditTarget(null); setShowRecord(true); }}
+            style={{ backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:10, padding:"8px 16px", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
             ＋ 記録する
           </button>
         </div>
@@ -506,64 +494,42 @@ export function SalesPointCard() {
         {/* 最新3件 */}
         {latest3.length === 0 ? (
           <div style={{ textAlign:"center", padding:"18px 0", color:C.muted, fontSize:13 }}>
-            <div style={{ fontSize:28, marginBottom:6 }}>📍</div>
+            <div style={{ fontSize:28, marginBottom:6 }}>🚕</div>
             <div>まだ記録がありません</div>
-            <div style={{ fontSize:11, marginTop:4 }}>「記録する」から営業ポイントを追加しましょう</div>
           </div>
         ) : (
           <>
             {latest3.map(r => (
-              <div
-                key={r.id}
-                style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 0",
-                         borderBottom:`1px solid ${C.border}` }}
-              >
+              <div key={r.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 0", borderBottom:`1px solid ${C.border}` }}>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:C.text,
-                                overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                    {r.spotName}
+                  <div style={{ fontSize:13, fontWeight:700, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    {r.pickupLocation || r.spotName || "—"}
+                    {r.dropoffLocation ? <span style={{ color:C.muted, fontWeight:400 }}> → {r.dropoffLocation}</span> : ""}
                   </div>
                   <div style={{ fontSize:10, color:C.muted, marginTop:1 }}>
-                    {new Date(r.timestamp).toLocaleDateString("ja-JP", { month:"numeric", day:"numeric", weekday:"short" })} {r.time}
-                    {r.pickupLocation && <span style={{ marginLeft:6 }}>🚕 {r.pickupLocation}</span>}
+                    {r.workDate ? fmtDate(r.workDate) : new Date(r.timestamp).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric",weekday:"short"})}
+                    {r.boardingMethod && <span style={{ marginLeft:6 }}>· {r.boardingMethod}</span>}
+                    {r.paymentMethod  && <span style={{ marginLeft:4 }}>· {r.paymentMethod}</span>}
                   </div>
                 </div>
                 <div style={{ fontSize:15, fontWeight:900, color:C.gold, flexShrink:0 }}>
-                  {r.amount ? `${fmt(r.amount)}円` : "—"}
+                  {(r.fare||r.amount) ? `${fmt(r.fare||r.amount)}円` : "—"}
                 </div>
               </div>
             ))}
-
-            <button
-              onClick={() => setShowDetail(true)}
-              style={{ width:"100%", marginTop:10, padding:"9px 0", borderRadius:9, fontSize:12,
-                       fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`,
-                       backgroundColor:"transparent", color:C.sub }}
-            >
-              詳細・全件一覧 ({records.length}件) →
+            <button onClick={()=>setShowDetail(true)}
+              style={{ width:"100%", marginTop:10, padding:"9px 0", borderRadius:9, fontSize:12, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.sub }}>
+              一覧・詳細 ({records.length}件) →
             </button>
           </>
         )}
       </Card>
 
-      {/* 記録モーダル */}
       {showRecord && (
-        <RecordModal
-          editTarget={editTarget}
-          onClose={() => { setShowRecord(false); setEditTarget(null); }}
-          onSave={handleSave}
-        />
+        <RecordModal editTarget={editTarget} onClose={()=>{ setShowRecord(false); setEditTarget(null); }} onSave={handleSave} />
       )}
-
-      {/* 詳細モーダル */}
       {showDetail && (
-        <DetailModal
-          records={records}
-          onClose={() => setShowDetail(false)}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onSendToReport={handleSendToReport}
-        />
+        <DetailModal records={records} onClose={()=>setShowDetail(false)} onEdit={handleEdit} onDelete={handleDelete} onSendToReport={handleSendToReport} />
       )}
     </>
   );
