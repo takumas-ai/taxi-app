@@ -841,7 +841,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   // ━━━ かんたんモード ━━━━━━━━━━━━━━━━━━━━━━━━━
   if (isSimple) {
     return (
-      <div style={{ maxWidth:600, margin:"0 auto", padding:"16px 16px 100px", zoom: isSimpleLarge ? 1.15 : 1 }}>
+      <div style={{ maxWidth:600, margin:"0 auto", padding: isSimpleLarge ? "16px 10px 100px" : "16px 16px 100px", zoom: isSimpleLarge ? 1.32 : 1 }}>
         {/* ① レベル欄 */}
         <XpCard user={user} />
 

@@ -515,7 +515,7 @@ export default function App() {
   };
 
   return (
-    <div key={themeVer} style={{ minHeight:"100vh", backgroundColor:C.bg, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text }}>
+    <div key={themeVer} style={{ minHeight:"100vh", backgroundColor:C.bg, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text, overflowX:"hidden" }}>
       <Header user={user} tab={tab} setTab={handleSetTab} appMode={appMode} onModeChange={setAppMode} alertsSeen={alertsSeen} onNavigateSettings={handleNavigateSettings} onManageArea={()=>setShowAreaModal(true)} />
       {renderScreen()}
       <ReportModal key={selected ? `${selected.id}-${selectedForEdit}` : "none"} report={selected} onClose={()=>{setSelected(null);setSelectedForEdit(false);}} onUpdate={handleUpdateReport} startInEdit={selectedForEdit}/>
