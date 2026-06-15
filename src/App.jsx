@@ -458,6 +458,15 @@ export default function App() {
     setReports(INITIAL_REPORTS);
   };
 
+  const handleDeleteAccount = async () => {
+    // Supabaseからサインアウト（アカウント本体の削除は管理者が30日以内に実施）
+    if (SUPABASE_READY) await signOut();
+    // すべてのローカルデータを消去（同意・オンボーディングフラグも含む）
+    localStorage.clear();
+    setUser(null);
+    setReports(INITIAL_REPORTS);
+  };
+
   const renderScreen = () => {
     switch (tab) {
       case "dashboard": return <Dashboard reports={reports} user={user} onOpenReport={setSelected} onManageArea={()=>setShowAreaModal(true)} rankPrefs={rankPrefs} appMode={appMode}/>;
@@ -466,9 +475,9 @@ export default function App() {
       case "info":      return <InfoCenter notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} userAreas={userAreas} onManageArea={()=>setShowAreaModal(true)}/>;
       case "guide":     return <GuideScreen userAreas={userAreas}/>;
       case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")}/>;
-      case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined}/>;
+      case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined}/>;
       case "community": return <CommunityScreen />;
-      case "feedback":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection="feedback" onBack={()=>handleSetTab("dashboard")}/>;
+      case "feedback":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection="feedback" onBack={()=>handleSetTab("dashboard")}/>;
       default:          return null;
     }
   };

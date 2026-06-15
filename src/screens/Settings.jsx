@@ -12,7 +12,7 @@ const SUPABASE_READY = !!(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-export default function Settings({ user, onUpdate, onLogout, onManageArea, notifSettings, onUpdateNotif, appMode="standard", onModeChange, themeMode="auto", onThemeChange, reports=[], initialSection="", onBack }) {
+export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, onManageArea, notifSettings, onUpdateNotif, appMode="standard", onModeChange, themeMode="auto", onThemeChange, reports=[], initialSection="", onBack }) {
   const [subTab, setSubTab] = useState(initialSection);
   const [form, setForm] = useState({ name:user.name||"", company:user.company||"", workType:user.workType||"隔日勤務", target:user.target||"380000" });
   const [saved, setSaved] = useState(false);
@@ -79,6 +79,48 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
           </div>
           <Btn onClick={save}>{saved?"✓ 保存しました":"設定を保存"}</Btn>
           <Btn onClick={onLogout} variant="danger" style={{ marginTop:10 }}>ログアウト</Btn>
+          {/* アカウント削除 */}
+          {(() => {
+            const [deleteStep, setDeleteStep] = useState(0); // 0:非表示 1:確認 2:最終確認
+            const [deleting, setDeleting] = useState(false);
+            const handleDelete = async () => {
+              setDeleting(true);
+              if (onDeleteAccount) await onDeleteAccount();
+            };
+            return (
+              <div style={{ marginTop:24 }}>
+                {deleteStep === 0 && (
+                  <div onClick={()=>setDeleteStep(1)} style={{ textAlign:"center", fontSize:12, color:C.muted, textDecoration:"underline", cursor:"pointer", padding:"8px 0" }}>
+                    アカウントを削除する
+                  </div>
+                )}
+                {deleteStep === 1 && (
+                  <div style={{ backgroundColor:C.redGlow, border:`1px solid ${C.red}44`, borderRadius:12, padding:16 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:C.red, marginBottom:8 }}>⚠️ アカウント削除</div>
+                    <div style={{ fontSize:12, color:C.sub, lineHeight:1.7, marginBottom:14 }}>
+                      日報データ・設定・XP・バッジなど、すべてのデータが削除されます。この操作は取り消せません。
+                    </div>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <Btn onClick={()=>setDeleteStep(0)} style={{ flex:1, fontSize:12 }}>キャンセル</Btn>
+                      <Btn onClick={()=>setDeleteStep(2)} variant="danger" style={{ flex:1, fontSize:12 }}>削除に進む</Btn>
+                    </div>
+                  </div>
+                )}
+                {deleteStep === 2 && (
+                  <div style={{ backgroundColor:C.redGlow, border:`2px solid ${C.red}`, borderRadius:12, padding:16 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:C.red, marginBottom:8 }}>本当に削除しますか？</div>
+                    <div style={{ fontSize:12, color:C.sub, lineHeight:1.7, marginBottom:14 }}>
+                      アカウントとすべてのデータを削除します。30日以内にサーバーからも完全削除されます。
+                    </div>
+                    <Btn onClick={handleDelete} variant="danger" disabled={deleting} style={{ width:"100%", fontSize:13 }}>
+                      {deleting ? "削除中..." : "削除する（取り消し不可）"}
+                    </Btn>
+                    <div onClick={()=>setDeleteStep(0)} style={{ textAlign:"center", fontSize:12, color:C.muted, marginTop:10, cursor:"pointer" }}>戻る</div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </Card>
       )}
 
@@ -906,8 +948,8 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
             { q:"レベルが上がると何がある？", a:"現在はドライバー称号（見習い→ベテラン→エースなど）が変わります。今後、上位ランクへの特典を追加予定です。" },
           ]},
           { category:"アカウント・データ", icon:"🔐", items:[
-            { q:"データはどこに保存されているの？", a:"Supabaseのクラウドに安全に保存されています。デモモードの場合はお使いの端末のローカルに保存されます。" },
-            { q:"アカウントを削除したい", a:"現在はアプリ内からの削除機能は準備中です。削除を希望する場合はお問い合わせください。" },
+            { q:"データはどこに保存されているの？", a:"Supabaseのクラウドに安全に暗号化して保存されています。アカウント登録することでデータはどの端末からもアクセスできます。" },
+            { q:"アカウントを削除したい", a:"設定 › プロフィール の一番下から削除申請ができます。申請後、30日以内にすべてのデータをサーバーから完全削除します。" },
             { q:"無料プランでできることは？", a:"月8件まで日報を登録できます。基本的な売上グラフ・分析・乗り場ガイドは全て無料で使えます。" },
           ]},
         ];
@@ -1025,25 +1067,29 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
       {subTab==="privacy" && (
         <div style={{ fontSize:13, color:C.sub, lineHeight:1.8 }}>
           <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:16 }}>プライバシーポリシー</div>
-          <div style={{ fontSize:11, color:C.muted, marginBottom:20 }}>最終更新日：2026年6月</div>
+          <div style={{ fontSize:11, color:C.muted, marginBottom:20 }}>2026年6月1日 制定　2026年6月15日 改定</div>
 
           {[
-            { title:"1. 収集する情報", body:"本アプリでは以下の情報を収集します。\n・メールアドレス（認証用）\n・お名前・勤務形態（任意入力）\n・日報データ（売上・走行距離・乗車回数等）\n・アプリの利用ログ（エラー情報・操作履歴）" },
-            { title:"2. 情報の利用目的", body:"収集した情報は以下の目的で利用します。\n・サービスの提供・改善\n・翌日発表・ランキング等の集計（匿名化処理後）\n・不正利用の検知・防止\n・ユーザーサポート" },
-            { title:"3. 日報画像の取り扱い", body:"アップロードされた日報画像はAI読み取り処理後に数値データとして保存されます。画像そのものは保存しません。日報に含まれる個人情報（氏名・所属会社等）はシステムログには記録しません。" },
-            { title:"4. 統計データの利用", body:"個人を特定できない形に匿名化・集計したデータを、エリア別売上統計・需要スコアの算出等に利用することがあります。個人が特定できる形でのデータ販売は行いません。" },
-            { title:"5. 第三者への提供", body:"法令に基づく場合を除き、ユーザーの個人情報を第三者に提供することはありません。本アプリはSupabase（データベース）およびAnthropic（AI処理）のサービスを利用しており、各社のプライバシーポリシーも適用されます。" },
-            { title:"6. データの保管・削除", body:"ユーザーがアカウントを削除した場合、個人情報および日報データは30日以内に削除されます。匿名化済みの統計データは引き続き保持されることがあります。" },
-            { title:"7. セキュリティ", body:"本アプリはデータの暗号化・アクセス制御等の適切なセキュリティ対策を講じています。ただし、インターネット上での完全なセキュリティを保証するものではありません。" },
-            { title:"8. お問い合わせ", body:"プライバシーに関するお問い合わせは、アプリ内のサポート窓口までご連絡ください。" },
+            { title:"収集する情報", body:"本アプリでは以下の情報を取得します。\n・氏名またはニックネーム\n・メールアドレス\n・日報データ（売上・走行距離・乗車回数・勤務時間等）\n・アップロードされた給与明細・日報の画像（OCR処理後に画像は保存しません）\n・勤務形態・所属エリア・月間目標売上（任意入力）\n・端末の種類・OSバージョン等の端末情報\n・Cookie等により生成された識別情報\n・アプリの操作履歴・利用ログ" },
+            { title:"情報の利用目的", body:"取得した情報は以下の目的で利用します。\n・本サービスの提供・本人確認・認証\n・日報データの記録・分析・表示\n・ランキング・エリア統計の集計（匿名化処理後）\n・AIによる走行アドバイスの生成\n・サービスの改善・新機能の開発\n・不正利用の検知・防止\n・お問い合わせへの対応\n・利用規約変更等の重要事項のご通知" },
+            { title:"外部サービスの利用", body:"本アプリは以下の外部サービスを使用しており、各社のプライバシーポリシーが適用されます。\n・Supabase（データベース・認証）：https://supabase.com/privacy\n・Anthropic（AI処理・Claude API）：https://www.anthropic.com/privacy\nこれらのサービスに送信されるデータは各社のポリシーに基づき取り扱われます。" },
+            { title:"第三者への提供", body:"取得した個人情報は、以下の場合を除き第三者に提供しません。\n・ユーザー本人の同意がある場合\n・法令に基づく開示が必要な場合\n・サービス運営に必要な業務委託先への提供（守秘義務契約のもと）\n・事業譲渡等が発生した場合\n個人が特定できる形でのデータ販売は一切行いません。" },
+            { title:"統計データの利用", body:"個人を特定できない形に匿名化・集計したデータを、エリア別売上統計・需要スコアの算出・サービス改善に利用することがあります。" },
+            { title:"安全管理措置", body:"取得した情報の漏えい・滅失・毀損を防止するため、以下の措置を講じています。\n・データの暗号化通信（HTTPS/TLS）\n・Supabaseによるアクセス制御（Row Level Security）\n・パスワードのハッシュ化\nただし、インターネット上での完全なセキュリティを保証するものではありません。" },
+            { title:"データの保管・削除", body:"アカウントを削除した場合、個人情報および日報データは30日以内にサーバーから削除されます。匿名化済みの統計データは引き続き保持されることがあります。\n\nデータの開示・訂正・削除をご希望の場合は下記お問い合わせ先までご連絡ください。ご本人確認のうえ、法令の定めに従い対応します。" },
+            { title:"プライバシーポリシーの変更", body:"本ポリシーは必要に応じて変更されることがあります。重要な変更がある場合はアプリ内通知またはメールでお知らせします。" },
+            { title:"お問い合わせ", body:"個人情報の取り扱いに関するお問い合わせ・開示請求・削除依頼は以下までご連絡ください。\nメール：support@takuro-app.jp\nアプリ内の「意見箱」からもお問い合わせいただけます。" },
           ].map(({title, body}) => (
             <div key={title} style={{ marginBottom:18 }}>
-              <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>{title}</div>
+              <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>■ {title}</div>
               {body.split("\n").map((line, i) => (
-                <div key={i} style={{ fontSize:12, color:C.sub }}>{line}</div>
+                <div key={i} style={{ fontSize:12, color:C.sub }}>{line || <br/>}</div>
               ))}
             </div>
           ))}
+          <div style={{ marginTop:16, padding:12, backgroundColor:C.card, borderRadius:10, fontSize:11, color:C.muted }}>
+            運営者：タクロー開発チーム
+          </div>
         </div>
       )}
         </>
