@@ -189,7 +189,6 @@ function BusinessPointModal({ onClose }) {
           <input
             value={input}
             onChange={e=>setInput(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&handleAdd()}
             placeholder="場所名（例：銀座駅付近、新橋駅前）"
             style={{ flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:14, outline:"none" }}
           />
