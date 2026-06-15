@@ -35,6 +35,7 @@ import OnboardingScreen   from "./screens/Onboarding";
 import CommunityScreen    from "./screens/Community";
 import AdminScreen        from "./screens/Admin";
 import RankingScreen, { hasUnseenRanking } from "./screens/Ranking";
+import StatsScreen      from "./screens/Stats";
 
 // Components
 import { BottomNav, Header, TakuroFAB } from "./components/Navigation";
@@ -324,7 +325,7 @@ export default function App() {
   const [tab, setTab]           = useState(() => {
     const saved = loadS("taxi_last_tab", "dashboard");
     // adminタブはリロード後に復元しない（セキュリティ）
-    return ["dashboard","list","upload","info","guide","shift","settings","community","ranking"].includes(saved) ? saved : "dashboard";
+    return ["dashboard","list","upload","info","guide","shift","settings","community","ranking","stats"].includes(saved) ? saved : "dashboard";
   });
   const [hasNewRanking, setHasNewRanking] = useState(() => hasUnseenRanking());
   const [alertsSeen, setAlertsSeen]   = useState(() => loadS("taxi_alerts_seen", false));
@@ -573,6 +574,7 @@ export default function App() {
       case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined} onOpenAdmin={()=>handleSetTab("admin")}/>;
       case "community": return <CommunityScreen />;
       case "ranking":   return <RankingScreen user={user} rankPrefs={rankPrefs} />;
+      case "stats":     return <StatsScreen reports={reports} />;
       case "admin":     return <AdminScreen user={{ ...user, email: user.email || "" }} onExit={() => handleSetTab("dashboard")}/>;
       case "feedback":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection="feedback" onBack={()=>handleSetTab("dashboard")}/>;
       default:          return null;

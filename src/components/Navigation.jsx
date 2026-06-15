@@ -241,6 +241,7 @@ function BusinessPointModal({ onClose }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSettings, onManageArea, hasNewRanking }) {
   const items = [
+    { icon:"📈", label:"統計",             action:()=>{ setTab("stats"); onClose(); } },
     { icon:"🏆", label:"ランキング",       action:()=>{ setTab("ranking"); onClose(); }, badge: hasNewRanking },
     { icon:"🎁", label:"友達を招待",       action:()=>{ onNavigateSettings("referral"); onClose(); } },
     { icon:"🗺️", label:"エリア設定",       action:()=>{ onManageArea?.(); onClose(); } },
