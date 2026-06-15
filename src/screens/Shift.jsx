@@ -120,6 +120,7 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
   const [dayReport, setDayReport]   = useState(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
+  const ocrRunningRef = useRef(false); // 二重実行防止
 
   // Supabaseからシフトを読み込む
   useEffect(() => {
@@ -159,6 +160,8 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (ocrRunningRef.current) return; // 二重実行防止
+    ocrRunningRef.current = true;
     e.target.value = "";
     setOcrError("");
     setOcrStep("reading");
@@ -225,6 +228,8 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
       console.error("[ShiftOCR]", err);
       setOcrError(err.message || "読み取りに失敗しました");
       setOcrStep("ocr_error");
+    } finally {
+      ocrRunningRef.current = false; // 二重実行防止リセット
     }
   };
 
