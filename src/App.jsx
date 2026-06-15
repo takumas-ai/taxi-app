@@ -3,7 +3,7 @@
 // React Native 移行時: この App.jsx を App.js にリネームし
 //   <div> → <View>、inline style → StyleSheet に置換する
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { C, loadS, saveS, applyTheme, computeIsDark } from "./lib/constants";
 import { sanitizeProfile, isValidEmail, isValidPassword } from "./lib/validate";
 import { INITIAL_REPORTS, ALL_AREAS, AREA_MASTER } from "./data/mockData";
@@ -34,8 +34,6 @@ import Settings           from "./screens/Settings";
 import OnboardingScreen   from "./screens/Onboarding";
 import CommunityScreen    from "./screens/Community";
 import AdminScreen        from "./screens/Admin";
-import RankingScreen, { hasUnseenRanking } from "./screens/Ranking";
-import StatsScreen      from "./screens/Stats";
 
 // Components
 import { BottomNav, Header, TakuroFAB } from "./components/Navigation";
@@ -49,65 +47,6 @@ const SUPABASE_READY = !!(
   import.meta.env.VITE_SUPABASE_URL &&
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// PWA ホーム画面追加バナー
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function PWAInstallBanner() {
-  const [show, setShow]   = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
-  const deferredPrompt    = useRef(null);
-
-  useEffect(() => {
-    // スタンドアロン（PWA）で実行中 or すでに非表示にした → 何もしない
-    if (window.matchMedia("(display-mode: standalone)").matches) return;
-    if (localStorage.getItem("taxi_pwa_dismissed")) return;
-
-    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !("MSStream" in window);
-    if (ios) {
-      // iOS Safari には beforeinstallprompt がないので手動案内
-      const t = setTimeout(() => { setIsIOS(true); setShow(true); }, 4000);
-      return () => clearTimeout(t);
-    }
-
-    // Android Chrome: beforeinstallprompt をキャッチ
-    const onPrompt = (e) => {
-      e.preventDefault();
-      deferredPrompt.current = e;
-      setShow(true);
-    };
-    window.addEventListener("beforeinstallprompt", onPrompt);
-    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
-  }, []);
-
-  const dismiss = () => { setShow(false); localStorage.setItem("taxi_pwa_dismissed", "1"); };
-
-  const install = async () => {
-    if (!deferredPrompt.current) return;
-    deferredPrompt.current.prompt();
-    const { outcome } = await deferredPrompt.current.userChoice;
-    if (outcome === "accepted") localStorage.setItem("taxi_pwa_dismissed", "1");
-    setShow(false);
-  };
-
-  if (!show) return null;
-
-  return (
-    <div style={{ position:"fixed", bottom:72, left:0, right:0, zIndex:200, padding:"0 12px", pointerEvents:"none" }}>
-      <div style={{ maxWidth:480, margin:"0 auto", backgroundColor:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"12px 16px", boxShadow:"0 4px 24px #0009", display:"flex", alignItems:"center", gap:10, pointerEvents:"auto" }}>
-        <div style={{ fontSize:22 }}>📱</div>
-        <div style={{ flex:1 }}>
-          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:2 }}>ホーム画面に追加する</div>
-          {isIOS
-            ? <div style={{ fontSize:11, color:C.muted }}>Safariの <span style={{ color:C.accentLight, fontWeight:700 }}>共有ボタン（↑）</span> →「<span style={{ color:C.accentLight, fontWeight:700 }}>ホーム画面に追加</span>」</div>
-            : <button onClick={install} style={{ fontSize:12, color:C.accentLight, background:"none", border:"none", padding:0, cursor:"pointer", fontWeight:700 }}>インストールする →</button>
-          }
-        </div>
-        <button onClick={dismiss} style={{ background:"none", border:"none", color:C.muted, fontSize:20, cursor:"pointer", lineHeight:1, padding:"0 4px", flexShrink:0 }}>✕</button>
-      </div>
-    </div>
-  );
-}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ログイン画面
@@ -313,6 +252,12 @@ function ConsentScreen({ onAgree }) {
 }
 
 export default function App() {
+  // ─── クリック診断（デバッグ用・問題解消後に削除） ───
+  useEffect(() => {
+    const fn = e => console.log("[CLICK]", e.target.tagName, "#"+e.target.id, "."+e.target.className, "@", Math.round(e.clientX)+","+Math.round(e.clientY));
+    window.addEventListener("click", fn, true);
+    return () => window.removeEventListener("click", fn, true);
+  }, []);
 
   const [user, setUser]         = useState(() => loadS("taxi_user", null));
   // "standard" は旧モード名 → "simple" にマッピング
@@ -325,9 +270,8 @@ export default function App() {
   const [tab, setTab]           = useState(() => {
     const saved = loadS("taxi_last_tab", "dashboard");
     // adminタブはリロード後に復元しない（セキュリティ）
-    return ["dashboard","list","upload","info","guide","shift","settings","community","ranking","stats"].includes(saved) ? saved : "dashboard";
+    return ["dashboard","list","upload","info","guide","shift","settings","community"].includes(saved) ? saved : "dashboard";
   });
-  const [hasNewRanking, setHasNewRanking] = useState(() => hasUnseenRanking());
   const [alertsSeen, setAlertsSeen]   = useState(() => loadS("taxi_alerts_seen", false));
   const [settingsSection, setSettingsSection] = useState("");
   const [selected, setSelected] = useState(null);
@@ -400,17 +344,12 @@ export default function App() {
     setThemeVer(v => v + 1);
   }, [themeMode]);
 
-  // autoモード: 1分ごとに日没チェック（実際にテーマが変わった時だけ再レンダリング）
+  // autoモード: 1分ごとに日没チェック
   useEffect(() => {
     if (themeMode !== "auto") return;
-    let prevDark = computeIsDark("auto");
     const tick = () => {
-      const nowDark = computeIsDark("auto");
-      if (nowDark !== prevDark) {
-        prevDark = nowDark;
-        applyTheme(nowDark);
-        setThemeVer(v => v + 1);
-      }
+      applyTheme(computeIsDark("auto"));
+      setThemeVer(v => v + 1);
     };
     const id = setInterval(tick, 60 * 1000);
     return () => clearInterval(id);
@@ -526,9 +465,6 @@ export default function App() {
       setAlertsSeen(true);
       saveS("taxi_alerts_seen", true);
     }
-    if (newTab === "ranking" && hasNewRanking) {
-      setHasNewRanking(false);
-    }
     if (newTab !== "settings") {
       setSettingsSection("");
     }
@@ -565,16 +501,14 @@ export default function App() {
 
   const renderScreen = () => {
     switch (tab) {
-      case "dashboard": return <Dashboard reports={reports} user={user} onOpenReport={setSelected} onManageArea={()=>setShowAreaModal(true)} rankPrefs={rankPrefs} appMode={appMode} onGoShift={()=>handleSetTab("shift")} onUpdateReport={handleUpdateReport} onGoRanking={notif.dailyResult && hasNewRanking ? ()=>handleSetTab("ranking") : null}/>;
+      case "dashboard": return <Dashboard reports={reports} user={user} onOpenReport={setSelected} onManageArea={()=>setShowAreaModal(true)} rankPrefs={rankPrefs} appMode={appMode} onGoShift={()=>handleSetTab("shift")} onUpdateReport={handleUpdateReport}/>;
       case "list":      return <ReportList reports={reports} onSelect={r=>{setSelectedForEdit(false);setSelected(r);}} onEdit={r=>{setSelectedForEdit(true);setSelected(r);}}/>;
-      case "upload":    return <UploadScreen uploadCount={user.uploadCount||0} onSave={handleSave} reports={reports} user={user}/>;
+      case "upload":    return <UploadScreen uploadCount={user.uploadCount||0} onSave={handleSave} reports={reports}/>;
       case "info":      return <InfoCenter notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} userAreas={userAreas} onManageArea={()=>setShowAreaModal(true)}/>;
       case "guide":     return <GuideScreen userAreas={userAreas}/>;
-      case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")} user={user} onBack={()=>handleSetTab("dashboard")}/>;
+      case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")} user={user}/>;
       case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined} onOpenAdmin={()=>handleSetTab("admin")}/>;
       case "community": return <CommunityScreen />;
-      case "ranking":   return <RankingScreen user={user} rankPrefs={rankPrefs} />;
-      case "stats":     return <StatsScreen reports={reports} />;
       case "admin":     return <AdminScreen user={{ ...user, email: user.email || "" }} onExit={() => handleSetTab("dashboard")}/>;
       case "feedback":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection="feedback" onBack={()=>handleSetTab("dashboard")}/>;
       default:          return null;
@@ -582,14 +516,13 @@ export default function App() {
   };
 
   return (
-    <div key={themeVer} style={{ minHeight:"100vh", backgroundColor:C.bg, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text, overflowX:"hidden" }}>
-      <Header user={user} tab={tab} setTab={handleSetTab} appMode={appMode} onModeChange={setAppMode} alertsSeen={alertsSeen} onNavigateSettings={handleNavigateSettings} onManageArea={()=>setShowAreaModal(true)} hasNewRanking={hasNewRanking && notif.dailyResult} />
+    <div key={themeVer} style={{ minHeight:"100vh", backgroundColor:C.bg, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text }}>
+      <Header user={user} tab={tab} setTab={handleSetTab} appMode={appMode} onModeChange={setAppMode} alertsSeen={alertsSeen} onNavigateSettings={handleNavigateSettings} onManageArea={()=>setShowAreaModal(true)} />
       {renderScreen()}
       <ReportModal key={selected ? `${selected.id}-${selectedForEdit}` : "none"} report={selected} onClose={()=>{setSelected(null);setSelectedForEdit(false);}} onUpdate={handleUpdateReport} startInEdit={selectedForEdit}/>
       <TakuroFAB setTab={handleSetTab} />
       <BottomNav tab={tab} setTab={handleSetTab} userAreas={userAreas} alertsSeen={alertsSeen}/>
       {showAreaModal && <AreaSettingModal userAreas={userAreas} onSave={areas=>setUser(u=>({...u,areas}))} onClose={()=>setShowAreaModal(false)}/>}
-      <PWAInstallBanner />
     </div>
   );
 }
