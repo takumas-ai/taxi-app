@@ -123,11 +123,9 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
   useEffect(() => {
     if (!SUPABASE_READY || !user?.id) { setLoading(false); return; }
     fetchShifts(user.id).then(({ data }) => {
-      if (data?.length) {
-        const local = data.map(dbToLocal);
-        setShifts(local);
-        saveS("taxi_shifts", local);
-      }
+      const local = (data ?? []).map(dbToLocal);
+      setShifts(local);
+      saveS("taxi_shifts", local);
       setLoading(false);
     });
   }, [user?.id]);
