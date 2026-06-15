@@ -252,20 +252,6 @@ function ConsentScreen({ onAgree }) {
 }
 
 export default function App() {
-  // ─── SW更新検知: 新バージョンが起動したら自動リロード ───
-  useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-    // controllerchange = 新しいSWがページを掌握した = 新バージョンのアセットが使える状態
-    const onCtrlChange = () => {
-      // 初回インストール時（controllerがなかった → ある）はリロード不要
-      // 2回目以降（既存controller → 新controller）が更新
-      if (navigator.serviceWorker.controller) {
-        window.location.reload();
-      }
-    };
-    navigator.serviceWorker.addEventListener("controllerchange", onCtrlChange);
-    return () => navigator.serviceWorker.removeEventListener("controllerchange", onCtrlChange);
-  }, []);
 
   const [user, setUser]         = useState(() => loadS("taxi_user", null));
   // "standard" は旧モード名 → "simple" にマッピング

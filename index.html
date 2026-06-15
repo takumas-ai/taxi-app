@@ -27,14 +27,25 @@
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
-      // Service Worker: 登録＋タブ復帰時に更新チェック
+      // Service Worker: React より前にリスナーを張る（mount前の発火を拾うため）
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then(reg => {
-            // 登録直後に即チェック
-            reg.update();
-            // タブがフォアグラウンドに戻るたびに再チェック
-            document.addEventListener('visibilitychange', () => {
+        var _swFirstController = navigator.serviceWorker.controller;
+
+        // controllerchange = 新しいSWがページを掌握 → リロードして新JSを読み込む
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+          // 初回インストール（controller が null → 有）ではリロードしない
+          if (_swFirstController) {
+            window.location.reload();
+          }
+          // 次回からは必ずリロード対象にする
+          _swFirstController = true;
+        });
+
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js').then(function(reg) {
+            reg.update(); // 起動時に即チェック
+            // タブ復帰時にも再チェック
+            document.addEventListener('visibilitychange', function() {
               if (!document.hidden) reg.update();
             });
           });

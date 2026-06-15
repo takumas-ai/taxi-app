@@ -379,13 +379,19 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
           <span style={{ fontSize:9, color:C.muted }}>β</span>
         </div>
 
-        {/* 右：モード（アイコンのみ） + 通知 */}
+        {/* 右：モード + 強制リロード + 通知 */}
         <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-          {/* モード切替ボタン — アイコンのみで被り防止 */}
+          {/* モード切替ボタン */}
           <div onClick={() => setShowModeSheet(true)}
             style={{ display:"flex", alignItems:"center", gap:3, cursor:"pointer", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:99, padding:"4px 10px" }}>
             <span style={{ fontSize:12, color:C.sub, fontWeight:700 }}>モード</span>
             <span style={{ fontSize:9, color:C.muted }}>▾</span>
+          </div>
+
+          {/* 強制リロード */}
+          <div onClick={() => window.location.reload()} title="最新版に更新"
+            style={{ cursor:"pointer", padding:"6px 7px", borderRadius:10, fontSize:16, opacity:0.55, lineHeight:1 }}>
+            🔄
           </div>
 
           {/* 通知 */}
