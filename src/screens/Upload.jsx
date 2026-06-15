@@ -215,7 +215,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         rides,
         break_times:        breakTimes,
       });
-      if (!hasMatch) setStep("confirm");
+      setStep(hasMatch ? "select" : "confirm");
     } catch (err) {
       console.error("[OCR]", err);
       setOcrError(err.message || "読み取りに失敗しました");
