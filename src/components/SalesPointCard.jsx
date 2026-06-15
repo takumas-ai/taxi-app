@@ -519,9 +519,8 @@ export function SalesPointCard() {
 
         {/* 最新3件 */}
         {latest3.length === 0 ? (
-          <div style={{ textAlign:"center", padding:"18px 0", color:C.muted, fontSize:13 }}>
-            <div style={{ fontSize:28, marginBottom:6 }}>🚕</div>
-            <div>まだ記録がありません</div>
+          <div style={{ textAlign:"center", padding:"8px 0", color:C.muted, fontSize:12 }}>
+            まだ記録がありません
           </div>
         ) : (
           <>

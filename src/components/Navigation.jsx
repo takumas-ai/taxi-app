@@ -375,7 +375,7 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
           {/* モード切替ボタン — アイコンのみで被り防止 */}
           <div onClick={() => setShowModeSheet(true)}
             style={{ display:"flex", alignItems:"center", gap:3, cursor:"pointer", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:99, padding:"4px 10px" }}>
-            <span style={{ fontSize:14 }}>{currentMode.icon}</span>
+            <span style={{ fontSize:12, color:C.sub, fontWeight:700 }}>モード</span>
             <span style={{ fontSize:9, color:C.muted }}>▾</span>
           </div>
 
