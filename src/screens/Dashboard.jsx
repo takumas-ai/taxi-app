@@ -427,87 +427,84 @@ function XpCard({ user }) {
 
 // ━━━ 休憩時間カード ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function BreakTimeCard({ reports, onUpdateReport }) {
-  const [showAll, setShowAll] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [editVal, setEditVal] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [showInput, setShowInput]   = useState(false);
+  const [showAll,   setShowAll]     = useState(false);
+  const [inputDate, setInputDate]   = useState(() => new Date().toISOString().slice(0,10));
+  const [inputVal,  setInputVal]    = useState("");
+  const [saving,    setSaving]      = useState(false);
 
-  // break_hoursがある日報 + 直近で break_hours未入力の日報も含める（入力できるように）
-  const sorted = [...reports].sort((a, b) => b.date.localeCompare(a.date));
-  // 最新5件を表示対象にして、うち break_hours があるものを優先
-  const recent = sorted.slice(0, 10);
-  if (recent.length === 0) return null;
+  // break_hoursがある日報、新しい順
+  const withBreak = [...reports]
+    .filter(r => r.break_hours != null && r.break_hours !== "")
+    .sort((a, b) => b.date.localeCompare(a.date));
 
-  const displayed = showAll ? sorted : recent.slice(0, 3);
-  const hasMore = sorted.length > 3;
+  const latest3  = withBreak.slice(0, 3);
+  const hasMore  = withBreak.length > 3;
 
-  const startEdit = (r) => {
-    setEditingId(r.id);
-    setEditVal(r.break_hours != null ? String(r.break_hours) : "");
-  };
-
-  const cancelEdit = () => { setEditingId(null); setEditVal(""); };
-
-  const saveEdit = async (r) => {
-    const val = parseFloat(editVal);
+  const handleSave = async () => {
+    const val = parseFloat(inputVal);
     if (isNaN(val) || val < 0) return;
+    // 同じ日付の日報を探して更新
+    const target = reports.find(r => r.date === inputDate);
+    if (!target) { alert("その日の日報がありません。先に日報を登録してください。"); return; }
     setSaving(true);
-    await onUpdateReport?.({ ...r, break_hours: val });
+    await onUpdateReport?.({ ...target, break_hours: val });
     setSaving(false);
-    setEditingId(null);
-    setEditVal("");
+    setShowInput(false);
+    setInputVal("");
   };
 
   return (
-    <Card style={{ marginBottom:14, padding:"12px 16px" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-        <div style={{ fontSize:12, fontWeight:700, color:C.muted }}>☕ 休憩時間の記録</div>
-        {hasMore && (
-          <button onClick={() => setShowAll(p => !p)}
-            style={{ fontSize:11, color:C.accentLight, background:"none", border:`1px solid ${C.accentLight}55`, borderRadius:7, padding:"3px 10px", cursor:"pointer" }}>
-            {showAll ? "閉じる" : `詳細 (${sorted.length}件)`}
-          </button>
-        )}
+    <Card style={{ marginBottom:14 }}>
+      {/* ヘッダー */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+        <div style={{ fontSize:14, fontWeight:800, color:C.text }}>☕ 休憩時間</div>
+        <button onClick={() => setShowInput(p => !p)}
+          style={{ backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:10, padding:"8px 16px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+          {showInput ? "閉じる" : "＋ 記録する"}
+        </button>
       </div>
-      {displayed.map(r => (
-        <div key={r.id} style={{ padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
-          {editingId === r.id ? (
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <div style={{ fontSize:12, color:C.sub, flex:1 }}>{r.date}（{dow(r.date)}）</div>
-              <input
-                type="number" step="0.5" min="0" max="24"
-                value={editVal}
-                onChange={e => setEditVal(e.target.value)}
-                style={{ width:64, padding:"5px 8px", borderRadius:7, border:`1.5px solid ${C.accentLight}`, backgroundColor:C.card, color:C.text, fontSize:13, textAlign:"center" }}
-                autoFocus
-              />
-              <span style={{ fontSize:12, color:C.muted }}>h</span>
-              <button onClick={() => saveEdit(r)} disabled={saving}
-                style={{ padding:"5px 12px", borderRadius:7, backgroundColor:C.accentLight, color:"#fff", border:"none", fontSize:12, fontWeight:700, cursor:"pointer", opacity:saving?0.6:1 }}>
-                保存
-              </button>
-              <button onClick={cancelEdit}
-                style={{ padding:"5px 10px", borderRadius:7, backgroundColor:"transparent", color:C.muted, border:`1px solid ${C.border}`, fontSize:12, cursor:"pointer" }}>
-                ×
-              </button>
-            </div>
-          ) : (
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}
-              onClick={() => startEdit(r)} role="button" style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
-              <div style={{ fontSize:12, color:C.sub }}>{r.date}（{dow(r.date)}）</div>
-              <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-                {r.work_hours != null && <span style={{ fontSize:11, color:C.muted }}>勤務 {r.work_hours}h</span>}
-                <span style={{ fontSize:13, fontWeight:700, color: r.break_hours != null ? C.text : C.muted }}>
-                  {r.break_hours != null ? `休憩 ${r.break_hours}h` : "タップして入力"}
-                </span>
-                <span style={{ fontSize:11, color:C.accentLight }}>✏️</span>
+
+      {/* 入力フォーム */}
+      {showInput && (
+        <div style={{ backgroundColor:C.bg, borderRadius:10, padding:"12px 14px", marginBottom:12 }}>
+          <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:10 }}>
+            <input type="date" value={inputDate} onChange={e => setInputDate(e.target.value)}
+              style={{ flex:1, padding:"9px 10px", borderRadius:9, border:`1.5px solid ${C.border}`, backgroundColor:C.card, color:C.text, fontSize:13 }} />
+          </div>
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <input type="number" step="0.5" min="0" max="24" value={inputVal}
+              onChange={e => setInputVal(e.target.value)} placeholder="例) 1.0"
+              style={{ flex:1, padding:"9px 10px", borderRadius:9, border:`1.5px solid ${C.border}`, backgroundColor:C.card, color:C.text, fontSize:13 }} />
+            <span style={{ fontSize:13, color:C.muted }}>h</span>
+            <button onClick={handleSave} disabled={saving || !inputVal}
+              style={{ padding:"9px 18px", borderRadius:9, backgroundColor:C.accentLight, color:"#fff", border:"none", fontSize:13, fontWeight:700, cursor:"pointer", opacity:(saving||!inputVal)?0.5:1 }}>
+              {saving ? "保存中..." : "保存"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 最新3件 */}
+      {latest3.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"8px 0", color:C.muted, fontSize:12 }}>まだ記録がありません</div>
+      ) : (
+        <>
+          {(showAll ? withBreak : latest3).map(r => (
+            <div key={r.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:`1px solid ${C.border}` }}>
+              <div>
+                <div style={{ fontSize:13, fontWeight:700, color:C.text }}>休憩 {r.break_hours}h</div>
+                <div style={{ fontSize:10, color:C.muted, marginTop:1 }}>{r.date}（{dow(r.date)}）{r.work_hours ? `· 勤務 ${r.work_hours}h` : ""}</div>
               </div>
             </div>
+          ))}
+          {hasMore && (
+            <button onClick={() => setShowAll(p => !p)}
+              style={{ width:"100%", marginTop:10, padding:"9px 0", borderRadius:9, fontSize:12, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.sub }}>
+              {showAll ? "閉じる" : `一覧・詳細 (${withBreak.length}件) →`}
+            </button>
           )}
-        </div>
-      ))}
-      {!showAll && hasMore && (
-        <div style={{ fontSize:11, color:C.muted, textAlign:"center", paddingTop:8 }}>他 {sorted.length - 3} 件</div>
+        </>
       )}
     </Card>
   );

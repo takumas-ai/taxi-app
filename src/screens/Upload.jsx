@@ -254,10 +254,10 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
             {F({label:"現金売上（円）", fk:"cash_sales", ph:"37000"})}
             {F({label:"カード売上（円）", fk:"card_sales", ph:"18000"})}
             {F({label:"配車アプリ（円）", fk:"app_sales", ph:"7000", span:2})}
-            {F({label:"休憩時間（h）", fk:"break_hours", ph:"1.0", span:2})}
             {F({label:"走行距離（km）", fk:"total_distance", ph:"300"})}
             {F({label:"実車距離（km）", fk:"occupied_distance", ph:"155"})}
             {F({label:"勤務時間（h）", fk:"work_hours", ph:"13.5"})}
+            {F({label:"休憩時間（h）", fk:"break_hours", ph:"1.0"})}
             {F({label:"高速料金（円）", fk:"highway_fee", ph:"800", span:2})}
           </div>
           {/* 営業エリア選択（統計データ収集用） */}
