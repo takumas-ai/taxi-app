@@ -66,24 +66,82 @@ function ShiftCalendar({ year, month, shifts, reports, onSelectDay }) {
   );
 }
 
-function DayDetailModal({ dateStr, shift, report, onClose, onDeleteShift, onGoUpload }) {
+function DayDetailModal({ dateStr, shift, report, onClose, onDeleteShift, onGoUpload, onSaveShift }) {
   const d = new Date(dateStr), wd = ["日","月","火","水","木","金","土"][d.getDay()], isPast = dateStr < TODAY;
+  const [editing, setEditing] = useState(!shift); // シフトなし → すぐ入力フォーム
+  const [form, setForm]       = useState({ clockIn: shift?.clockIn||"", clockOut: shift?.clockOut||"", note: shift?.note||"" });
+  const [saving, setSaving]   = useState(false);
+
+  const inp = { backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:"9px 11px", color:C.text, fontSize:14, outline:"none", width:"100%", boxSizing:"border-box" };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSaveShift({
+      id:       shift?.id || ("manual_" + Date.now()),
+      date:     dateStr,
+      clockIn:  form.clockIn,
+      clockOut: form.clockOut,
+      isNight:  false,
+      note:     form.note,
+    });
+    setSaving(false);
+    onClose();
+  };
+
   return (
     <div style={{ position:"fixed", inset:0, backgroundColor:"#00000090", zIndex:150, display:"flex", alignItems:"flex-end" }} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:24, paddingBottom:36 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:24, paddingBottom:36, maxHeight:"85vh", overflowY:"auto" }}>
         <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 16px" }}/>
         <div style={{ fontSize:18, fontWeight:800, marginBottom:16 }}>{dateStr}（{wd}）</div>
-        {shift ? (
-          <div style={{ backgroundColor:C.green+"18", border:`1px solid ${C.green}44`, borderRadius:10, padding:14, marginBottom:12 }}>
-            <div style={{ fontSize:12, color:C.green, fontWeight:700, marginBottom:6 }}>📅 出勤予定</div>
-            <div style={{ display:"flex", gap:20 }}>
-              <div><div style={{ fontSize:10, color:C.muted }}>出庫</div><div style={{ fontSize:16, fontWeight:700 }}>{shift.clockIn}</div></div>
-              <div><div style={{ fontSize:10, color:C.muted }}>帰庫</div><div style={{ fontSize:16, fontWeight:700 }}>{shift.clockOut}</div></div>
+
+        {/* シフト入力・編集フォーム */}
+        {editing ? (
+          <div style={{ backgroundColor:C.green+"12", border:`1px solid ${C.green}44`, borderRadius:12, padding:16, marginBottom:12 }}>
+            <div style={{ fontSize:12, color:C.green, fontWeight:700, marginBottom:12 }}>📅 {shift ? "シフトを編集" : "シフトを追加"}</div>
+            <div style={{ display:"flex", gap:10, marginBottom:10 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>出庫時刻</div>
+                <input value={form.clockIn} onChange={e=>setForm(p=>({...p,clockIn:e.target.value}))} placeholder="例: 07:00" style={inp}/>
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>帰庫時刻</div>
+                <input value={form.clockOut} onChange={e=>setForm(p=>({...p,clockOut:e.target.value}))} placeholder="例: 20:00" style={inp}/>
+              </div>
             </div>
-            {shift.note&&<div style={{ fontSize:12, color:C.sub, marginTop:8 }}>📝 {shift.note}</div>}
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>メモ（任意）</div>
+              <textarea
+                value={form.note}
+                onChange={e=>setForm(p=>({...p,note:e.target.value}))}
+                placeholder={"急な変更・当番など自由に\n複数行OK"}
+                rows={3}
+                style={{ ...inp, resize:"vertical", lineHeight:1.6 }}
+              />
+            </div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={handleSave} disabled={saving}
+                style={{ flex:1, backgroundColor:C.green, color:"#fff", border:"none", borderRadius:9, padding:"11px 0", fontSize:14, fontWeight:700, cursor:saving?"not-allowed":"pointer", opacity:saving?0.6:1 }}>
+                {saving ? "保存中..." : shift ? "更新する" : "追加する"}
+              </button>
+              {shift && <button onClick={()=>setEditing(false)} style={{ flex:1, backgroundColor:"transparent", border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 0", fontSize:13, color:C.muted, cursor:"pointer" }}>キャンセル</button>}
+            </div>
+          </div>
+        ) : shift ? (
+          <div style={{ backgroundColor:C.green+"18", border:`1px solid ${C.green}44`, borderRadius:10, padding:14, marginBottom:12 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+              <div style={{ fontSize:12, color:C.green, fontWeight:700 }}>📅 出勤予定</div>
+              <button onClick={()=>setEditing(true)} style={{ fontSize:11, color:C.accentLight, background:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:6, padding:"3px 10px", cursor:"pointer", fontWeight:600 }}>編集</button>
+            </div>
+            <div style={{ display:"flex", gap:20, marginBottom: shift.note ? 8 : 0 }}>
+              <div><div style={{ fontSize:10, color:C.muted }}>出庫</div><div style={{ fontSize:16, fontWeight:700 }}>{shift.clockIn||"—"}</div></div>
+              <div><div style={{ fontSize:10, color:C.muted }}>帰庫</div><div style={{ fontSize:16, fontWeight:700 }}>{shift.clockOut||"—"}</div></div>
+            </div>
+            {shift.note && <div style={{ fontSize:12, color:C.sub, whiteSpace:"pre-wrap", backgroundColor:C.bg, borderRadius:7, padding:"8px 10px" }}>📝 {shift.note}</div>}
             <button onClick={()=>onDeleteShift(shift)} style={{ marginTop:10, backgroundColor:"transparent", border:`1px solid ${C.red}44`, borderRadius:8, padding:"6px 14px", fontSize:11, color:C.red, cursor:"pointer", fontWeight:600 }}>このシフトを削除</button>
           </div>
-        ) : <div style={{ backgroundColor:C.border+"44", borderRadius:10, padding:14, marginBottom:12, textAlign:"center" }}><div style={{ fontSize:13, color:C.muted }}>出勤予定なし</div></div>}
+        ) : null}
+
+        {/* 日報 */}
         {report ? (
           <div style={{ backgroundColor:C.goldGlow, border:`1px solid ${C.gold}44`, borderRadius:10, padding:14, marginBottom:12 }}>
             <div style={{ fontSize:12, color:C.gold, fontWeight:700, marginBottom:6 }}>💴 日報入力済み</div>
@@ -92,12 +150,13 @@ function DayDetailModal({ dateStr, shift, report, onClose, onDeleteShift, onGoUp
               <div><div style={{ fontSize:10, color:C.muted }}>営業回数</div><div style={{ fontSize:18, fontWeight:800 }}>{report.ride_count}回</div></div>
             </div>
           </div>
-        ) : shift && isPast ? (
+        ) : shift && isPast && !editing ? (
           <div style={{ backgroundColor:C.orangeGlow, border:`1px solid ${C.orange}44`, borderRadius:10, padding:14, marginBottom:12 }}>
             <div style={{ fontSize:12, color:C.orange, fontWeight:700, marginBottom:4 }}>⚠️ 日報が未入力です</div>
             <button onClick={onGoUpload} style={{ width:"100%", backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:9, padding:"10px 0", fontSize:13, fontWeight:700, cursor:"pointer" }}>日報をアップロードする →</button>
           </div>
         ) : null}
+
         <button onClick={onClose} style={{ width:"100%", backgroundColor:"transparent", border:`1px solid ${C.border}`, borderRadius:11, padding:"13px 0", fontSize:14, fontWeight:600, color:C.muted, cursor:"pointer" }}>閉じる</button>
       </div>
     </div>
@@ -446,7 +505,21 @@ export default function ShiftScreen({ reports, onGoUpload, user, onBack }) {
           })}
         </>
       )}
-      {selectedDay&&<DayDetailModal dateStr={selectedDay} shift={dayShift} report={dayReport} onClose={()=>setSelectedDay(null)} onDeleteShift={async sh=>{setShifts(prev=>prev.filter(x=>x.id!==sh.id));setSelectedDay(null);if(SUPABASE_READY&&user?.id)await deleteShift(user.id,sh.date);}} onGoUpload={()=>{setSelectedDay(null);onGoUpload();}}/>}
+      {selectedDay&&<DayDetailModal
+        dateStr={selectedDay}
+        shift={dayShift}
+        report={dayReport}
+        onClose={()=>setSelectedDay(null)}
+        onDeleteShift={async sh=>{setShifts(prev=>prev.filter(x=>x.id!==sh.id));setSelectedDay(null);if(SUPABASE_READY&&user?.id)await deleteShift(user.id,sh.date);}}
+        onGoUpload={()=>{setSelectedDay(null);onGoUpload();}}
+        onSaveShift={async s=>{
+          setShifts(prev=>{
+            const idx=prev.findIndex(x=>x.date===s.date);
+            return idx>=0 ? prev.map((x,i)=>i===idx?s:x) : [...prev,s];
+          });
+          if(SUPABASE_READY&&user?.id) await upsertShifts(user.id,[s]);
+        }}
+      />}
 
     </div>
   );
