@@ -3,7 +3,7 @@
 // React Native 移行時: この App.jsx を App.js にリネームし
 //   <div> → <View>、inline style → StyleSheet に置換する
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C, loadS, saveS, applyTheme, computeIsDark } from "./lib/constants";
 import { sanitizeProfile, isValidEmail, isValidPassword } from "./lib/validate";
 import { INITIAL_REPORTS, ALL_AREAS, AREA_MASTER } from "./data/mockData";
@@ -47,6 +47,65 @@ const SUPABASE_READY = !!(
   import.meta.env.VITE_SUPABASE_URL &&
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PWA ホーム画面追加バナー
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function PWAInstallBanner() {
+  const [show, setShow]   = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const deferredPrompt    = useRef(null);
+
+  useEffect(() => {
+    // スタンドアロン（PWA）で実行中 or すでに非表示にした → 何もしない
+    if (window.matchMedia("(display-mode: standalone)").matches) return;
+    if (localStorage.getItem("taxi_pwa_dismissed")) return;
+
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !("MSStream" in window);
+    if (ios) {
+      // iOS Safari には beforeinstallprompt がないので手動案内
+      const t = setTimeout(() => { setIsIOS(true); setShow(true); }, 4000);
+      return () => clearTimeout(t);
+    }
+
+    // Android Chrome: beforeinstallprompt をキャッチ
+    const onPrompt = (e) => {
+      e.preventDefault();
+      deferredPrompt.current = e;
+      setShow(true);
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
+  }, []);
+
+  const dismiss = () => { setShow(false); localStorage.setItem("taxi_pwa_dismissed", "1"); };
+
+  const install = async () => {
+    if (!deferredPrompt.current) return;
+    deferredPrompt.current.prompt();
+    const { outcome } = await deferredPrompt.current.userChoice;
+    if (outcome === "accepted") localStorage.setItem("taxi_pwa_dismissed", "1");
+    setShow(false);
+  };
+
+  if (!show) return null;
+
+  return (
+    <div style={{ position:"fixed", bottom:72, left:0, right:0, zIndex:200, padding:"0 12px", pointerEvents:"none" }}>
+      <div style={{ maxWidth:480, margin:"0 auto", backgroundColor:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"12px 16px", boxShadow:"0 4px 24px #0009", display:"flex", alignItems:"center", gap:10, pointerEvents:"auto" }}>
+        <div style={{ fontSize:22 }}>📱</div>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:2 }}>ホーム画面に追加する</div>
+          {isIOS
+            ? <div style={{ fontSize:11, color:C.muted }}>Safariの <span style={{ color:C.accentLight, fontWeight:700 }}>共有ボタン（↑）</span> →「<span style={{ color:C.accentLight, fontWeight:700 }}>ホーム画面に追加</span>」</div>
+            : <button onClick={install} style={{ fontSize:12, color:C.accentLight, background:"none", border:"none", padding:0, cursor:"pointer", fontWeight:700 }}>インストールする →</button>
+          }
+        </div>
+        <button onClick={dismiss} style={{ background:"none", border:"none", color:C.muted, fontSize:20, cursor:"pointer", lineHeight:1, padding:"0 4px", flexShrink:0 }}>✕</button>
+      </div>
+    </div>
+  );
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ログイン画面
@@ -522,6 +581,7 @@ export default function App() {
       <TakuroFAB setTab={handleSetTab} />
       <BottomNav tab={tab} setTab={handleSetTab} userAreas={userAreas} alertsSeen={alertsSeen}/>
       {showAreaModal && <AreaSettingModal userAreas={userAreas} onSave={areas=>setUser(u=>({...u,areas}))} onClose={()=>setShowAreaModal(false)}/>}
+      <PWAInstallBanner />
     </div>
   );
 }
