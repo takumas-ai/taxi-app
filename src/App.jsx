@@ -347,12 +347,17 @@ export default function App() {
     setThemeVer(v => v + 1);
   }, [themeMode]);
 
-  // autoモード: 1分ごとに日没チェック
+  // autoモード: 1分ごとに日没チェック（実際にテーマが変わった時だけ再レンダリング）
   useEffect(() => {
     if (themeMode !== "auto") return;
+    let prevDark = computeIsDark("auto");
     const tick = () => {
-      applyTheme(computeIsDark("auto"));
-      setThemeVer(v => v + 1);
+      const nowDark = computeIsDark("auto");
+      if (nowDark !== prevDark) {
+        prevDark = nowDark;
+        applyTheme(nowDark);
+        setThemeVer(v => v + 1);
+      }
     };
     const id = setInterval(tick, 60 * 1000);
     return () => clearInterval(id);
@@ -509,7 +514,7 @@ export default function App() {
       case "upload":    return <UploadScreen uploadCount={user.uploadCount||0} onSave={handleSave} reports={reports}/>;
       case "info":      return <InfoCenter notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} userAreas={userAreas} onManageArea={()=>setShowAreaModal(true)}/>;
       case "guide":     return <GuideScreen userAreas={userAreas}/>;
-      case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")} user={user}/>;
+      case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")} user={user} onBack={()=>handleSetTab("dashboard")}/>;
       case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined} onOpenAdmin={()=>handleSetTab("admin")}/>;
       case "community": return <CommunityScreen />;
       case "admin":     return <AdminScreen user={{ ...user, email: user.email || "" }} onExit={() => handleSetTab("dashboard")}/>;
