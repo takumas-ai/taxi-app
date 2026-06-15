@@ -341,7 +341,7 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
         <KpiCard label="残り出勤" value={remainingShifts} unit="日" accent={remainingShifts<=3?C.red:C.accentLight}/>
         <KpiCard label="日報入力済" value={monthReports.length} unit="日" accent={C.gold}/>
       </div>
-      {/* ドラッグ&ドロップゾーン（ドロップのみ受付） */}
+      {/* ドラッグ&ドロップゾーン */}
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -351,19 +351,21 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
         <div style={{fontSize:32,marginBottom:4}}>{isDragOver ? "📂" : "📋"}</div>
         <div style={{fontSize:12,color:C.muted}}>画像をここにドラッグ＆ドロップ</div>
       </div>
-      {/* ファイル選択ボタン（クリック用・PC対応） */}
-      <button
-        onClick={() => { console.log("[Shift] btn click → open picker"); fileInputRef.current?.click(); }}
-        style={{display:"block",width:"100%",backgroundColor:C.accentLight,color:"#fff",border:"none",borderRadius:11,padding:"13px 0",fontSize:14,fontWeight:700,cursor:"pointer",marginBottom:12}}
+      {/* ファイル選択ボタン（label+input: MetaMask SES対応・JS不要） */}
+      <label
+        htmlFor="shift-ocr-btn"
+        style={{display:"block",backgroundColor:C.accentLight,color:"#fff",borderRadius:11,padding:"13px 0",fontSize:14,fontWeight:700,cursor:"pointer",textAlign:"center",marginBottom:12}}
       >
         📂 シフト表ファイルを選択する
-      </button>
+      </label>
+      {/* display:noneをやめてオフスクリーン配置（MetaMask SESが.click()をブロックするため） */}
       <input
+        id="shift-ocr-btn"
         ref={fileInputRef}
         type="file"
         accept="image/*"
         onChange={handleFileSelect}
-        style={{display:"none"}}
+        style={{position:"fixed",top:"-9999px",left:"-9999px",width:"1px",height:"1px"}}
       />
       {monthShifts.length>0&&(
         <>
