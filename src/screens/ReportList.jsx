@@ -47,6 +47,11 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
   const [form, setForm] = useState(() => startInEdit && report ? buildForm(report) : {});
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  // 乗車記録のポイント名編集
+  const [rides, setRides] = useState(() => Array.isArray(report?.rides) ? report.rides : []);
+  const [editingRideIdx, setEditingRideIdx] = useState(null);
+  const [ridePointInput, setRidePointInput] = useState("");
+  const [showRides, setShowRides] = useState(false);
 
   if (!report || !report.gross_sales) return null;
 
@@ -152,6 +157,71 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
           {report.ai_comment && (
             <div style={{ backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}33`, borderRadius:10, padding:14, fontSize:13, color:C.sub, lineHeight:1.7 }}>
               💬 {report.ai_comment}
+            </div>
+          )}
+
+          {/* 乗車記録セクション */}
+          {rides.length > 0 && (
+            <div style={{ marginTop:14 }}>
+              <div onClick={() => setShowRides(p => !p)}
+                style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", padding:"10px 0", borderTop:`1px solid ${C.border}` }}>
+                <span style={{ fontSize:13, fontWeight:700, color:C.text }}>🚕 乗車記録（{rides.length}件）</span>
+                <span style={{ fontSize:11, color:C.muted }}>{showRides ? "▲ 閉じる" : "▼ 開く"}</span>
+              </div>
+              {showRides && (
+                <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:6 }}>
+                  {rides.map((r, i) => (
+                    <div key={i} style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px" }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:11, color:C.muted, marginBottom:2 }}>
+                            {r.pickup_time}{r.dropoff_time ? ` → ${r.dropoff_time}` : ""}
+                            {r.km ? `  ${r.km}km` : ""}
+                          </div>
+                          <div style={{ fontSize:12, color:C.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            {r.pickup_area || "—"} → {r.dropoff_area || "—"}
+                          </div>
+                          {/* ポイント名 */}
+                          {editingRideIdx === i ? (
+                            <div style={{ display:"flex", gap:6, marginTop:6 }}>
+                              <input
+                                autoFocus
+                                value={ridePointInput}
+                                onChange={e => setRidePointInput(e.target.value)}
+                                placeholder="ポイント名（例: 六本木ヒルズ）"
+                                style={{ flex:1, fontSize:12, padding:"5px 8px", borderRadius:7, border:`1px solid ${C.accentLight}`, backgroundColor:C.bg, color:C.text, outline:"none" }}
+                              />
+                              <button onClick={async () => {
+                                const updated = rides.map((ride, j) =>
+                                  j === i ? { ...ride, point_name: ridePointInput.trim() || null } : ride
+                                );
+                                setRides(updated);
+                                setEditingRideIdx(null);
+                                if (onUpdate) await onUpdate({ ...report, rides: updated });
+                              }} style={{ fontSize:12, padding:"5px 10px", borderRadius:7, backgroundColor:C.accentLight, color:"#fff", border:"none", cursor:"pointer", fontWeight:700 }}>保存</button>
+                              <button onClick={() => setEditingRideIdx(null)}
+                                style={{ fontSize:12, padding:"5px 8px", borderRadius:7, border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.muted, cursor:"pointer" }}>✕</button>
+                            </div>
+                          ) : (
+                            <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:4 }}>
+                              <span style={{ fontSize:12, color: r.point_name ? C.accentLight : C.muted, fontWeight: r.point_name ? 700 : 400 }}>
+                                {r.point_name || "ポイント名未設定"}
+                              </span>
+                              <button onClick={() => { setEditingRideIdx(i); setRidePointInput(r.point_name || ""); }}
+                                style={{ fontSize:10, color:C.accentLight, background:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:6, padding:"2px 8px", cursor:"pointer" }}>
+                                編集
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ fontSize:14, fontWeight:800, color:C.text, whiteSpace:"nowrap" }}>
+                          {(r.amount||0).toLocaleString()}円
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
