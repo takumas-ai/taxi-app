@@ -109,7 +109,7 @@ export function AreaSettingModal({ userAreas, onSave, onClose }) {
                   <div key={zone} onClick={() => toggle(zone)}
                     style={{ padding:"11px 14px", borderRadius:10, border:`2px solid ${isOn ? color : C.border}`, backgroundColor:isOn ? color+"15" : C.card, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between", transition:"all 0.15s" }}>
                     <div>
-                      <div style={{ fontSize:13, fontWeight:isOn ? 700 : 400, color:isOn ? color : C.text }}>{zone}</div>
+                      <div style={{ fontSize:13, fontWeight:isOn ? 700 : 400, color:isOn ? color : C.text }}>{zone.replace(/交通圏$/, "")}</div>
                     </div>
                     {isOn && <span style={{ fontSize:14, color:color }}>✓</span>}
                   </div>
