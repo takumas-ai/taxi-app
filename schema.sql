@@ -229,6 +229,20 @@ create trigger on_auth_user_created
   for each row execute function handle_new_user();
 
 -- ─────────────────────────────────────────
+-- 9. 追加カラム（マイグレーション）
+-- ─────────────────────────────────────────
+alter table public.users add column if not exists referred_by      text;          -- 紹介コード（招待した人のコード）
+alter table public.users add column if not exists xp               integer default 0;
+alter table public.users add column if not exists badges           text[]  default '{}';
+alter table public.users add column if not exists deletion_requested boolean default false;
+
+-- 紹介数カウント用RPC（RLSをバイパスしてcountのみ返す）
+create or replace function count_referrals(ref_code text)
+returns integer language sql security definer as $$
+  select count(*)::integer from public.users where referred_by = ref_code;
+$$;
+
+-- ─────────────────────────────────────────
 -- 完了
 -- ─────────────────────────────────────────
 -- 実行後の確認:

@@ -19,6 +19,7 @@ import {
   fetchReports,
   insertReport,
   updateReport,
+  saveReferredBy,
 } from "./lib/supabase";
 
 // Screens
@@ -57,6 +58,9 @@ function LoginScreen({ onLogin }) {
 
   const toggleArea = a => setAreas(prev => prev.includes(a) ? prev.filter(x=>x!==a) : [...prev,a]);
 
+  // URLの ?ref= パラメータを取得（招待リンク経由の場合）
+  const refFromUrl = new URLSearchParams(window.location.search).get("ref") || "";
+
   // Supabase メール登録
   const doRegister = async () => {
     if (!form.name || !form.email || !form.password) { setError("名前・メール・パスワードは必須です"); return; }
@@ -68,14 +72,17 @@ function LoginScreen({ onLogin }) {
       if (err) { setError(err.message); setLoading(false); return; }
       // usersテーブルを更新（トリガーで基本行は作成済み）
       if (data.user) {
-        await upsertProfile({
+        const profileData = {
           id: data.user.id,
           ...sanitizeProfile({
             name: form.name, company_name: form.company,
             work_type: form.workType, areas,
             monthly_target: parseInt(form.target) || 380000,
           }),
-        });
+        };
+        // 紹介コード経由なら referred_by を保存
+        if (refFromUrl) profileData.referred_by = refFromUrl.toUpperCase();
+        await upsertProfile(profileData);
         onLogin({ id: data.user.id, name: form.name, company: form.company, workType: form.workType, target: form.target, plan:"free", uploadCount:0, areas });
       }
     } else {

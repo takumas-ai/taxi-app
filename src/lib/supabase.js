@@ -132,6 +132,26 @@ export async function uploadReportImage(file, userId) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 紹介コード（referral）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** 紹介コードを使った登録者数を取得（RPCで RLS バイパス） */
+export async function fetchReferralCount(refCode) {
+  const { data, error } = await supabase
+    .rpc("count_referrals", { ref_code: refCode });
+  return { count: data ?? 0, error };
+}
+
+/** 登録時に使った紹介コードをプロフィールに保存 */
+export async function saveReferredBy(userId, referredBy) {
+  const { error } = await supabase
+    .from("users")
+    .update({ referred_by: referredBy })
+    .eq("id", userId);
+  return { error };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 意見箱（feedback）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

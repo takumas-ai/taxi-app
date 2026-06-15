@@ -4,7 +4,7 @@ import { C, FREE_LIMIT, loadS, saveS } from "../lib/constants";
 import { Card, Btn, ProgressBar, Toggle } from "../components/UI";
 import { AreaBadges } from "../components/UI";
 import { levelFromXp, getTitle, BADGES } from "../lib/xp";
-import { insertFeedback } from "../lib/supabase";
+import { insertFeedback, fetchReferralCount } from "../lib/supabase";
 import { downloadCSV, printAsPDF } from "../lib/export";
 
 const SUPABASE_READY = !!(
@@ -725,11 +725,20 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
       })()}
 
       {subTab==="referral" && (() => {
-        const refCode = "TAKURO-" + (user?.id || "DEMO").toString().slice(-6).toUpperCase();
+        const refCode = "TAKURO-" + (user?.id || "").toString().slice(-6).toUpperCase();
         const refUrl  = `https://takuro-app.vercel.app/?ref=${refCode}`;
         const shareText = `タクシードライバー向け業務記録アプリ「タクロー」を使ってみて！売上分析・乗り場ガイド・AIアドバイスが全部ひとつで揃ってるよ🦉\n${refUrl}`;
 
         const [copied, setCopied] = useState(false);
+        const [referralCount, setReferralCount] = useState(null); // null = 読み込み中
+
+        // Supabaseから紹介数を取得
+        useState(() => {
+          if (!SUPABASE_READY || !refCode) { setReferralCount(0); return; }
+          fetchReferralCount(refCode).then(({ count }) => setReferralCount(count ?? 0));
+        });
+
+        const rewardXp = (referralCount ?? 0) * 100;
 
         const copyLink = () => {
           navigator.clipboard.writeText(refUrl).catch(() => {});
@@ -747,10 +756,6 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
             alert("リンクをコピーしました。Instagramに貼り付けて投稿してください。");
           }
         };
-
-        // モック紹介実績（将来はSupabaseから取得）
-        const referralCount  = 3;
-        const rewardXp       = referralCount * 100;
         const REWARD_TIERS   = [
           { count:1,  reward:"🎉 +100 XP", desc:"1人招待達成" },
           { count:3,  reward:"⭐ +300 XP + 1ヶ月無料", desc:"3人招待達成" },
@@ -763,8 +768,13 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
             {/* 実績バナー */}
             <div style={{ background:`linear-gradient(135deg, ${C.accentLight}22, ${C.purple}22)`, border:`1px solid ${C.accentLight}44`, borderRadius:14, padding:"16px", marginBottom:16, textAlign:"center" }}>
               <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>あなたの紹介実績</div>
-              <div style={{ fontSize:36, fontWeight:900, color:C.text }}>{referralCount}<span style={{ fontSize:16, color:C.muted, marginLeft:4 }}>人</span></div>
-              <div style={{ fontSize:12, color:C.accentLight, fontWeight:700, marginTop:4 }}>累計 +{rewardXp} XP 獲得済み</div>
+              <div style={{ fontSize:36, fontWeight:900, color:C.text }}>
+                {referralCount === null ? "—" : referralCount}
+                <span style={{ fontSize:16, color:C.muted, marginLeft:4 }}>人</span>
+              </div>
+              <div style={{ fontSize:12, color:C.accentLight, fontWeight:700, marginTop:4 }}>
+                {referralCount === null ? "集計中..." : `累計 +${rewardXp} XP 獲得済み`}
+              </div>
             </div>
 
             {/* 紹介コード */}
