@@ -9,6 +9,12 @@ import { levelFromXp, getTitle, MISSIONS, getMissionState } from "../lib/xp";
 import { CURRENT_VERSION, CHANGELOG } from "../lib/changelog";
 import { getCachedWeather, weatherMeta } from "../lib/weather";
 import { SalesPointCard } from "../components/SalesPointCard";
+import { upsertShifts, deleteShift } from "../lib/supabase";
+
+const SUPABASE_READY = !!(
+  import.meta.env.VITE_SUPABASE_URL &&
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 // ━━━ 更新通知バナー ━━━━━━━━━━━━━━━━━━━━━━━━
 export function UpdateBanner() {
@@ -700,28 +706,126 @@ function AnalysisTodayCard({ reports }) {
   );
 }
 
-// ━━━ 月間カレンダー ━━━━━━━━━━━━━━━━━━━━━━━━━━
-function MonthCalendar({ reports, monthTarget }) {
-  const [open, setOpen] = useState(false);
+// ━━━ 統合カレンダー（シフト予定 ＋ 売上実績） ━━━━━
+function UnifiedDayModal({ dateStr, shift, report, onClose, onSaveShift, onDeleteShift, onOpenReport }) {
+  const d = new Date(dateStr);
+  const wd = ["日","月","火","水","木","金","土"][d.getDay()];
+  const todayStr = new Date().toISOString().slice(0,10);
+  const isPast = dateStr < todayStr;
+
+  const [editing, setEditing] = useState(!shift);
+  const [form, setForm] = useState({ clockIn:shift?.clockIn||"", clockOut:shift?.clockOut||"", note:shift?.note||"" });
+  const [saving, setSaving] = useState(false);
+
+  const inp = { backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:"9px 11px", color:C.text, fontSize:13, outline:"none", width:"100%", boxSizing:"border-box" };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSaveShift({ id:shift?.id||("manual_"+Date.now()), date:dateStr, clockIn:form.clockIn, clockOut:form.clockOut, isNight:false, note:form.note });
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, backgroundColor:"#00000090", zIndex:200, display:"flex", alignItems:"flex-end" }} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:24, paddingBottom:36, maxHeight:"85vh", overflowY:"auto" }}>
+        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 16px" }}/>
+        <div style={{ fontSize:18, fontWeight:800, marginBottom:16 }}>{dateStr}（{wd}）</div>
+
+        {/* シフト */}
+        {editing ? (
+          <div style={{ backgroundColor:C.accentLight+"12", border:`1px solid ${C.accentLight}33`, borderRadius:12, padding:16, marginBottom:12 }}>
+            <div style={{ fontSize:12, color:C.accentLight, fontWeight:700, marginBottom:12 }}>📅 {shift?"シフトを編集":"シフトを追加"}</div>
+            <div style={{ display:"flex", gap:10, marginBottom:10 }}>
+              <div style={{ flex:1 }}><div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>出庫</div><input value={form.clockIn} onChange={e=>setForm(p=>({...p,clockIn:e.target.value}))} placeholder="07:00" style={inp}/></div>
+              <div style={{ flex:1 }}><div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>帰庫</div><input value={form.clockOut} onChange={e=>setForm(p=>({...p,clockOut:e.target.value}))} placeholder="20:00" style={inp}/></div>
+            </div>
+            <div style={{ marginBottom:12 }}><div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>メモ</div><textarea value={form.note} onChange={e=>setForm(p=>({...p,note:e.target.value}))} rows={2} placeholder="急な変更など" style={{ ...inp, resize:"vertical" }}/></div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={handleSave} disabled={saving} style={{ flex:1, backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:9, padding:"11px 0", fontSize:13, fontWeight:700, cursor:"pointer", opacity:saving?0.6:1 }}>{saving?"保存中...":shift?"更新する":"追加する"}</button>
+              {shift && <button onClick={()=>setEditing(false)} style={{ flex:1, backgroundColor:"transparent", border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 0", fontSize:13, color:C.muted, cursor:"pointer" }}>キャンセル</button>}
+            </div>
+          </div>
+        ) : shift ? (
+          <div style={{ backgroundColor:C.green+"12", border:`1px solid ${C.green}44`, borderRadius:12, padding:14, marginBottom:12 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+              <div style={{ fontSize:12, color:C.green, fontWeight:700 }}>📅 出勤予定</div>
+              <button onClick={()=>setEditing(true)} style={{ fontSize:11, color:C.accentLight, background:"transparent", border:`1px solid ${C.accentLight}44`, borderRadius:6, padding:"3px 10px", cursor:"pointer", fontWeight:600 }}>編集</button>
+            </div>
+            <div style={{ display:"flex", gap:20, marginBottom:shift.note?8:0 }}>
+              <div><div style={{ fontSize:10, color:C.muted }}>出庫</div><div style={{ fontSize:16, fontWeight:700 }}>{shift.clockIn||"—"}</div></div>
+              <div><div style={{ fontSize:10, color:C.muted }}>帰庫</div><div style={{ fontSize:16, fontWeight:700 }}>{shift.clockOut||"—"}</div></div>
+            </div>
+            {shift.note&&<div style={{ fontSize:12, color:C.sub, whiteSpace:"pre-wrap", backgroundColor:C.bg, borderRadius:7, padding:"8px 10px" }}>📝 {shift.note}</div>}
+            <button onClick={()=>onDeleteShift(shift)} style={{ marginTop:10, background:"transparent", border:`1px solid ${C.red}44`, borderRadius:8, padding:"6px 14px", fontSize:11, color:C.red, cursor:"pointer", fontWeight:600 }}>削除</button>
+          </div>
+        ) : (
+          <div style={{ backgroundColor:C.border+"33", borderRadius:10, padding:"10px 14px", marginBottom:12, textAlign:"center", fontSize:12, color:C.muted }}>出勤予定なし</div>
+        )}
+
+        {/* 日報 */}
+        {report ? (
+          <div style={{ backgroundColor:C.goldGlow||C.gold+"12", border:`1px solid ${C.gold}44`, borderRadius:12, padding:14, marginBottom:12 }}>
+            <div style={{ fontSize:12, color:C.gold, fontWeight:700, marginBottom:8 }}>💴 日報入力済み</div>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div><div style={{ fontSize:10, color:C.muted }}>総売上</div><div style={{ fontSize:22, fontWeight:900, color:C.gold }}>{fmt(report.gross_sales)}円</div></div>
+              <div><div style={{ fontSize:10, color:C.muted }}>営業回数</div><div style={{ fontSize:22, fontWeight:900 }}>{report.ride_count}回</div></div>
+            </div>
+            <button onClick={()=>{ onOpenReport(report); onClose(); }} style={{ marginTop:10, width:"100%", backgroundColor:C.gold+"22", color:C.gold, border:`1px solid ${C.gold}44`, borderRadius:9, padding:"9px 0", fontSize:12, fontWeight:700, cursor:"pointer" }}>日報の詳細を見る →</button>
+          </div>
+        ) : isPast && shift ? (
+          <div style={{ backgroundColor:C.orange+"12", border:`1px solid ${C.orange}44`, borderRadius:12, padding:14, marginBottom:12 }}>
+            <div style={{ fontSize:12, color:C.orange, fontWeight:700, marginBottom:4 }}>⚠️ 日報が未入力です</div>
+            <div style={{ fontSize:11, color:C.muted }}>「記録する（＋）」から日報を登録してください</div>
+          </div>
+        ) : null}
+
+        <button onClick={onClose} style={{ width:"100%", backgroundColor:"transparent", border:`1px solid ${C.border}`, borderRadius:11, padding:"13px 0", fontSize:14, fontWeight:600, color:C.muted, cursor:"pointer" }}>閉じる</button>
+      </div>
+    </div>
+  );
+}
+
+function UnifiedCalendar({ reports, monthTarget, user, onOpenReport }) {
   const today = new Date();
-  const year  = today.getFullYear();
-  const month = today.getMonth(); // 0-indexed
-  const daysInMonth   = new Date(year, month + 1, 0).getDate();
-  const firstDayOfWeek = new Date(year, month, 1).getDay(); // 0=日
+  const todayStr = today.toISOString().slice(0,10);
+  const [viewYear,  setViewYear]  = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth()); // 0-indexed
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [dayShift,    setDayShift]    = useState(null);
+  const [dayReport,   setDayReport]   = useState(null);
+  const [shifts, setShifts] = useState(() => loadS("taxi_shifts", []));
+
+  const ym = `${viewYear}-${String(viewMonth+1).padStart(2,"0")}`;
+  const monthReports = reports.filter(r => r.date?.startsWith(ym));
+  const monthShifts  = shifts.filter(s => s.date?.startsWith(ym));
+
+  const reportByDate = {};  monthReports.forEach(r => { reportByDate[r.date] = r; });
+  const shiftByDate  = {};  monthShifts.forEach(s  => { shiftByDate[s.date]  = s; });
+
+  const daysInMonth    = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
   const DAYS = ["日","月","火","水","木","金","土"];
 
-  // reports を日付 → 売上 のマップに
-  const byDate = {};
-  reports.forEach(r => { byDate[r.date] = (byDate[r.date] || 0) + (r.gross_sales || 0); });
+  const prevMonth = () => viewMonth===0 ? (setViewYear(y=>y-1), setViewMonth(11)) : setViewMonth(m=>m-1);
+  const nextMonth = () => viewMonth===11? (setViewYear(y=>y+1), setViewMonth(0))  : setViewMonth(m=>m+1);
 
-  const targetPerDay = monthTarget / daysInMonth;
+  const handleSaveShift = async (s) => {
+    const next = (() => {
+      const idx = shifts.findIndex(x => x.date === s.date);
+      return idx >= 0 ? shifts.map((x,i) => i===idx?s:x) : [...shifts, s];
+    })();
+    setShifts(next);
+    saveS("taxi_shifts", next);
+    if (SUPABASE_READY && user?.id) await upsertShifts(user.id, [s]);
+  };
 
-  const cellColor = (sales) => {
-    if (!sales) return null;
-    if (sales >= 65000) return C.green;
-    if (sales >= targetPerDay) return C.accentLight;
-    if (sales >= 50000) return C.gold;
-    return C.orange;
+  const handleDeleteShift = async (sh) => {
+    const next = shifts.filter(x => x.id !== sh.id);
+    setShifts(next);
+    saveS("taxi_shifts", next);
+    if (SUPABASE_READY && user?.id) await deleteShift(user.id, sh.date);
+    setSelectedDay(null);
   };
 
   const cells = [];
@@ -730,67 +834,95 @@ function MonthCalendar({ reports, monthTarget }) {
 
   return (
     <Card style={{ marginBottom:14, padding:"12px 14px" }}>
-      <div onClick={()=>setOpen(p=>!p)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", marginBottom: open ? 14 : 0 }}>
-        <div style={{ fontSize:13, fontWeight:700 }}>📅 {month+1}月 実績カレンダー</div>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ display:"flex", gap:6 }}>
-            {[{c:C.green,l:"65k↑"},{c:C.accentLight,l:"目標↑"},{c:C.gold,l:"50k↑"},{c:C.orange,l:"低"}].map(({c,l})=>(
-              <div key={l} style={{ display:"flex", alignItems:"center", gap:3 }}>
-                <div style={{ width:7, height:7, borderRadius:2, backgroundColor:c }}/>
-                <span style={{ fontSize:9, color:C.muted }}>{l}</span>
-              </div>
-            ))}
+      {/* ヘッダー */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+        <button onClick={prevMonth} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"5px 12px", color:C.sub, cursor:"pointer", fontSize:15 }}>‹</button>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontSize:14, fontWeight:800 }}>📅 {viewYear}年{viewMonth+1}月</div>
+          <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>
+            出勤 {monthShifts.length}日 · 日報 {monthReports.length}件
           </div>
-          <span style={{ fontSize:11, color:C.muted }}>{open?"▲":"▼"}</span>
         </div>
+        <button onClick={nextMonth} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"5px 12px", color:C.sub, cursor:"pointer", fontSize:15 }}>›</button>
       </div>
 
-      {open && (
-        <>
-          {/* 曜日ヘッダー */}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3, marginBottom:4 }}>
-            {DAYS.map((d,i)=>(
-              <div key={d} style={{ textAlign:"center", fontSize:10, color: i===0?C.red:i===6?C.accentLight:C.muted, fontWeight:700, paddingBottom:4 }}>{d}</div>
-            ))}
+      {/* 凡例 */}
+      <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" }}>
+        {[
+          { color:C.green,      label:"出勤+日報済" },
+          { color:C.orange,     label:"日報未入力"  },
+          { color:C.accentLight,label:"出勤予定"    },
+          { color:C.gold,       label:"日報のみ"    },
+        ].map(({color,label}) => (
+          <div key={label} style={{ display:"flex", alignItems:"center", gap:3 }}>
+            <div style={{ width:8, height:8, borderRadius:2, backgroundColor:color }}/>
+            <span style={{ fontSize:9, color:C.muted }}>{label}</span>
           </div>
+        ))}
+      </div>
 
-          {/* 日付グリッド */}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3 }}>
-            {cells.map((d, i) => {
-              if (!d) return <div key={i}/>;
-              const dateStr  = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-              const sales    = byDate[dateStr];
-              const color    = cellColor(sales);
-              const isToday  = d === today.getDate();
-              const isFuture = d > today.getDate();
-              return (
-                <div key={i} style={{
-                  borderRadius: 6,
-                  padding: "5px 2px",
-                  textAlign: "center",
-                  backgroundColor: color ? color + "22" : isFuture ? "transparent" : C.surface,
-                  border: isToday ? `2px solid ${C.accentLight}` : `1px solid ${color ? color+"55" : C.border}`,
-                  opacity: isFuture ? 0.4 : 1,
-                }}>
-                  <div style={{ fontSize:10, color: isToday ? C.accentLight : C.muted, fontWeight: isToday ? 800 : 400 }}>{d}</div>
-                  {sales ? (
-                    <div style={{ fontSize:8, color: color, fontWeight:700, marginTop:1, lineHeight:1.1 }}>
-                      {Math.round(sales/1000)}k
-                    </div>
-                  ) : (
-                    <div style={{ fontSize:8, color:C.border, marginTop:1 }}>—</div>
-                  )}
+      {/* 曜日ヘッダー */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2, marginBottom:3 }}>
+        {DAYS.map((d,i) => (
+          <div key={d} style={{ textAlign:"center", fontSize:9, color:i===0?C.red:i===6?C.accentLight:C.muted, fontWeight:700, paddingBottom:3 }}>{d}</div>
+        ))}
+      </div>
+
+      {/* 日付グリッド */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 }}>
+        {cells.map((d, i) => {
+          if (!d) return <div key={i}/>;
+          const dateStr  = `${viewYear}-${String(viewMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+          const shift    = shiftByDate[dateStr];
+          const report   = reportByDate[dateStr];
+          const isFuture = dateStr > todayStr;
+          const isToday  = dateStr === todayStr;
+          const isPast   = dateStr < todayStr;
+
+          // セル色
+          let bg = null;
+          if (shift && report)        bg = C.green;
+          else if (shift && isPast)   bg = C.orange;
+          else if (shift)             bg = C.accentLight;
+          else if (report)            bg = C.gold;
+
+          return (
+            <div key={i}
+              onClick={() => { setSelectedDay(dateStr); setDayShift(shift||null); setDayReport(report||null); }}
+              style={{
+                borderRadius:6, padding:"4px 2px", textAlign:"center", cursor:"pointer",
+                backgroundColor: bg ? bg+"22" : isFuture ? "transparent" : C.surface,
+                border: isToday ? `2px solid ${C.accentLight}` : `1px solid ${bg ? bg+"55" : C.border}`,
+                minHeight:54, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-start", gap:1,
+                opacity: isFuture && !shift ? 0.4 : 1,
+              }}
+            >
+              <div style={{ fontSize:10, color:isToday?C.accentLight:C.text, fontWeight:isToday?800:400 }}>{d}</div>
+              {shift && (
+                <div style={{ fontSize:7, color:bg||C.muted, fontWeight:600, lineHeight:1.3 }}>
+                  {shift.clockIn&&shift.clockIn.slice(0,5)}<br/>{shift.clockOut&&shift.clockOut.slice(0,5)}
                 </div>
-              );
-            })}
-          </div>
+              )}
+              {report && (
+                <div style={{ fontSize:8, color:C.gold, fontWeight:700, marginTop:1 }}>
+                  {(report.gross_sales/10000).toFixed(1)}万
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
-          {/* 月間サマリー */}
-          <div style={{ marginTop:12, padding:"10px 12px", backgroundColor:C.bg, borderRadius:8, display:"flex", justifyContent:"space-between", fontSize:11, color:C.muted }}>
-            <span>記録日数: <b style={{ color:C.text }}>{Object.keys(byDate).filter(d=>d.startsWith(`${year}-${String(month+1).padStart(2,"0")}`)).length}日</b></span>
-            <span>日平均: <b style={{ color:C.text }}>{fmt(Object.values(byDate).length ? Math.round(Object.values(byDate).reduce((a,b)=>a+b,0)/Object.values(byDate).length) : 0)}円</b></span>
-          </div>
-        </>
+      {selectedDay && (
+        <UnifiedDayModal
+          dateStr={selectedDay}
+          shift={dayShift}
+          report={dayReport}
+          onClose={()=>setSelectedDay(null)}
+          onSaveShift={handleSaveShift}
+          onDeleteShift={handleDeleteShift}
+          onOpenReport={onOpenReport}
+        />
       )}
     </Card>
   );
@@ -985,8 +1117,8 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         )}
       </Card>
 
-      {/* カレンダー */}
-      <MonthCalendar reports={monthReports} monthTarget={monthTarget} />
+      {/* 統合カレンダー */}
+      <UnifiedCalendar reports={reports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} />
 
       {/* ② KPI グリッド */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:14 }}>

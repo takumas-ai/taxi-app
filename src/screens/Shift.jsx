@@ -434,34 +434,12 @@ export default function ShiftScreen({ reports, onGoUpload, user, onBack }) {
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{missing.map(s=><span key={s.id} onClick={onGoUpload} style={{fontSize:11,backgroundColor:C.orange+"22",color:C.orange,padding:"3px 8px",borderRadius:99,cursor:"pointer",fontWeight:600}}>{s.date.slice(5)}</span>)}</div>
         </div>
       )}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <button onClick={prevMonth} style={{backgroundColor:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 14px",color:C.sub,cursor:"pointer",fontSize:16}}>‹</button>
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:17,fontWeight:800}}>
-            {viewMonth.year}年{viewMonth.month}月{showTwoMonths?` 〜 ${nextM.month}月`:""}
-          </div>
-          <div style={{fontSize:11,color:C.muted}}>{monthShifts.length + (showTwoMonths?nextMonthShifts.length:0)}出勤日 / 残り{remainingShifts}日</div>
-        </div>
-        <button onClick={nextMonth} style={{backgroundColor:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 14px",color:C.sub,cursor:"pointer",fontSize:16}}>›</button>
+      {/* カレンダーはホーム画面（統合カレンダー）で確認できます */}
+      <div style={{fontSize:11,color:C.muted,backgroundColor:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 14px",marginBottom:14,textAlign:"center"}}>
+        📅 カレンダーはホーム画面で確認・編集できます
       </div>
 
-      {/* 1ヶ月目 */}
-      <div style={{fontSize:13,fontWeight:700,color:C.muted,marginBottom:6}}>{viewMonth.year}年{viewMonth.month}月</div>
-      <Card style={{marginBottom:showTwoMonths?14:0}}>
-        <ShiftCalendar year={viewMonth.year} month={viewMonth.month} shifts={monthShifts} reports={monthReports} onSelectDay={(ds,sh,rep)=>{setSelectedDay(ds);setDayShift(sh||null);setDayReport(rep||null);}}/>
-      </Card>
-
-      {/* 2ヶ月目（月跨ぎあり） */}
-      {showTwoMonths&&(
-        <>
-          <div style={{fontSize:13,fontWeight:700,color:C.muted,marginBottom:6}}>{nextM.year}年{nextM.month}月</div>
-          <Card style={{marginBottom:0}}>
-            <ShiftCalendar year={nextM.year} month={nextM.month} shifts={nextMonthShifts} reports={nextMonthReports} onSelectDay={(ds,sh,rep)=>{setSelectedDay(ds);setDayShift(sh||null);setDayReport(rep||null);}}/>
-          </Card>
-        </>
-      )}
-
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14,marginTop:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
         <KpiCard label="今月出勤数" value={monthShifts.length} unit="日" accent={C.green}/>
         <KpiCard label="残り出勤" value={remainingShifts} unit="日" accent={remainingShifts<=3?C.red:C.accentLight}/>
         <KpiCard label="日報入力済" value={monthReports.length} unit="日" accent={C.gold}/>
