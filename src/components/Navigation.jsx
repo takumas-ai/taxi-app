@@ -238,8 +238,9 @@ function BusinessPointModal({ onClose }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ハンバーガーメニュー（左ドロワー）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSettings, onManageArea }) {
+function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSettings, onManageArea, hasNewRanking }) {
   const items = [
+    { icon:"🏆", label:"ランキング",       action:()=>{ setTab("ranking"); onClose(); }, badge: hasNewRanking },
     { icon:"🎁", label:"友達を招待",       action:()=>{ onNavigateSettings("referral"); onClose(); } },
     { icon:"🗺️", label:"エリア設定",       action:()=>{ onManageArea?.(); onClose(); } },
     { icon:"📍", label:"マイポイント",       action:()=>{ onOpenBizPoints(); onClose(); } },
@@ -273,6 +274,9 @@ function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSet
             >
               <span style={{ fontSize:18, width:24, textAlign:"center" }}>{item.icon}</span>
               <span style={{ fontSize:14, color:C.text, fontWeight:500 }}>{item.label}</span>
+              {item.badge && (
+                <span style={{ marginLeft:"auto", backgroundColor:C.red, color:"#fff", fontSize:9, fontWeight:700, borderRadius:99, padding:"2px 7px" }}>NEW</span>
+              )}
             </div>
           ))}
         </div>
@@ -334,7 +338,7 @@ export function TakuroFAB({ setTab }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ヘッダー
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-export function Header({ user, tab, setTab, appMode="simple", onModeChange, alertsSeen=false, onNavigateSettings, onManageArea }) {
+export function Header({ user, tab, setTab, appMode="simple", onModeChange, alertsSeen=false, onNavigateSettings, onManageArea, hasNewRanking=false }) {
   const [showDrawer, setShowDrawer]     = useState(false);
   const [showModeSheet, setShowModeSheet] = useState(false);
   const [showBizPoints, setShowBizPoints] = useState(false);
@@ -411,6 +415,7 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
           onOpenBizPoints={() => setShowBizPoints(true)}
           onNavigateSettings={onNavigateSettings}
           onManageArea={onManageArea}
+          hasNewRanking={hasNewRanking}
         />
       )}
 

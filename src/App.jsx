@@ -34,6 +34,7 @@ import Settings           from "./screens/Settings";
 import OnboardingScreen   from "./screens/Onboarding";
 import CommunityScreen    from "./screens/Community";
 import AdminScreen        from "./screens/Admin";
+import RankingScreen, { hasUnseenRanking } from "./screens/Ranking";
 
 // Components
 import { BottomNav, Header, TakuroFAB } from "./components/Navigation";
@@ -323,8 +324,9 @@ export default function App() {
   const [tab, setTab]           = useState(() => {
     const saved = loadS("taxi_last_tab", "dashboard");
     // adminタブはリロード後に復元しない（セキュリティ）
-    return ["dashboard","list","upload","info","guide","shift","settings","community"].includes(saved) ? saved : "dashboard";
+    return ["dashboard","list","upload","info","guide","shift","settings","community","ranking"].includes(saved) ? saved : "dashboard";
   });
+  const [hasNewRanking, setHasNewRanking] = useState(() => hasUnseenRanking());
   const [alertsSeen, setAlertsSeen]   = useState(() => loadS("taxi_alerts_seen", false));
   const [settingsSection, setSettingsSection] = useState("");
   const [selected, setSelected] = useState(null);
@@ -523,6 +525,9 @@ export default function App() {
       setAlertsSeen(true);
       saveS("taxi_alerts_seen", true);
     }
+    if (newTab === "ranking" && hasNewRanking) {
+      setHasNewRanking(false);
+    }
     if (newTab !== "settings") {
       setSettingsSection("");
     }
@@ -559,7 +564,7 @@ export default function App() {
 
   const renderScreen = () => {
     switch (tab) {
-      case "dashboard": return <Dashboard reports={reports} user={user} onOpenReport={setSelected} onManageArea={()=>setShowAreaModal(true)} rankPrefs={rankPrefs} appMode={appMode} onGoShift={()=>handleSetTab("shift")} onUpdateReport={handleUpdateReport}/>;
+      case "dashboard": return <Dashboard reports={reports} user={user} onOpenReport={setSelected} onManageArea={()=>setShowAreaModal(true)} rankPrefs={rankPrefs} appMode={appMode} onGoShift={()=>handleSetTab("shift")} onUpdateReport={handleUpdateReport} onGoRanking={notif.dailyResult && hasNewRanking ? ()=>handleSetTab("ranking") : null}/>;
       case "list":      return <ReportList reports={reports} onSelect={r=>{setSelectedForEdit(false);setSelected(r);}} onEdit={r=>{setSelectedForEdit(true);setSelected(r);}}/>;
       case "upload":    return <UploadScreen uploadCount={user.uploadCount||0} onSave={handleSave} reports={reports}/>;
       case "info":      return <InfoCenter notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} userAreas={userAreas} onManageArea={()=>setShowAreaModal(true)}/>;
@@ -567,6 +572,7 @@ export default function App() {
       case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")} user={user} onBack={()=>handleSetTab("dashboard")}/>;
       case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined} onOpenAdmin={()=>handleSetTab("admin")}/>;
       case "community": return <CommunityScreen />;
+      case "ranking":   return <RankingScreen user={user} rankPrefs={rankPrefs} />;
       case "admin":     return <AdminScreen user={{ ...user, email: user.email || "" }} onExit={() => handleSetTab("dashboard")}/>;
       case "feedback":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection="feedback" onBack={()=>handleSetTab("dashboard")}/>;
       default:          return null;
@@ -575,7 +581,7 @@ export default function App() {
 
   return (
     <div key={themeVer} style={{ minHeight:"100vh", backgroundColor:C.bg, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text, overflowX:"hidden" }}>
-      <Header user={user} tab={tab} setTab={handleSetTab} appMode={appMode} onModeChange={setAppMode} alertsSeen={alertsSeen} onNavigateSettings={handleNavigateSettings} onManageArea={()=>setShowAreaModal(true)} />
+      <Header user={user} tab={tab} setTab={handleSetTab} appMode={appMode} onModeChange={setAppMode} alertsSeen={alertsSeen} onNavigateSettings={handleNavigateSettings} onManageArea={()=>setShowAreaModal(true)} hasNewRanking={hasNewRanking && notif.dailyResult} />
       {renderScreen()}
       <ReportModal key={selected ? `${selected.id}-${selectedForEdit}` : "none"} report={selected} onClose={()=>{setSelected(null);setSelectedForEdit(false);}} onUpdate={handleUpdateReport} startInEdit={selectedForEdit}/>
       <TakuroFAB setTab={handleSetTab} />

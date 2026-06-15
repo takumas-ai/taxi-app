@@ -136,76 +136,19 @@ function WeatherWidget() {
   );
 }
 
-// ━━━ 翌日発表カード ━━━━━━━━━━━━━━━━━━━━━━━━
-function YesterdayCard({ userAreas, rankPrefs, reports }) {
-  const [open, setOpen] = useState(false);
+// ━━━ ランキング新着バナー（通知ONのユーザーのみ） ━━
+// 集計が出た日だけホームに小さく表示。タップでランキング画面へ。
+export function RankingNoticeBanner({ onGoRanking }) {
   const s = MOCK_YESTERDAY_SUMMARY;
-  const myReport = reports.find(r => r.date === s.date);
-  const myAreaStats = s.areaStats.filter(a => userAreas.length === 0 || userAreas.includes(a.area));
-  const trendIcon = t => t === "up" ? "📈" : t === "down" ? "📉" : "➡️";
-
   return (
-    <div style={{ backgroundColor:C.accentGlow, border:`1.5px solid ${C.accentLight}44`, borderRadius:14, padding:"14px 16px", marginBottom:14 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: open ? 10 : 0 }}>
-        <div>
-          <div style={{ fontSize:11, color:C.accentLight, fontWeight:700, marginBottom:2 }}>📣 翌日発表 — {s.date}</div>
-          <div style={{ fontSize:13, fontWeight:700 }}>{s.totalDrivers}人参加の集計結果</div>
-        </div>
-        <button onClick={() => setOpen(p => !p)} style={{ backgroundColor:C.accentLight+"22", border:`1px solid ${C.accentLight}44`, borderRadius:8, padding:"5px 12px", color:C.accentLight, fontSize:12, fontWeight:700, cursor:"pointer" }}>
-          {open ? "閉じる" : "詳細 →"}
-        </button>
+    <div onClick={onGoRanking}
+      style={{ display:"flex", alignItems:"center", gap:10, backgroundColor:C.accentGlow, border:`1.5px solid ${C.accentLight}44`, borderRadius:12, padding:"10px 14px", marginBottom:14, cursor:"pointer" }}>
+      <span style={{ fontSize:20 }}>🏆</span>
+      <div style={{ flex:1 }}>
+        <div style={{ fontSize:11, color:C.accentLight, fontWeight:700 }}>集計結果が出ました</div>
+        <div style={{ fontSize:12, color:C.text }}>{s.date} 分 · {s.totalDrivers}人参加</div>
       </div>
-      {open && (
-        <>
-          {myReport && rankPrefs.showMyRank && (
-            <div style={{ backgroundColor:C.accentLight+"18", border:`1px solid ${C.accentLight}33`, borderRadius:10, padding:"10px 12px", marginBottom:10 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div>
-                  <div style={{ fontSize:10, color:C.muted, marginBottom:2 }}>あなたの昨日</div>
-                  <div style={{ fontSize:20, fontWeight:800 }}>{fmt(s.myResult.sales)}<span style={{ fontSize:11, color:C.muted, marginLeft:3 }}>円</span></div>
-                </div>
-                <div style={{ textAlign:"right" }}>
-                  <div style={{ fontSize:22, fontWeight:900, color:C.gold }}>第{s.myResult.rank}位</div>
-                  <div style={{ fontSize:10, color:C.muted }}>上位{s.myResult.percentile}%</div>
-                </div>
-              </div>
-            </div>
-          )}
-          <div style={{ marginBottom:12 }}>
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>エリア別平均売上</div>
-            {(userAreas.length > 0 ? myAreaStats : s.areaStats).map(a => {
-              const meta = AREA_MASTER[a.area];
-              return (
-                <div key={a.area} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 0", borderBottom:`1px solid ${C.border}` }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <span style={{ fontSize:15 }}>{meta?.emoji || "📍"}</span>
-                    <span style={{ fontSize:13, fontWeight:600 }}>{a.area}</span>
-                    <span style={{ fontSize:10, color:C.muted }}>{a.count}人</span>
-                  </div>
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <span style={{ fontSize:13, fontWeight:700 }}>{fmt(a.avg)}円</span>
-                    <span style={{ fontSize:16 }}>{trendIcon(a.trend)}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {rankPrefs.showTopSales && (
-            <div>
-              <div style={{ fontSize:11, color:C.gold, fontWeight:700, marginBottom:8 }}>🏆 昨日のトップ5（匿名）</div>
-              {s.topSales.map(t => (
-                <div key={t.rank} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 0", borderBottom:`1px solid ${C.border}` }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <span style={{ fontSize:14 }}>{t.badge}</span>
-                    <span style={{ fontSize:12, color:C.sub }}>{t.area}</span>
-                  </div>
-                  <span style={{ fontSize:14, fontWeight:700, color:C.gold }}>{fmt(t.sales)}円</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
+      <span style={{ fontSize:13, color:C.accentLight, fontWeight:700 }}>見る →</span>
     </div>
   );
 }
@@ -854,7 +797,7 @@ function MonthCalendar({ reports, monthTarget }) {
 }
 
 // ━━━ Dashboard メイン ━━━━━━━━━━━━━━━━━━━━━━━━━
-export default function Dashboard({ reports, user, onOpenReport, onManageArea, rankPrefs = { showMyRank:false, showTopSales:false }, appMode = "standard", onGoShift, onUpdateReport }) {
+export default function Dashboard({ reports, user, onOpenReport, onManageArea, rankPrefs = { showMyRank:false, showTopSales:false }, appMode = "standard", onGoShift, onUpdateReport, onGoRanking }) {
   const monthReports = reports.filter(r => {
     const d = new Date(r.date);
     return d.getFullYear() === THIS_YEAR && d.getMonth() + 1 === THIS_MONTH;
@@ -1052,8 +995,8 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         <KpiCard label="無料残り"   value={remaining}      unit="件" accent={remaining <= 1 ? C.red : C.gold} />
       </div>
 
-      {/* ④ 翌日発表（分析モードのみ常に展開、通常は折りたたみ） */}
-      <YesterdayCard userAreas={user.areas || []} rankPrefs={rankPrefs} reports={reports} />
+      {/* ④ ランキング新着バナー（通知ON時のみ App.jsx から onGoRanking が渡される） */}
+      {onGoRanking && <RankingNoticeBanner onGoRanking={onGoRanking} />}
 
       {/* ⑤ 今日の売上＆着地予想（分析モードのみ） */}
       {isAnalysis && <AnalysisTodayCard reports={reports} />}
