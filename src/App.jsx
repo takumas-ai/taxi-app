@@ -256,7 +256,11 @@ export default function App() {
   const [consentDone, setConsentDone]       = useState(() => !!loadS("taxi_consent_done", false));
   const [onboardingDone, setOnboardingDone] = useState(() => !!loadS("taxi_onboarding_done", false));
   const [reports, setReports]   = useState(() => loadS("taxi_reports", INITIAL_REPORTS));
-  const [tab, setTab]           = useState("dashboard");
+  const [tab, setTab]           = useState(() => {
+    const saved = loadS("taxi_last_tab", "dashboard");
+    // adminタブはリロード後に復元しない（セキュリティ）
+    return ["dashboard","list","upload","info","guide","shift","settings","community"].includes(saved) ? saved : "dashboard";
+  });
   const [alertsSeen, setAlertsSeen]   = useState(() => loadS("taxi_alerts_seen", false));
   const [settingsSection, setSettingsSection] = useState("");
   const [selected, setSelected] = useState(null);
@@ -448,6 +452,7 @@ export default function App() {
       setSettingsSection("");
     }
     setTab(newTab);
+    if (newTab !== "admin") saveS("taxi_last_tab", newTab);
   };
 
   // ハンバーガー → 設定の特定セクションへ
