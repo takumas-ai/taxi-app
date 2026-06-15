@@ -69,12 +69,10 @@ export async function fetchProfile(userId) {
 
 /** ユーザープロフィールを作成 or 更新（upsert） */
 export async function upsertProfile(profile) {
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("users")
-    .upsert(profile, { onConflict: "id" })
-    .select()
-    .single();
-  return { data, error };
+    .upsert(profile, { onConflict: "id" });
+  return { error };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
