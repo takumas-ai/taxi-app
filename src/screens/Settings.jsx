@@ -797,7 +797,7 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
           if (!fbBody.trim()) return;
           setFbState("sending");
           try {
-            if (SUPABASE_READY && !user?.isDemo) {
+            if (SUPABASE_READY) {
               const { error } = await insertFeedback({ userId: user?.id, category: fbCategory, body: fbBody.trim(), anonymous: fbAnon });
               if (error) throw error;
             } else {

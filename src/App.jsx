@@ -57,13 +57,6 @@ function LoginScreen({ onLogin }) {
 
   const toggleArea = a => setAreas(prev => prev.includes(a) ? prev.filter(x=>x!==a) : [...prev,a]);
 
-  // デモログイン（Supabase未接続 or 開発中）
-  const doDemo = () => onLogin({
-    id: "demo", name:"田中 義人", company:"神奈川交通",
-    workType:"隔日勤務", target:"380000", plan:"free",
-    uploadCount:6, areas:["横浜"], isDemo: true,
-  });
-
   // Supabase メール登録
   const doRegister = async () => {
     if (!form.name || !form.email || !form.password) { setError("名前・メール・パスワードは必須です"); return; }
@@ -132,16 +125,8 @@ function LoginScreen({ onLogin }) {
       {/* トップ */}
       {step === "top" && (
         <div style={{ width:"100%", maxWidth:360 }}>
-          {SUPABASE_READY && (
-            <button onClick={()=>setStep("login")} style={{ ...btnPrimary, marginBottom:12 }}>ログイン</button>
-          )}
-          <button onClick={doDemo} style={{ ...btnPrimary, backgroundColor:C.accentLight+"bb", marginBottom:12 }}>デモで試す（横浜エリア）</button>
+          <button onClick={()=>setStep("login")} style={{ ...btnPrimary, marginBottom:12 }}>ログイン</button>
           <button onClick={()=>setStep("register")} style={{ ...btnGhost }}>新規登録</button>
-          {!SUPABASE_READY && (
-            <div style={{ fontSize:11, color:C.muted, textAlign:"center", marginTop:12 }}>
-              ※ .env を設定するとSupabase認証が有効になります
-            </div>
-          )}
         </div>
       )}
 
@@ -319,9 +304,9 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // ─── ローカル保存（デモ・Supabase未設定時） ───
-  useEffect(() => { if (!SUPABASE_READY || user?.isDemo) saveS("taxi_reports", reports); }, [reports]);
-  useEffect(() => { if (!SUPABASE_READY || user?.isDemo) saveS("taxi_user", user); }, [user]);
+  // ─── ローカル保存（Supabase未設定時） ───
+  useEffect(() => { if (!SUPABASE_READY) saveS("taxi_reports", reports); }, [reports]);
+  useEffect(() => { if (!SUPABASE_READY) saveS("taxi_user", user); }, [user]);
   useEffect(() => { saveS("taxi_app_mode", appMode); }, [appMode]);
 
   // ─── テーマ管理 ───
@@ -377,7 +362,7 @@ export default function App() {
       const nextXp      = (u.xp || 0) + xpGained;
       const nextBadges  = [...new Set([...(u.badges || []), ...newBadges])];
       const nextUser    = { ...u, xp: nextXp, badges: nextBadges };
-      if (SUPABASE_READY && !u.isDemo && u.id) {
+      if (SUPABASE_READY && u.id) {
         upsertProfile({ id: u.id, xp: nextXp, badges: nextBadges });
       }
       return nextUser;
@@ -387,7 +372,7 @@ export default function App() {
   // 日報保存（Supabase or ローカル）
   const handleSave = async (r) => {
     let savedReport = r;
-    if (SUPABASE_READY && !user.isDemo && user.id) {
+    if (SUPABASE_READY && user.id) {
       const { data } = await insertReport({
         user_id: user.id,
         report_date: r.date,
@@ -424,7 +409,7 @@ export default function App() {
   // 日報更新（編集後）
   const handleUpdateReport = async (updated) => {
     setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-    if (SUPABASE_READY && !user.isDemo && user.id && updated.id) {
+    if (SUPABASE_READY && user.id && updated.id) {
       await updateReport(updated.id, {
         report_date:       updated.date,
         gross_sales:       updated.gross_sales,
@@ -462,7 +447,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    if (SUPABASE_READY && !user.isDemo) await signOut();
+    if (SUPABASE_READY) await signOut();
     // 同意・オンボーディングフラグはログアウト後も保持
     const consentFlag = localStorage.getItem("taxi_consent_done");
     const onboardingFlag = localStorage.getItem("taxi_onboarding_done");
