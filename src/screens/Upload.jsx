@@ -215,7 +215,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         rides,
         break_times:        breakTimes,
       });
-      if (!hasMatch) setStep("confirm");
+      setStep(hasMatch ? "select" : "confirm");
     } catch (err) {
       console.error("[OCR]", err);
       setOcrError(err.message || "読み取りに失敗しました");
@@ -272,7 +272,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   if (step === "ocring") {
     return (
       <div style={{ maxWidth:480, margin:"0 auto", padding:"40px 16px 100px" }}>
-        <div style={{ textAlign:"center", marginBottom:24 }}><div style={{ fontSize:36, marginBottom:10 }}>🤖</div><div style={{ fontSize:15, fontWeight:700 }}>AIが読み取り中...</div></div>
+        <div style={{ textAlign:"center", marginBottom:24 }}><div style={{ fontSize:36, marginBottom:10 }}>🤖</div><div style={{ fontSize:15, fontWeight:700 }}>タクローが読み取り中...</div></div>
         <Card>
           <ProgressBar value={ocrProg} max={100} color={C.accentLight} height={6}/>
           <div style={{ marginTop:14 }}>
