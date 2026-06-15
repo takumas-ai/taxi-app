@@ -1,13 +1,52 @@
 import { useState, useRef } from "react";
 import { C, fmt, occ, dow, hourly, FREE_LIMIT } from "../lib/constants";
-import { generateReportComment, runReportOCR } from "../lib/ai";
+import { generateReportComment, runReportOCR, runReportOCRP2 } from "../lib/ai";
 import { Card, Btn, ProgressBar } from "../components/UI";
 import { WORK_AREAS_BY_PARENT } from "../data/mockData";
 import { supabase } from "../lib/supabase";
 import { validateImageFile, validateReportForm, sanitizeReportData } from "../lib/validate";
 
 const OCR_SEQ = ["画像を解析中...","日付・勤務時間を読み取り中...","売上データを抽出中...","営業回数・走行距離を確認中...","フォーマット差異を吸収中...","読み取り完了 ✓"];
-const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"1.0", highway_fee:"0", trouble_note:"", work_area:"" };
+const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"1.0", highway_fee:"0", trouble_note:"", work_area:"", rides:[], break_times:[] };
+
+// 画像をリサイズしてbase64変換
+async function imageToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const MAX = 1600;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+          else { width = Math.round(width * MAX / height); height = MAX; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// break_times から break_hours を計算
+function calcBreakHours(breakTimes) {
+  if (!breakTimes || breakTimes.length === 0) return "1.0";
+  const total = breakTimes.reduce((sum, bt) => {
+    const [sh, sm] = bt.start.split(":").map(Number);
+    const [eh, em] = bt.end.split(":").map(Number);
+    let diff = (eh * 60 + em) - (sh * 60 + sm);
+    if (diff < 0) diff += 24 * 60; // 日付またぎ
+    return sum + diff;
+  }, 0);
+  return String(Math.round(total / 60 * 10) / 10);
+}
 
 // 撮影ガイドのチェックリスト
 const SHOT_GUIDE = [
@@ -79,15 +118,14 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
     fileInputRef.current?.click();
   };
 
-  // ファイル選択後にOCR実行
+  // ファイル選択後にOCR実行（最大2枚）
   const handleFileSelect = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    // リセット
+    const files = Array.from(e.target.files || []).slice(0, 2);
+    if (files.length === 0) return;
     e.target.value = "";
 
-    // ファイルバリデーション
-    const fileCheck = validateImageFile(file);
+    // 1枚目のバリデーション
+    const fileCheck = validateImageFile(files[0]);
     if (!fileCheck.ok) {
       setOcrError(fileCheck.error);
       setStep("ocr_error");
@@ -104,60 +142,59 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
     };
 
     try {
-      // 画像を圧縮してbase64変換（スマホ写真はサイズ大のため）
-      addLine("画像を読み込み中...", 15);
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = reject;
-        reader.onload = (ev) => {
-          const img = new Image();
-          img.onerror = reject;
-          img.onload = () => {
-            const MAX = 1600;
-            let { width, height } = img;
-            if (width > MAX || height > MAX) {
-              if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
-              else { width = Math.round(width * MAX / height); height = MAX; }
-            }
-            const canvas = document.createElement("canvas");
-            canvas.width = width; canvas.height = height;
-            canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
-          };
-          img.src = ev.target.result;
-        };
-        reader.readAsDataURL(file);
-      });
+      // ── 1枚目 ──
+      addLine(files.length > 1 ? "1枚目を読み込み中..." : "画像を読み込み中...", 10);
+      const base64_1 = await imageToBase64(files[0]);
 
-      addLine("AIに画像を送信中...", 35);
+      addLine("AIに送信中（1枚目）...", 25);
+      await new Promise(r => setTimeout(r, 200));
+      addLine("日付・売上データを抽出中...", 40);
+
+      const result1 = await runReportOCR(base64_1, "image/jpeg");
+      if (!result1) throw new Error("1枚目のOCRに失敗しました");
+
+      const f = result1?.fields ?? {};
+      let rides = Array.isArray(f.rides) ? f.rides : [];
+      let breakTimes = Array.isArray(f.break_times) ? f.break_times : [];
+
+      // ── 2枚目（乗車記録の続き）──
+      if (files.length > 1) {
+        addLine("2枚目を読み込み中（乗車記録の続き）...", 60);
+        const base64_2 = await imageToBase64(files[1]);
+        addLine("2枚目の乗車記録を抽出中...", 75);
+        const result2 = await runReportOCRP2(base64_2, "image/jpeg");
+        const f2 = result2?.fields ?? {};
+        if (Array.isArray(f2.rides)) rides = [...rides, ...f2.rides];
+        if (Array.isArray(f2.break_times)) breakTimes = [...breakTimes, ...f2.break_times];
+      }
+
+      addLine("走行距離・乗務時間を確認中...", 88);
       await new Promise(r => setTimeout(r, 300));
-      addLine("日付・売上データを抽出中...", 55);
-
-      // claude-proxy経由でOCR（work_area対応プロンプトを使用）
-      const result = await runReportOCR(base64, "image/jpeg");
-      if (!result) throw new Error("OCRエラー");
-
-      addLine("走行距離・乗務時間を確認中...", 80);
-      await new Promise(r => setTimeout(r, 300));
-      addLine("読み取り完了 ✓", 100);
+      addLine(`読み取り完了 ✓（乗車${rides.length}件）`, 100);
       await new Promise(r => setTimeout(r, 400));
 
-      const f = result?.fields ?? {};
       const today = new Date().toISOString().slice(0, 10);
+      // break_hoursはbreak_timesから計算、なければOCR値かデフォルト
+      const computedBreakHours = breakTimes.length > 0
+        ? calcBreakHours(breakTimes)
+        : (f.break_hours != null ? String(f.break_hours) : "1.0");
+
       setForm({
         date:               f.report_date ?? f.date ?? today,
         gross_sales:        f.gross_sales        != null ? String(f.gross_sales)        : "",
         cash_sales:         f.cash_sales         != null ? String(f.cash_sales)         : "",
         card_sales:         f.card_sales         != null ? String(f.card_sales)         : "",
         app_sales:          f.app_sales          != null ? String(f.app_sales)          : "",
-        ride_count:         f.ride_count         != null ? String(f.ride_count)         : "",
+        ride_count:         f.ride_count         != null ? String(f.ride_count)         : rides.length > 0 ? String(rides.length) : "",
         total_distance:     f.total_distance     != null ? String(f.total_distance)     : "",
         occupied_distance:  f.occupied_distance  != null ? String(f.occupied_distance)  : "",
         work_hours:         f.work_hours         != null ? String(f.work_hours)         : "",
-        break_hours:        f.break_hours        != null ? String(f.break_hours)        : "1.0",
+        break_hours:        computedBreakHours,
         highway_fee:        f.highway_fee        != null ? String(f.highway_fee)        : "0",
         trouble_note:       "",
         work_area:          f.work_area          ?? "",
+        rides,
+        break_times:        breakTimes,
       });
       setStep("confirm");
     } catch (err) {
@@ -174,7 +211,7 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
 
     setSaving(true);
     // サニタイズ（XSS対策・値のクランプ）
-    const data = { id: Date.now(), ...sanitizeReportData(form) };
+    const data = { id: Date.now(), ...sanitizeReportData(form), rides: form.rides ?? [], break_times: form.break_times ?? [] };
     // 3回以上記録が溜まってからAIコメント生成（データ不足での的外れコメントを防ぐ）
     const comment = reports.length >= 2 ? await generateReportComment(data, reports) : "";
     data.ai_comment = comment;
@@ -278,6 +315,23 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
             <textarea value={form.trouble_note} onChange={e=>setForm(p=>({...p,trouble_note:e.target.value}))} placeholder="特記事項があれば（任意）" rows={2} style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:13, outline:"none", resize:"none" }}/>
           </div>
         </Card>
+        {/* 乗車記録プレビュー */}
+        {form.rides && form.rides.length > 0 && (
+          <Card style={{ marginTop:10, padding:"10px 12px" }}>
+            <div style={{ fontSize:12, color:C.accentLight, fontWeight:700, marginBottom:8 }}>🚕 乗車記録 {form.rides.length}件（エリア統計に使用）</div>
+            <div style={{ maxHeight:180, overflowY:"auto" }}>
+              {form.rides.map((r, i) => (
+                <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 0", borderBottom:i<form.rides.length-1?`1px solid ${C.border}`:"none", fontSize:11 }}>
+                  <span style={{ color:C.muted, width:22, flexShrink:0 }}>#{r.no ?? i+1}</span>
+                  <span style={{ flex:1, color:C.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    {r.pickup_area ?? "?"} → {r.dropoff_area ?? "?"}
+                  </span>
+                  <span style={{ color:C.green, fontWeight:700, marginLeft:8, flexShrink:0 }}>¥{(r.amount ?? 0).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
         {form.total_distance && form.occupied_distance && parseInt(form.total_distance)>0 && (
           <Card style={{ padding:12, textAlign:"center" }}><span style={{ fontSize:12, color:C.muted }}>実車率（自動計算）: </span><span style={{ fontSize:16, fontWeight:700, color:C.green }}>{Math.round(parseInt(form.occupied_distance)/parseInt(form.total_distance)*100)}%</span></Card>
         )}
@@ -335,11 +389,12 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
       {/* 撮影ガイドモーダル */}
       {showGuide && <ShotGuideModal onShoot={handleOCR} onCancel={()=>setShowGuide(false)}/>}
 
-      {/* hidden file input（カメラ or ギャラリー選択） */}
+      {/* hidden file input（カメラ or ギャラリー選択、最大2枚） */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         onChange={handleFileSelect}
         style={{ display:"none" }}
       />

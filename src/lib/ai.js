@@ -144,6 +144,10 @@ export async function runReportOCR(imageBase64, mimeType) {
   return runOCRviaClaude(imageBase64, mimeType, REPORT_OCR_PROMPT);
 }
 
+export async function runReportOCRP2(imageBase64, mimeType) {
+  return runOCRviaClaude(imageBase64, mimeType, REPORT_OCR_PROMPT_P2);
+}
+
 export async function runShiftOCR(imageBase64, mimeType) {
   return runOCRviaClaude(imageBase64, mimeType, SHIFT_OCR_PROMPT);
 }
@@ -151,39 +155,119 @@ export async function runShiftOCR(imageBase64, mimeType) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // OCRプロンプト定数（Edge Function 側でも使用）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-export const REPORT_OCR_PROMPT = `あなたはタクシー日報OCRシステムです。
-画像を解析し、JSONのみを返してください。前置き・説明・マークダウン不要。
+export const REPORT_OCR_PROMPT = `あなたはタクシー日報OCRシステムです。画像を丁寧に観察し、JSONのみ返してください。前置き・説明・マークダウン不要。
 
-フォーマット判定ルール:
-・美松交通（簡易版）: 合計金額列の合計 → gross_sales
-・美松交通（フル版）: 「総営収」 → gross_sales
-・グリーンキャブ: 「税込運収」 → gross_sales、「高速納金」 → highway_fee、差引・走行粁 → total_distance
+## 会社別フォーマット
 
-重要: occupied_distance（実車距離）は両社とも記載なし → 必ずnull
+### グリーンキャブ（日報 I）の読み方
+画像に「グリーンキャブ」または「日報Ⅰ」「日報 I」と書かれていればこのフォーマット。
 
-営業場所の読み取り:
-・「営業エリア」「主要エリア」「主な乗車地」「乗車場所」「エリアコード」などがあれば work_area に入れる
-・地名・駅名・エリアコードなど記載内容をそのまま読み取る（例: "渋谷・新宿", "港区", "A地区"）
-・記載がなければ null
+**ヘッダー行（最上部）**
+- 日付 → report_date（"YYYY-MM-DD"）
+- 出庫日時 → clock_in（"HH:MM"）
+- 帰庫日時 → clock_out（"HH:MM"）
+- 乗務員氏名 → driver_name
+- 乗務員コード → driver_code
 
-出力JSON:
+**右側の金額ボックス（最重要）**
+右上に縦並びのボックスがある。上から順に読む:
+- 「税込運収」の右の数字 → gross_sales（例: 22,300 → 22300）
+- 「高速納金」の右の数字 → highway_fee（空欄なら0）
+- 「納金額」の右の数字 → payment_amount
+- 「消費税」の右の数字 → tax_amount
+- 「運収」の右の数字 → net_sales（税抜き運収）
+
+**集計表の差引行**
+表の左側に帰庫/出庫/差引の3行がある。差引行を読む:
+- 走行粁（走行キロ）の列 → total_distance
+- 回数の列 → ride_count（この日の総乗車回数）
+
+**乗車記録テーブル**
+「No | 乗 | 降 | 乗車地 | 降車地 | 経由地 | 営業Km | 人員 | 金額 | 現収 | 未収 | 備考」の表を全行読む。
+
+「休」と書かれた行は休憩: その行の時刻を "HH:MM-HH:MM" として break_times に追加
+通常の乗車行: rides 配列に追加
+
+乗車地・降車地の正規化ルール:
+末尾の丁目番号（半角・全角数字）を除去し区名+町名だけ残す
+例: "新宿区新宿7" → "新宿区新宿"
+    "渋谷区千駄ヶ谷5" → "渋谷区千駄ヶ谷"
+    "港区六本木5" → "港区六本木"
+    "世田谷区駒沢1" → "世田谷区駒沢"
+    "新宿区西新宿2" → "新宿区西新宿"
+
+### 美松交通フォーマット
+- 簡易版: 合計金額列の合計 → gross_sales
+- フル版: 「総営収」 → gross_sales
+
+## 出力JSON
 {
   "company": "会社名",
-  "driver_name": "氏名",
+  "driver_name": "氏名またはnull",
+  "driver_code": "乗務員コードまたはnull",
   "report_date": "YYYY-MM-DD",
   "clock_in": "HH:MM",
   "clock_out": "HH:MM",
   "gross_sales": 整数,
-  "highway_fee": 整数またはnull,
+  "net_sales": 整数またはnull,
+  "tax_amount": 整数またはnull,
+  "highway_fee": 整数,
+  "payment_amount": 整数またはnull,
   "ride_count": 整数,
   "total_distance": 整数またはnull,
   "occupied_distance": null,
-  "work_hours": 小数,
-  "work_area": "営業エリア名またはnull",
-  "format_type": "mismatsu_simple|mismatsu_full|greencab|unknown",
+  "break_times": [
+    { "start": "HH:MM", "end": "HH:MM" }
+  ],
+  "rides": [
+    {
+      "no": 番号,
+      "pickup_time": "HH:MM",
+      "dropoff_time": "HH:MM",
+      "pickup_area": "正規化済み乗車地",
+      "dropoff_area": "正規化済み降車地",
+      "km": 小数またはnull,
+      "passengers": 整数,
+      "amount": 整数,
+      "cash": 整数またはnull,
+      "uncollected": 整数またはnull,
+      "note": "備考またはnull"
+    }
+  ],
+  "work_area": null,
+  "format_type": "greencab|mismatsu_simple|mismatsu_full|unknown",
   "confidence": 0〜100,
-  "unreadable_fields": ["読み取れなかった項目名"],
-  "notes": "特記事項"
+  "notes": "読み取れなかった項目・特記事項"
+}`;
+
+// 日報 2枚目（乗車記録のみ抽出）
+export const REPORT_OCR_PROMPT_P2 = `あなたはタクシー日報OCRシステムです。これは日報の2枚目（乗車記録の続き）です。
+乗車記録テーブルだけを読み取り、JSONのみ返してください。前置き・説明・マークダウン不要。
+
+「No | 乗 | 降 | 乗車地 | 降車地 | 経由地 | 営業Km | 人員 | 金額 | 現収 | 未収 | 備考」の表を全行読む。
+「休」行は break_times に追加。通常行は rides に追加。
+
+乗車地・降車地の正規化: 末尾の数字を除去（"新宿区新宿7" → "新宿区新宿"）
+
+{
+  "rides": [
+    {
+      "no": 番号,
+      "pickup_time": "HH:MM",
+      "dropoff_time": "HH:MM",
+      "pickup_area": "正規化済み乗車地",
+      "dropoff_area": "正規化済み降車地",
+      "km": 小数またはnull,
+      "passengers": 整数,
+      "amount": 整数,
+      "cash": 整数またはnull,
+      "uncollected": 整数またはnull,
+      "note": "備考またはnull"
+    }
+  ],
+  "break_times": [
+    { "start": "HH:MM", "end": "HH:MM" }
+  ]
 }`;
 
 export const SHIFT_OCR_PROMPT = `あなたはタクシー会社の勤務予定表を読み取るアシスタントです。
