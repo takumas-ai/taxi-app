@@ -102,6 +102,8 @@ function LoginScreen({ onLogin }) {
     if (err) { setError(err.message); setLoading(false); return; }
     if (data.user) {
       const { data: profile } = await fetchProfile(data.user.id);
+      // 既存ユーザーのログインなのでオンボーディング済みにする
+      localStorage.setItem("taxi_onboarding_done", "true");
       onLogin({
         id: data.user.id,
         email: data.user.email,
@@ -112,6 +114,7 @@ function LoginScreen({ onLogin }) {
         plan: profile?.plan || "free",
         uploadCount: profile?.monthly_upload_count || 0,
         areas: profile?.areas || [],
+        _returningUser: true,
       });
     }
     setLoading(false);
@@ -289,6 +292,9 @@ export default function App() {
           if (!loginResult.alreadyLogged) {
             upsertProfile({ id: session.user.id, xp: nextXp, streak_days: loginResult.newStreak, last_active_date: today, badges: nextBadges });
           }
+          // セッション復元 = 既存ユーザーなのでオンボーディング済みにする
+          localStorage.setItem("taxi_onboarding_done", "true");
+          setOnboardingDone(true);
           setUser({
             id: session.user.id,
             email: session.user.email,
@@ -352,7 +358,10 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginScreen onLogin={u => setUser({ ...u, uploadCount: u.uploadCount ?? 0, areas: u.areas || [] })} />;
+    return <LoginScreen onLogin={u => {
+      if (u._returningUser) { saveS("taxi_onboarding_done", true); setOnboardingDone(true); }
+      setUser({ ...u, uploadCount: u.uploadCount ?? 0, areas: u.areas || [] });
+    }} />;
   }
 
   if (!onboardingDone) {
