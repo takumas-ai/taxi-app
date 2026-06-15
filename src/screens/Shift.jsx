@@ -106,7 +106,8 @@ const dbToLocal = (row) => ({
 });
 
 export default function ShiftScreen({ reports, onGoUpload, user }) {
-  const [shifts, setShifts]         = useState(()=>loadS("taxi_shifts",[]));
+  // Supabase使用時はlocalStorageを初期値に使わない（古いデータが残る原因）
+  const [shifts, setShifts]         = useState(SUPABASE_READY ? [] : ()=>loadS("taxi_shifts",[]));
   const [loading, setLoading]       = useState(SUPABASE_READY);
   const [viewMonth, setViewMonth]   = useState({year:THIS_YEAR,month:THIS_MONTH});
   const [ocrStep, setOcrStep]       = useState("idle");
