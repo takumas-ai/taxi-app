@@ -5,6 +5,7 @@ import { generateDayStrategy } from "../lib/ai";
 import { Card, Btn, ProgressBar, Toggle } from "../components/UI";
 import { AreaFilterBanner, inArea } from "../components/AreaFilter";
 import { MOCK_EVENTS, MOCK_DELAYS, MOCK_TRAFFIC, MOCK_AREA_STATS } from "../data/mockData";
+import { UpdateBanner } from "./Dashboard";
 
 const CAT_META = { concert:{icon:"🎵",color:C.purple}, sports:{icon:"⚽",color:C.green}, event:{icon:"🎡",color:C.gold}, movie:{icon:"🎬",color:C.orange} };
 const TRAFFIC_META = { jam:{label:"渋滞",color:C.red}, slow:{label:"混雑",color:C.gold}, normal:{label:"順調",color:C.green} };
@@ -35,6 +36,7 @@ export default function InfoCenter({ notifSettings, onUpdateNotif, userAreas=[],
 
   return (
     <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
+      <UpdateBanner />
       <AreaFilterBanner userAreas={userAreas} onManage={onManageArea} />
       <div style={{ display:"flex", backgroundColor:C.surface, borderRadius:12, padding:4, marginBottom:14, gap:4 }}>
         {[["today","今日"],["delays","電車"],["traffic","渋滞"],["area","単価"],["notif","通知"]].map(([v,l])=>(

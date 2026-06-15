@@ -11,7 +11,7 @@ import { getCachedWeather, weatherMeta } from "../lib/weather";
 import { SalesPointCard } from "../components/SalesPointCard";
 
 // ━━━ 更新通知バナー ━━━━━━━━━━━━━━━━━━━━━━━━
-function UpdateBanner() {
+export function UpdateBanner() {
   const seenKey = "taxi_seen_version";
   const seenVersion = loadS(seenKey, "");
   const [dismissed, setDismissed] = useState(seenVersion === CURRENT_VERSION);
@@ -711,8 +711,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         {/* ① レベル欄 */}
         <XpCard user={user} />
 
-        {/* ② お知らせ欄（×で消去可） */}
-        <UpdateBanner />
+        {/* ② お知らせ欄（更新通知はInfoCenterのみ） */}
 
         {/* ③ シフト表（アコーディオン） */}
         <ShiftSummaryCard onGoShift={onGoShift} />
@@ -784,8 +783,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
       {/* ① レベル欄 */}
       <XpCard user={user} />
 
-      {/* ② お知らせ欄 */}
-      <UpdateBanner />
+      {/* ② お知らせ欄（更新通知はInfoCenterのみ） */}
 
       {/* ③ シフト表（アコーディオン） */}
       <ShiftSummaryCard />
