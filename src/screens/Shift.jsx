@@ -118,6 +118,7 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
   const [selectedDay, setSelectedDay] = useState(null);
   const [dayShift, setDayShift]     = useState(null);
   const [dayReport, setDayReport]   = useState(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
   // Supabaseからシフトを読み込む
@@ -142,6 +143,18 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
 
   // ファイルピッカーを開く
   const handleOCR = () => fileInputRef.current?.click();
+
+  // ドラッグ&ドロップ
+  const handleDragOver  = (e) => { e.preventDefault(); setIsDragOver(true); };
+  const handleDragLeave = (e) => { e.preventDefault(); setIsDragOver(false); };
+  const handleDrop      = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      handleFileSelect({ target: { files: [file], value: "" } });
+    }
+  };
 
   // ファイル選択後にOCR実行
   const handleFileSelect = async (e) => {
@@ -332,10 +345,16 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
         <KpiCard label="残り出勤" value={remainingShifts} unit="日" accent={remainingShifts<=3?C.red:C.accentLight}/>
         <KpiCard label="日報入力済" value={monthReports.length} unit="日" accent={C.gold}/>
       </div>
-      <div onClick={handleOCR} onMouseEnter={e=>e.currentTarget.style.borderColor=C.accentLight} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border} style={{border:`2px dashed ${C.border}`,borderRadius:14,padding:"28px 24px",textAlign:"center",cursor:"pointer",marginBottom:12,transition:"border-color 0.2s"}}>
-        <div style={{fontSize:36,marginBottom:10}}>📋</div>
+      <div
+        onClick={handleOCR}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        style={{border:`2px dashed ${isDragOver ? C.accentLight : C.border}`,borderRadius:14,padding:"28px 24px",textAlign:"center",cursor:"pointer",marginBottom:12,transition:"border-color 0.2s, background-color 0.2s",backgroundColor:isDragOver ? C.accentLight+"18" : "transparent"}}
+      >
+        <div style={{fontSize:36,marginBottom:10}}>{isDragOver ? "📂" : "📋"}</div>
         <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>シフト表を読み込む</div>
-        <div style={{fontSize:11,color:C.muted,marginTop:6}}>JPEG / PNG / PDF → タップでデモ実行</div>
+        <div style={{fontSize:11,color:C.muted,marginTop:6}}>クリックまたは画像をここにドロップ</div>
       </div>
       {monthShifts.length>0&&(
         <>
