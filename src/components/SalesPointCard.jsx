@@ -5,6 +5,12 @@
 import { useState, useEffect } from "react";
 import { C, fmt, loadS } from "../lib/constants";
 import { Card } from "../components/UI";
+import { fetchRideRecords, upsertRideRecord, deleteRideRecord } from "../lib/supabase";
+
+const SUPABASE_READY = !!(
+  import.meta.env.VITE_SUPABASE_URL &&
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 const LS_KEY = "taxi_sales_records";
 
@@ -471,22 +477,67 @@ function DetailModal({ records, onClose, onEdit, onDelete, onSendToReport }) {
 }
 
 // ─── メインコンポーネント ─────────────────────
-export function SalesPointCard() {
+export function SalesPointCard({ user }) {
   const [records,    setRecords]    = useState(() => loadRecords());
   const [showRecord, setShowRecord] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
 
+  // Supabaseから乗車記録を取得してlocalStorageとマージ
+  useEffect(() => {
+    if (!SUPABASE_READY || !user?.id) return;
+    fetchRideRecords(user.id).then(({ data }) => {
+      if (!data?.length) return;
+      // Supabaseのsnake_caseをcamelCaseに変換
+      const fromServer = data.map(r => ({
+        id:              r.id,
+        timestamp:       r.created_at,
+        workDate:        r.work_date,
+        boardingTime:    r.boarding_time,
+        pickupLocation:  r.pickup_location,
+        dropoffTime:     r.dropoff_time,
+        dropoffLocation: r.dropoff_location,
+        passengers:      r.passengers,
+        fare:            r.fare,
+        amount:          r.fare,
+        highwayFee:      r.highway_fee,
+        paymentMethod:   r.payment_method,
+        boardingMethod:  r.boarding_method,
+        memo:            r.memo,
+        lat:             r.lat,
+        lng:             r.lng,
+        spotName:        r.pickup_location || "未記入",
+      }));
+      // ローカルと統合（Supabase側を優先、idで重複排除）
+      setRecords(prev => {
+        const serverIds = new Set(fromServer.map(r => r.id));
+        const localOnly = prev.filter(r => !serverIds.has(r.id));
+        const merged = [...fromServer, ...localOnly]
+          .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+        saveRecords(merged);
+        return merged;
+      });
+    });
+  }, [user?.id]);
+
   useEffect(() => { saveRecords(records); }, [records]);
 
-  function handleSave(rec) {
+  async function handleSave(rec) {
     setRecords(prev => {
       const exists = prev.find(r => r.id === rec.id);
       return exists ? prev.map(r => r.id === rec.id ? rec : r) : [rec, ...prev];
     });
+    if (SUPABASE_READY && user?.id) {
+      await upsertRideRecord(user.id, rec);
+    }
   }
 
-  function handleDelete(id) { setRecords(prev => prev.filter(r => r.id !== id)); }
+  async function handleDelete(id) {
+    setRecords(prev => prev.filter(r => r.id !== id));
+    if (SUPABASE_READY && user?.id) {
+      await deleteRideRecord(id);
+    }
+  }
 
   function handleEdit(rec) {
     setEditTarget(rec); setShowDetail(false); setShowRecord(true);

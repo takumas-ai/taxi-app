@@ -182,6 +182,55 @@ export async function insertFeedback({ userId, category, body, anonymous }) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 乗車記録 CRUD
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** 乗車記録一覧取得（当該ユーザー・新しい順） */
+export async function fetchRideRecords(userId) {
+  const { data, error } = await supabase
+    .from("ride_records")
+    .select("*")
+    .eq("user_id", userId)
+    .order("boarding_time", { ascending: false });
+  return { data: data ?? [], error };
+}
+
+/** 乗車記録をupsert（id が同じなら上書き） */
+export async function upsertRideRecord(userId, rec) {
+  const row = {
+    id:               rec.id,
+    user_id:          userId,
+    work_date:        rec.workDate || null,
+    boarding_time:    rec.boardingTime || null,
+    pickup_location:  rec.pickupLocation || null,
+    dropoff_time:     rec.dropoffTime || null,
+    dropoff_location: rec.dropoffLocation || null,
+    passengers:       rec.passengers || null,
+    fare:             rec.fare || 0,
+    highway_fee:      rec.highwayFee || null,
+    payment_method:   rec.paymentMethod || null,
+    boarding_method:  rec.boardingMethod || null,
+    memo:             rec.memo || null,
+    lat:              rec.lat || null,
+    lng:              rec.lng || null,
+  };
+  const { error } = await supabase
+    .from("ride_records")
+    .upsert(row, { onConflict: "id" });
+  if (error) console.error("[upsertRideRecord]", error.message);
+  return { error };
+}
+
+/** 乗車記録を削除 */
+export async function deleteRideRecord(id) {
+  const { error } = await supabase
+    .from("ride_records")
+    .delete()
+    .eq("id", id);
+  return { error };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 管理画面用（service role 不要・RLS対応）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

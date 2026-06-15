@@ -956,7 +956,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         <WeatherWidget />
 
         {/* 営業ポイント記録 */}
-        <SalesPointCard />
+        <SalesPointCard user={user} />
 
         {/* 休憩時間 */}
         <BreakTimeCard reports={reports} onUpdateReport={onUpdateReport} />

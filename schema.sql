@@ -321,8 +321,49 @@ returns integer language sql security definer as $$
 $$;
 
 -- ─────────────────────────────────────────
+-- 13. ride_records テーブル（乗車記録）
+-- ─────────────────────────────────────────
+create table if not exists public.ride_records (
+  id               text      primary key,          -- クライアント生成ID（Date.now()+random）
+  user_id          uuid      not null references public.users(id) on delete cascade,
+  work_date        date,
+  boarding_time    timestamptz,
+  pickup_location  text,
+  dropoff_time     timestamptz,
+  dropoff_location text,
+  passengers       integer,
+  fare             integer   not null default 0,
+  highway_fee      integer,
+  payment_method   text,
+  boarding_method  text,
+  memo             text,
+  lat              numeric(10,7),
+  lng              numeric(10,7),
+  created_at       timestamptz default now()
+);
+
+alter table public.ride_records enable row level security;
+
+create policy "ride_records: 自分のみ参照"
+  on public.ride_records for select
+  using (auth.uid() = user_id);
+
+create policy "ride_records: 自分のみ挿入"
+  on public.ride_records for insert
+  with check (auth.uid() = user_id);
+
+create policy "ride_records: 自分のみ更新"
+  on public.ride_records for update
+  using (auth.uid() = user_id);
+
+create policy "ride_records: 自分のみ削除"
+  on public.ride_records for delete
+  using (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────
 -- 完了
 -- ─────────────────────────────────────────
 -- 実行後の確認:
 --   select * from public.users;
 --   select * from public.daily_reports limit 5;
+--   select * from public.ride_records limit 5;
