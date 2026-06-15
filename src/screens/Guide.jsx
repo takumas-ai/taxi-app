@@ -22,7 +22,8 @@ const CATEGORIES = [
 
 const STAND_SUBS = [
   { id:"all",        label:"全て" },
-  { id:"station",    label:"駅・バス停" },
+  { id:"station",    label:"駅" },
+  { id:"building",   label:"ビル" },
   { id:"hotel",      label:"ホテル" },
   { id:"hospital",   label:"病院" },
   { id:"commercial", label:"商業施設" },
@@ -109,7 +110,7 @@ function PostModal({ defaultCategory, userAreas, onClose, onSave }) {
         {form.category === "stand" && (
           <div style={{marginBottom:10}}>
             <div style={{fontSize:10,color:C.muted,marginBottom:4}}>種別</div>
-            {sel("subcategory", [{value:"",label:"選択（任意）"},...STAND_SUBS.filter(s=>s.id!=="all").map(s=>({value:s.id,label:s.label}))])}
+            {sel("subcategory", [{value:"",label:"選択（任意）"}, ...STAND_SUBS.filter(s=>s.id!=="all").map(s=>({value:s.id,label:s.label}))])}
           </div>
         )}
 
