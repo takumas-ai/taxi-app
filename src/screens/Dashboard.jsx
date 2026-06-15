@@ -427,24 +427,22 @@ function XpCard({ user }) {
 
 // ━━━ 休憩時間カード ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function BreakTimeCard({ reports, onUpdateReport }) {
-  const [showInput, setShowInput]   = useState(false);
-  const [showAll,   setShowAll]     = useState(false);
-  const [inputDate, setInputDate]   = useState(() => new Date().toISOString().slice(0,10));
-  const [inputVal,  setInputVal]    = useState("");
-  const [saving,    setSaving]      = useState(false);
+  const [showInput, setShowInput] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
+  const [inputDate, setInputDate] = useState(() => new Date().toISOString().slice(0,10));
+  const [inputVal,  setInputVal]  = useState("");
+  const [saving,    setSaving]    = useState(false);
 
-  // break_hoursがある日報、新しい順
   const withBreak = [...reports]
     .filter(r => r.break_hours != null && r.break_hours !== "")
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  const latest3  = withBreak.slice(0, 1);
-  const hasMore  = withBreak.length > 1;
+  const latest1 = withBreak.slice(0, 1);
+  const hasMore = withBreak.length > 1;
 
   const handleSave = async () => {
     const val = parseFloat(inputVal);
     if (isNaN(val) || val < 0) return;
-    // 同じ日付の日報を探して更新
     const target = reports.find(r => r.date === inputDate);
     if (!target) { alert("その日の日報がありません。先に日報を登録してください。"); return; }
     setSaving(true);
@@ -455,58 +453,109 @@ function BreakTimeCard({ reports, onUpdateReport }) {
   };
 
   return (
-    <Card style={{ marginBottom:14 }}>
-      {/* ヘッダー */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-        <div style={{ fontSize:14, fontWeight:800, color:C.text }}>☕ 休憩時間</div>
-        <button onClick={() => setShowInput(p => !p)}
-          style={{ backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:10, padding:"8px 16px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
-          {showInput ? "閉じる" : "＋ 記録する"}
-        </button>
-      </div>
+    <>
+      <Card style={{ marginBottom:14 }}>
+        {/* ヘッダー */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+          <div style={{ fontSize:14, fontWeight:800, color:C.text }}>☕ 休憩時間</div>
+          <button onClick={() => setShowInput(p => !p)}
+            style={{ backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:10, padding:"8px 16px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+            {showInput ? "閉じる" : "＋ 記録する"}
+          </button>
+        </div>
 
-      {/* 入力フォーム */}
-      {showInput && (
-        <div style={{ backgroundColor:C.bg, borderRadius:10, padding:"12px 14px", marginBottom:12 }}>
-          <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:10 }}>
-            <input type="date" value={inputDate} onChange={e => setInputDate(e.target.value)}
-              style={{ flex:1, padding:"9px 10px", borderRadius:9, border:`1.5px solid ${C.border}`, backgroundColor:C.card, color:C.text, fontSize:13 }} />
+        {/* 入力フォーム */}
+        {showInput && (
+          <div style={{ backgroundColor:C.bg, borderRadius:10, padding:"12px 14px", marginBottom:12 }}>
+            <div style={{ marginBottom:8 }}>
+              <input type="date" value={inputDate} onChange={e => setInputDate(e.target.value)}
+                style={{ width:"100%", boxSizing:"border-box", padding:"9px 10px", borderRadius:9, border:`1.5px solid ${C.border}`, backgroundColor:C.card, color:C.text, fontSize:13 }} />
+            </div>
+            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+              <input type="number" step="0.5" min="0" max="24" value={inputVal}
+                onChange={e => setInputVal(e.target.value)} placeholder="例) 1.0"
+                style={{ flex:1, padding:"9px 10px", borderRadius:9, border:`1.5px solid ${C.border}`, backgroundColor:C.card, color:C.text, fontSize:13 }} />
+              <span style={{ fontSize:13, color:C.muted }}>h</span>
+              <button onClick={handleSave} disabled={saving || !inputVal}
+                style={{ padding:"9px 18px", borderRadius:9, backgroundColor:C.accentLight, color:"#fff", border:"none", fontSize:13, fontWeight:700, cursor:"pointer", opacity:(saving||!inputVal)?0.5:1 }}>
+                {saving ? "保存中..." : "保存"}
+              </button>
+            </div>
           </div>
-          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-            <input type="number" step="0.5" min="0" max="24" value={inputVal}
-              onChange={e => setInputVal(e.target.value)} placeholder="例) 1.0"
-              style={{ flex:1, padding:"9px 10px", borderRadius:9, border:`1.5px solid ${C.border}`, backgroundColor:C.card, color:C.text, fontSize:13 }} />
-            <span style={{ fontSize:13, color:C.muted }}>h</span>
-            <button onClick={handleSave} disabled={saving || !inputVal}
-              style={{ padding:"9px 18px", borderRadius:9, backgroundColor:C.accentLight, color:"#fff", border:"none", fontSize:13, fontWeight:700, cursor:"pointer", opacity:(saving||!inputVal)?0.5:1 }}>
-              {saving ? "保存中..." : "保存"}
-            </button>
+        )}
+
+        {/* 最新1件 */}
+        {latest1.length === 0 ? (
+          <div style={{ textAlign:"center", padding:"8px 0", color:C.muted, fontSize:12 }}>まだ記録がありません</div>
+        ) : (
+          <>
+            {latest1.map(r => (
+              <div key={r.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:`1px solid ${C.border}` }}>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>休憩 {r.break_hours}h</div>
+                  <div style={{ fontSize:10, color:C.muted, marginTop:1 }}>{r.date}（{dow(r.date)}）{r.work_hours ? `· 勤務 ${r.work_hours}h` : ""}</div>
+                </div>
+              </div>
+            ))}
+            {hasMore && (
+              <button onClick={() => setShowDetail(true)}
+                style={{ width:"100%", marginTop:10, padding:"9px 0", borderRadius:9, fontSize:12, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.sub }}>
+                一覧・詳細 ({withBreak.length}件) →
+              </button>
+            )}
+          </>
+        )}
+      </Card>
+
+      {/* 詳細モーダル */}
+      {showDetail && (
+        <div style={{ position:"fixed", inset:0, backgroundColor:"#00000099", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
+          onClick={() => setShowDetail(false)}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, maxHeight:"85vh", overflowY:"auto", padding:22, paddingBottom:40 }}>
+            <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 18px" }}/>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <div style={{ fontSize:16, fontWeight:800 }}>☕ 休憩時間一覧</div>
+              <div style={{ fontSize:12, color:C.muted }}>{withBreak.length}件</div>
+            </div>
+
+            {/* 統計 */}
+            {withBreak.length > 0 && (() => {
+              const avg = Math.round(withBreak.reduce((s,r) => s + parseFloat(r.break_hours), 0) / withBreak.length * 10) / 10;
+              const total = Math.round(withBreak.reduce((s,r) => s + parseFloat(r.break_hours), 0) * 10) / 10;
+              return (
+                <div style={{ backgroundColor:C.bg, borderRadius:12, padding:"14px 16px", marginBottom:18, display:"flex", gap:10 }}>
+                  <div style={{ flex:1, textAlign:"center" }}>
+                    <div style={{ fontSize:10, color:C.muted }}>平均休憩</div>
+                    <div style={{ fontSize:20, fontWeight:900, color:C.text }}>{avg}<span style={{ fontSize:11 }}>h</span></div>
+                  </div>
+                  <div style={{ flex:1, textAlign:"center" }}>
+                    <div style={{ fontSize:10, color:C.muted }}>累計休憩</div>
+                    <div style={{ fontSize:20, fontWeight:900, color:C.text }}>{total}<span style={{ fontSize:11 }}>h</span></div>
+                  </div>
+                  <div style={{ flex:1, textAlign:"center" }}>
+                    <div style={{ fontSize:10, color:C.muted }}>記録数</div>
+                    <div style={{ fontSize:20, fontWeight:900, color:C.text }}>{withBreak.length}<span style={{ fontSize:11 }}>件</span></div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* 一覧 */}
+            {withBreak.map(r => (
+              <div key={r.id} style={{ backgroundColor:C.bg, borderRadius:12, padding:"12px 14px", marginBottom:10 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <div>
+                    <div style={{ fontSize:14, fontWeight:800, color:C.text }}>休憩 {r.break_hours}h</div>
+                    <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{r.date}（{dow(r.date)}）{r.work_hours ? `· 勤務 ${r.work_hours}h` : ""}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
-
-      {/* 最新3件 */}
-      {latest3.length === 0 ? (
-        <div style={{ textAlign:"center", padding:"8px 0", color:C.muted, fontSize:12 }}>まだ記録がありません</div>
-      ) : (
-        <>
-          {(showAll ? withBreak : latest3).map(r => (
-            <div key={r.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:`1px solid ${C.border}` }}>
-              <div>
-                <div style={{ fontSize:13, fontWeight:700, color:C.text }}>休憩 {r.break_hours}h</div>
-                <div style={{ fontSize:10, color:C.muted, marginTop:1 }}>{r.date}（{dow(r.date)}）{r.work_hours ? `· 勤務 ${r.work_hours}h` : ""}</div>
-              </div>
-            </div>
-          ))}
-          {hasMore && (
-            <button onClick={() => setShowAll(p => !p)}
-              style={{ width:"100%", marginTop:10, padding:"9px 0", borderRadius:9, fontSize:12, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.sub }}>
-              {showAll ? "閉じる" : `一覧・詳細 (${withBreak.length}件) →`}
-            </button>
-          )}
-        </>
-      )}
-    </Card>
+    </>
   );
 }
 
