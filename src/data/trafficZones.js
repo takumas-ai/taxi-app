@@ -332,11 +332,11 @@ export const TRAFFIC_ZONES_BY_REGION = [
   },
 ];
 
-// 交通圏名 → 地域・色 のフラットマップ（クイックルックアップ用）
+// 交通圏名 → 地域・色・番号 のフラットマップ（クイックルックアップ用）
 export const ZONE_META = {};
 TRAFFIC_ZONES_BY_REGION.forEach(({ region, color, emoji, zones }) => {
-  zones.forEach(zone => {
-    ZONE_META[zone] = { region, color, emoji };
+  zones.forEach((zone, i) => {
+    ZONE_META[zone] = { region, color, emoji, index: i + 1 };
   });
 });
 

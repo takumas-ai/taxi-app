@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { C, loadS, saveS } from "../lib/constants";
 import { MOCK_DELAYS } from "../data/mockData";
+import { ZONE_META } from "../data/trafficZones";
 
 // ボトムナビ（5タブ）
 export function BottomNav({ tab, setTab, userAreas=[], alertsSeen=false }) {
@@ -367,13 +368,19 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
           <div onClick={() => onManageArea?.()} style={{ cursor:"pointer", minWidth:0, overflow:"hidden" }}>
             {userAreas.length === 0 ? (
               <span style={{ fontSize:10, color:C.red, backgroundColor:C.redGlow, border:`1px solid ${C.red}44`, borderRadius:99, padding:"2px 8px", whiteSpace:"nowrap" }}>
-                📍 未設定
+                未設定
               </span>
-            ) : (
-              <span style={{ fontSize:10, color:C.accentLight, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:99, padding:"2px 8px", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", display:"block", maxWidth:90 }}>
-                📍 {userAreas.slice(0,1).join("・")}{userAreas.length > 1 ? "…" : ""}
-              </span>
-            )}
+            ) : (() => {
+              const z0 = userAreas[0];
+              const meta = ZONE_META[z0];
+              const col = meta?.color ?? C.accentLight;
+              const label = meta ? `${meta.region}(${meta.index})` : z0;
+              return (
+                <span style={{ fontSize:10, color:col, backgroundColor:col+"22", border:`1px solid ${col}44`, borderRadius:99, padding:"2px 8px", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", display:"block", maxWidth:110 }}>
+                  {label}{userAreas.length > 1 ? ` +${userAreas.length - 1}` : ""}
+                </span>
+              );
+            })()}
           </div>
         </div>
 
