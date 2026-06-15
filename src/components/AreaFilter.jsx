@@ -37,14 +37,15 @@ export function AreaFilterBanner({ userAreas, onManage }) {
 
 // ━━━ 交通圏設定モーダル（地域 → 交通圏 の2段選択） ━━━
 export function AreaSettingModal({ userAreas, onSave, onClose }) {
+  // 旧フォーマット（"東京都心"など）を除外し、現行の交通圏名のみ残す
+  const validZones = new Set(TRAFFIC_ZONES_BY_REGION.flatMap(r => r.zones));
+  const cleanAreas = (userAreas || []).filter(z => validZones.has(z));
+
   const [selectedRegion, setSelectedRegion] = useState(() => {
-    // 既存の選択から地域を推定
-    if (userAreas && userAreas.length > 0) {
-      return ZONE_META[userAreas[0]]?.region ?? null;
-    }
+    if (cleanAreas.length > 0) return ZONE_META[cleanAreas[0]]?.region ?? null;
     return null;
   });
-  const [selected, setSelected] = useState(userAreas || []);
+  const [selected, setSelected] = useState(cleanAreas);
 
   const toggle = zone => {
     setSelected(prev => prev.includes(zone) ? prev.filter(x => x !== zone) : [...prev, zone]);
