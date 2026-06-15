@@ -246,7 +246,7 @@ function RecentReports({ reports, onOpenReport, simple }) {
 }
 
 // ━━━ シフト表カード ━━━━━━━━━━━━━━━━━━━━━━━━
-function ShiftSummaryCard({ onGoShift }) {
+function ShiftSummaryCard({ reports = [], user, onOpenReport, monthTarget = 380000 }) {
   const [open, setOpen] = useState(false);
   const today = new Date();
   const y = today.getFullYear(), m = today.getMonth() + 1;
@@ -255,11 +255,9 @@ function ShiftSummaryCard({ onGoShift }) {
   const monthShifts = allShifts.filter(s => {
     const d = new Date(s.date);
     return d.getFullYear() === y && d.getMonth() + 1 === m;
-  }).sort((a,b) => a.date.localeCompare(b.date));
-  const upcoming = monthShifts.filter(s => s.date >= todayStr).slice(0, 4);
+  });
   const remaining = monthShifts.filter(s => s.date >= todayStr).length;
   const todayShift = monthShifts.find(s => s.date === todayStr);
-  const DOW = ["日","月","火","水","木","金","土"];
 
   return (
     <Card style={{ marginBottom:14, padding:"12px 16px" }}>
@@ -277,39 +275,13 @@ function ShiftSummaryCard({ onGoShift }) {
         </div>
       </div>
       {open && (
-        <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.border}` }}>
-          {monthShifts.length === 0 ? (
-            <div style={{ textAlign:"center", padding:"12px 0" }}>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>シフト表がまだ登録されていません</div>
-              <button onClick={e=>{e.stopPropagation();onGoShift?.();}} style={{ backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:9, padding:"8px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
-                シフトを登録する →
-              </button>
-            </div>
-          ) : (
-            <>
-              <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:10 }}>
-                {upcoming.map(s => {
-                  const wd = DOW[new Date(s.date).getDay()];
-                  const isToday = s.date === todayStr;
-                  return (
-                    <div key={s.date} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", backgroundColor:isToday?C.green+"18":C.bg, borderRadius:8, border:`1px solid ${isToday?C.green+"55":C.border}` }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                        <span style={{ fontSize:13, fontWeight:700, color:isToday?C.green:C.text }}>{s.date.slice(5)}</span>
-                        <span style={{ fontSize:11, color:C.muted }}>（{wd}）</span>
-                        {isToday && <span style={{ fontSize:10, color:C.green, fontWeight:700 }}>今日</span>}
-                      </div>
-                      <span style={{ fontSize:11, color:C.sub }}>{s.clockIn}〜{s.clockOut}</span>
-                    </div>
-                  );
-                })}
-                {remaining > 4 && <div style={{ fontSize:11, color:C.muted, textAlign:"center" }}>他 {remaining - 4} 勤務</div>}
-              </div>
-              <button onClick={e=>{e.stopPropagation();onGoShift?.();}} style={{ width:"100%", backgroundColor:"transparent", border:`1px solid ${C.border}`, borderRadius:9, padding:"8px 0", fontSize:12, color:C.sub, cursor:"pointer" }}>
-                シフト表を開く →
-              </button>
-            </>
-          )}
-        </div>
+        <UnifiedCalendar
+          reports={reports}
+          monthTarget={monthTarget}
+          user={user}
+          onOpenReport={onOpenReport}
+          noCard
+        />
       )}
     </Card>
   );
@@ -786,7 +758,7 @@ function UnifiedDayModal({ dateStr, shift, report, onClose, onSaveShift, onDelet
   );
 }
 
-function UnifiedCalendar({ reports, monthTarget, user, onOpenReport }) {
+function UnifiedCalendar({ reports, monthTarget, user, onOpenReport, noCard = false }) {
   const today = new Date();
   const todayStr = today.toISOString().slice(0,10);
   const [viewYear,  setViewYear]  = useState(today.getFullYear());
@@ -832,8 +804,8 @@ function UnifiedCalendar({ reports, monthTarget, user, onOpenReport }) {
   for (let i = 0; i < firstDayOfWeek; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
-  return (
-    <Card style={{ marginBottom:14, padding:"12px 14px" }}>
+  const calendarBody = (
+    <>
       {/* ヘッダー */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
         <button onClick={prevMonth} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"5px 12px", color:C.sub, cursor:"pointer", fontSize:15 }}>‹</button>
@@ -924,8 +896,10 @@ function UnifiedCalendar({ reports, monthTarget, user, onOpenReport }) {
           onOpenReport={onOpenReport}
         />
       )}
-    </Card>
+    </>
   );
+  if (noCard) return <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.border}` }}>{calendarBody}</div>;
+  return <Card style={{ marginBottom:14, padding:"12px 14px" }}>{calendarBody}</Card>;
 }
 
 // ━━━ Dashboard メイン ━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -969,8 +943,8 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
 
         {/* ② お知らせ欄（更新通知はInfoCenterのみ） */}
 
-        {/* ③ シフト表（アコーディオン） */}
-        <ShiftSummaryCard onGoShift={onGoShift} />
+        {/* ③ シフト表（開くとカレンダー展開） */}
+        <ShiftSummaryCard reports={monthReports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} />
 
         <WeatherWidget />
 
@@ -1016,9 +990,6 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
           </div>
         </Card>
 
-        {/* 統合カレンダー */}
-        <UnifiedCalendar reports={monthReports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} />
-
         {/* AIアドバイス */}
         <AiAdviceCard reports={monthReports} appMode={appMode} />
 
@@ -1041,8 +1012,8 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
 
       {/* ② お知らせ欄（更新通知はInfoCenterのみ） */}
 
-      {/* ③ シフト表（アコーディオン） */}
-      <ShiftSummaryCard onGoShift={onGoShift} />
+      {/* ③ シフト表（開くとカレンダー展開） */}
+      <ShiftSummaryCard reports={reports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} />
 
       <WeatherWidget />
 
@@ -1116,9 +1087,6 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
           </div>
         )}
       </Card>
-
-      {/* 統合カレンダー */}
-      <UnifiedCalendar reports={reports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} />
 
       {/* ② KPI グリッド */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:14 }}>
