@@ -188,7 +188,9 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         app_sales:          f.app_sales          != null ? String(f.app_sales)          : "",
         ride_count:         f.ride_count         != null ? String(f.ride_count)         : rides.length > 0 ? String(rides.length) : "",
         total_distance:     f.total_distance     != null ? String(f.total_distance)     : "",
-        occupied_distance:  f.occupied_distance  != null ? String(f.occupied_distance)  : "",
+        occupied_distance:  f.occupied_distance  != null ? String(f.occupied_distance)
+                          : rides.length > 0 ? String(Math.round(rides.reduce((s,r)=>s+(r.km||0),0)))
+                          : "",
         work_hours:         f.work_hours         != null ? String(f.work_hours)         : "",
         break_hours:        computedBreakHours,
         highway_fee:        f.highway_fee        != null ? String(f.highway_fee)        : "0",
