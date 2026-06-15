@@ -141,8 +141,7 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
   const reportMap       = Object.fromEntries(reports.map(r=>[r.date,r]));
   const missing         = monthShifts.filter(s=>s.date<TODAY&&!reportMap[s.date]);
 
-  // ファイルピッカーを開く
-  const handleOCR = () => fileInputRef.current?.click();
+  // ファイルピッカーを開く（label htmlFor で直接トリガー）
 
   // ドラッグ&ドロップ
   const handleDragOver  = (e) => { e.preventDefault(); setIsDragOver(true); };
@@ -342,17 +341,17 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
         <KpiCard label="残り出勤" value={remainingShifts} unit="日" accent={remainingShifts<=3?C.red:C.accentLight}/>
         <KpiCard label="日報入力済" value={monthReports.length} unit="日" accent={C.gold}/>
       </div>
-      <div
-        onClick={handleOCR}
+      <label
+        htmlFor="shift-file-input"
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        style={{border:`2px dashed ${isDragOver ? C.accentLight : C.border}`,borderRadius:14,padding:"28px 24px",textAlign:"center",cursor:"pointer",marginBottom:12,transition:"border-color 0.2s, background-color 0.2s",backgroundColor:isDragOver ? C.accentLight+"18" : "transparent"}}
+        style={{display:"block",border:`2px dashed ${isDragOver ? C.accentLight : C.border}`,borderRadius:14,padding:"28px 24px",textAlign:"center",cursor:"pointer",marginBottom:12,transition:"border-color 0.2s, background-color 0.2s",backgroundColor:isDragOver ? C.accentLight+"18" : "transparent"}}
       >
         <div style={{fontSize:36,marginBottom:10}}>{isDragOver ? "📂" : "📋"}</div>
         <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>シフト表を読み込む</div>
         <div style={{fontSize:11,color:C.muted,marginTop:6}}>クリックまたは画像をここにドロップ</div>
-      </div>
+      </label>
       {monthShifts.length>0&&(
         <>
           <div style={{fontSize:12,color:C.muted,marginBottom:10}}>今月の出勤予定</div>
@@ -368,8 +367,8 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
       )}
       {selectedDay&&<DayDetailModal dateStr={selectedDay} shift={dayShift} report={dayReport} onClose={()=>setSelectedDay(null)} onDeleteShift={async sh=>{setShifts(prev=>prev.filter(x=>x.id!==sh.id));setSelectedDay(null);if(SUPABASE_READY&&user?.id)await deleteShift(user.id,sh.date);}} onGoUpload={()=>{setSelectedDay(null);onGoUpload();}}/>}
 
-      {/* hidden file input */}
-      <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{display:"none"}}/>
+      {/* hidden file input — id で label と紐付け */}
+      <input id="shift-file-input" ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{display:"none"}}/>
     </div>
   );
 }
