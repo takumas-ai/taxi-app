@@ -32,6 +32,7 @@ import ShiftScreen        from "./screens/Shift";
 import Settings           from "./screens/Settings";
 import OnboardingScreen   from "./screens/Onboarding";
 import CommunityScreen    from "./screens/Community";
+import AdminScreen        from "./screens/Admin";
 
 // Components
 import { BottomNav, Header, TakuroFAB } from "./components/Navigation";
@@ -103,6 +104,7 @@ function LoginScreen({ onLogin }) {
       const { data: profile } = await fetchProfile(data.user.id);
       onLogin({
         id: data.user.id,
+        email: data.user.email,
         name: profile?.name || data.user.email,
         company: profile?.company_name || "",
         workType: profile?.work_type || "隔日勤務",
@@ -285,6 +287,7 @@ export default function App() {
           }
           setUser({
             id: session.user.id,
+            email: session.user.email,
             name: profile.name,
             company: profile.company_name || "",
             workType: profile.work_type || "隔日勤務",
@@ -482,8 +485,9 @@ export default function App() {
       case "info":      return <InfoCenter notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} userAreas={userAreas} onManageArea={()=>setShowAreaModal(true)}/>;
       case "guide":     return <GuideScreen userAreas={userAreas}/>;
       case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")}/>;
-      case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined}/>;
+      case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined} onOpenAdmin={()=>handleSetTab("admin")}/>;
       case "community": return <CommunityScreen />;
+      case "admin":     return <AdminScreen user={{ ...user, email: user.email || "" }} onExit={() => handleSetTab("dashboard")}/>;
       case "feedback":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection="feedback" onBack={()=>handleSetTab("dashboard")}/>;
       default:          return null;
     }

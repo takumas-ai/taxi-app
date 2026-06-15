@@ -172,6 +172,101 @@ export async function insertFeedback({ userId, category, body, anonymous }) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 管理画面用（service role 不要・RLS対応）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** 全ユーザー一覧（管理者のみ：RLSポリシーで admin ユーザーのみ許可） */
+export async function adminFetchUsers() {
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, name, email, company_name, plan, xp, monthly_upload_count, referred_by, deletion_requested, created_at, updated_at, areas")
+    .order("created_at", { ascending: false });
+  return { data: data ?? [], error };
+}
+
+/** 全フィードバック一覧 */
+export async function adminFetchFeedback() {
+  const { data, error } = await supabase
+    .from("feedback")
+    .select("*")
+    .order("created_at", { ascending: false });
+  return { data: data ?? [], error };
+}
+
+/** フィードバックを既読にする */
+export async function adminMarkFeedbackRead(id) {
+  const { error } = await supabase
+    .from("feedback")
+    .update({ read_at: new Date().toISOString() })
+    .eq("id", id);
+  return { error };
+}
+
+/** 紹介一覧（referred_by がある全ユーザー） */
+export async function adminFetchReferrals() {
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, name, referred_by, created_at, xp")
+    .not("referred_by", "is", null)
+    .order("created_at", { ascending: false });
+  return { data: data ?? [], error };
+}
+
+/** ユーザーに XP を付与 */
+export async function adminGrantXP(userId, xp) {
+  const { data: current } = await supabase.from("users").select("xp").eq("id", userId).single();
+  const newXp = (current?.xp ?? 0) + xp;
+  const { error } = await supabase.from("users").update({ xp: newXp }).eq("id", userId);
+  return { error };
+}
+
+/** アカウント削除リクエストを処理済みにする（実際の削除は手動） */
+export async function adminResolveDeleteRequest(userId) {
+  const { error } = await supabase
+    .from("users")
+    .update({ deletion_requested: false })
+    .eq("id", userId);
+  return { error };
+}
+
+/** お知らせを作成（notifications テーブル） */
+export async function adminCreateNotification({ title, body, area, severity }) {
+  const { data, error } = await supabase
+    .from("notifications")
+    .insert({ title, body, area: area || null, severity: severity || "info", created_at: new Date().toISOString() })
+    .select()
+    .single();
+  return { data, error };
+}
+
+/** お知らせ一覧取得 */
+export async function adminFetchNotifications() {
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(50);
+  return { data: data ?? [], error };
+}
+
+/** アプリ全体メトリクス */
+export async function adminFetchMetrics() {
+  const [usersRes, reportsRes] = await Promise.all([
+    supabase.from("users").select("id, created_at, plan", { count: "exact" }),
+    supabase.from("daily_reports").select("id, created_at", { count: "exact" }),
+  ]);
+  const now = new Date();
+  const day30ago = new Date(now - 30 * 86400000).toISOString();
+  const mauCount = (usersRes.data ?? []).filter(u => u.updated_at > day30ago || u.created_at > day30ago).length;
+  return {
+    totalUsers: usersRes.count ?? 0,
+    totalReports: reportsRes.count ?? 0,
+    mau: mauCount,
+    paidUsers: (usersRes.data ?? []).filter(u => u.plan === "paid").length,
+  };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 翌日発表（daily_summaries）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

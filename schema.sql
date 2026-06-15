@@ -229,7 +229,85 @@ create trigger on_auth_user_created
   for each row execute function handle_new_user();
 
 -- ─────────────────────────────────────────
--- 9. 追加カラム（マイグレーション）
+-- 9. feedback テーブル（意見箱）
+-- ─────────────────────────────────────────
+create table if not exists public.feedback (
+  id          uuid primary key default uuid_generate_v4(),
+  user_id     uuid references public.users(id) on delete set null,
+  category    text check (category in ('bug','request','praise','other')) default 'other',
+  body        text not null,
+  anonymous   boolean default false,
+  read_at     timestamptz,
+  created_at  timestamptz default now()
+);
+
+alter table public.feedback enable row level security;
+
+-- 一般ユーザー: 自分の意見のみ挿入可
+create policy "feedback: 自分のみ挿入"
+  on public.feedback for insert
+  with check (auth.uid() = user_id or anonymous = true);
+
+-- 管理者: 全件参照・更新（管理者のメールアドレスで判定）
+create policy "feedback: 管理者は全件参照"
+  on public.feedback for select
+  using (
+    auth.uid() = user_id
+    or auth.email() = 'white-t@hotmail.co.jp'
+  );
+
+create policy "feedback: 管理者は更新可"
+  on public.feedback for update
+  using (auth.email() = 'white-t@hotmail.co.jp');
+
+-- ─────────────────────────────────────────
+-- 10. notifications テーブル（お知らせ）
+-- ─────────────────────────────────────────
+create table if not exists public.notifications (
+  id          uuid primary key default uuid_generate_v4(),
+  title       text not null,
+  body        text not null,
+  area        text,
+  severity    text check (severity in ('info','warning','alert')) default 'info',
+  created_at  timestamptz default now()
+);
+
+alter table public.notifications enable row level security;
+
+-- 全認証ユーザーが参照可
+create policy "notifications: 認証ユーザーは参照可"
+  on public.notifications for select
+  using (auth.role() = 'authenticated');
+
+-- 管理者のみ挿入・更新可
+create policy "notifications: 管理者は挿入可"
+  on public.notifications for insert
+  with check (auth.email() = 'white-t@hotmail.co.jp');
+
+-- ─────────────────────────────────────────
+-- 11. users テーブル: 管理者用 RLS 追加
+-- ─────────────────────────────────────────
+-- 管理者は全ユーザーを参照可能（auth.email() でJWTから直接取得 → 再帰RLSなし）
+-- ※ 既存の "users: 自分のみ参照" と OR で評価される（どちらか満たせばOK）
+drop policy if exists "users: 管理者は全件参照" on public.users;
+create policy "users: 管理者は全件参照"
+  on public.users for select
+  using (
+    auth.uid() = id
+    or auth.email() = 'white-t@hotmail.co.jp'
+  );
+
+-- 管理者は任意のユーザーを更新可
+drop policy if exists "users: 管理者は全件更新" on public.users;
+create policy "users: 管理者は全件更新"
+  on public.users for update
+  using (
+    auth.uid() = id
+    or auth.email() = 'white-t@hotmail.co.jp'
+  );
+
+-- ─────────────────────────────────────────
+-- 12. 追加カラム（マイグレーション）
 -- ─────────────────────────────────────────
 alter table public.users add column if not exists referred_by      text;          -- 紹介コード（招待した人のコード）
 alter table public.users add column if not exists xp               integer default 0;

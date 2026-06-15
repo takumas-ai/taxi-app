@@ -12,7 +12,9 @@ const SUPABASE_READY = !!(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, onManageArea, notifSettings, onUpdateNotif, appMode="standard", onModeChange, themeMode="auto", onThemeChange, reports=[], initialSection="", onBack }) {
+const ADMIN_EMAIL = "white-t@hotmail.co.jp";
+
+export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, onManageArea, notifSettings, onUpdateNotif, appMode="standard", onModeChange, themeMode="auto", onThemeChange, reports=[], initialSection="", onBack, onOpenAdmin }) {
   const [subTab, setSubTab] = useState(initialSection);
   const [form, setForm] = useState({ name:user.name||"", company:user.company||"", workType:user.workType||"隔日勤務", target:user.target||"380000" });
   const [saved, setSaved] = useState(false);
@@ -37,6 +39,7 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
     {id:"help",    icon:"❓", label:"ヘルプ・FAQ",    sub:"よくある質問"},
     {id:"terms",   icon:"📄", label:"利用規約",      sub:"タクロー利用規約"},
     {id:"privacy", icon:"🔒", label:"プライバシーポリシー", sub:"個人情報の取り扱い"},
+    ...(user?.email === ADMIN_EMAIL ? [{id:"admin", icon:"🦉", label:"管理画面", sub:"よしと専用"}] : []),
   ];
 
   return (
@@ -46,7 +49,7 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
           <div style={{ fontSize:16, fontWeight:800, marginBottom:16 }}>⚙️ 設定</div>
           <Card style={{ padding:0, overflow:"hidden" }}>
             {SUB.map((t, i) => (
-              <div key={t.id} onClick={()=>setSubTab(t.id)} style={{ display:"flex", alignItems:"center", gap:14, padding:"16px", borderBottom: i<SUB.length-1?`1px solid ${C.border}`:"none", cursor:"pointer" }}>
+              <div key={t.id} onClick={()=>{ if(t.id==="admin"){ onOpenAdmin?.(); return; } setSubTab(t.id); }} style={{ display:"flex", alignItems:"center", gap:14, padding:"16px", borderBottom: i<SUB.length-1?`1px solid ${C.border}`:"none", cursor:"pointer" }}>
                 <div style={{ width:36, height:36, borderRadius:10, backgroundColor:C.accentLight+"22", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{t.icon}</div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{t.label}</div>
