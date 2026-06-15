@@ -2,7 +2,7 @@
 // Dashboard.jsx — ダッシュボード
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 import { useState, useEffect } from "react";
-import { C, fmt, occ, dow, hourly, THIS_YEAR, THIS_MONTH, FREE_LIMIT, loadS, saveS } from "../lib/constants";
+import { C, fmt, occ, dow, hourly, THIS_YEAR, THIS_MONTH, FREE_LIMIT, loadS, saveS, getClosingPeriod } from "../lib/constants";
 import { Card, Btn, ProgressBar, Badge, KpiCard } from "../components/UI";
 import { MOCK_YESTERDAY_SUMMARY, AREA_MASTER } from "../data/mockData";
 import { levelFromXp, getTitle, MISSIONS, getMissionState } from "../lib/xp";
@@ -912,10 +912,8 @@ function UnifiedCalendar({ reports, monthTarget, user, onOpenReport, noCard = fa
 
 // ━━━ Dashboard メイン ━━━━━━━━━━━━━━━━━━━━━━━━━
 export default function Dashboard({ reports, user, onOpenReport, onManageArea, rankPrefs = { showMyRank:false, showTopSales:false }, appMode = "standard", onGoShift, onUpdateReport, onGoRanking }) {
-  const monthReports = reports.filter(r => {
-    const d = new Date(r.date);
-    return d.getFullYear() === THIS_YEAR && d.getMonth() + 1 === THIS_MONTH;
-  });
+  const { start: periodStart, end: periodEnd } = getClosingPeriod(user?.closing_day ?? 0);
+  const monthReports = reports.filter(r => r.date >= periodStart && r.date <= periodEnd);
 
   const monthTotal    = monthReports.reduce((s,r) => s + (r.gross_sales || 0), 0);
   const monthTarget   = parseInt(user.target) || 380000;

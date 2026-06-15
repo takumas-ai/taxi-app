@@ -24,7 +24,8 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
   const saveTakePay = (next) => { setTakePay(next); saveS("taxi_takepay", next); };
 
   const SUB = [
-    {id:"profile", icon:"👤", label:"プロフィール", sub:"名前・勤務形態"},
+    {id:"profile",  icon:"👤", label:"プロフィール", sub:"名前・勤務形態"},
+    {id:"closing",  icon:"📅", label:"締日設定",     sub: user.closing_day ? `毎月${user.closing_day}日締め` : "月末締め"},
     {id:"mode",    icon:"🎛️", label:"モードとカラーテーマ", sub:appMode==="simple"?"かんたん":appMode==="simple_large"?"かんたん（大）":appMode==="analysis"?"分析":"かんたん"},
     {id:"area",    icon:"📍", label:"エリア",       sub:user.areas?.length>0?user.areas[0]:"未設定"},
     {id:"notif",   icon:"🔔", label:"通知",         sub:"アラート設定"},
@@ -126,6 +127,34 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
           })()}
         </Card>
       )}
+
+      {subTab==="closing" && (() => {
+        const [closingDay, setClosingDay] = useState(user.closing_day ?? 0);
+        const [saved2, setSaved2] = useState(false);
+        const options = [
+          { value: 0,  label: "月末日" },
+          ...([5,10,15,20,25].map(d => ({ value: d, label: `毎月${d}日` }))),
+        ];
+        const saveClosing = () => {
+          onUpdate({ closing_day: closingDay });
+          setSaved2(true);
+          setTimeout(() => setSaved2(false), 2000);
+        };
+        return (
+          <Card>
+            <div style={{ backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}33`, borderRadius:10, padding:"12px 14px", marginBottom:16, fontSize:12, color:C.sub, lineHeight:1.7 }}>
+              締日を設定すると、締日の翌日から翌月の締日までの間に登録されたデータが集計されます。<br/>
+              <span style={{ color:C.muted }}>例）締日: 15日 → 前月16日〜当月15日が集計期間</span>
+            </div>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:8 }}>締日</div>
+            <select value={closingDay} onChange={e => setClosingDay(Number(e.target.value))}
+              style={{ width:"100%", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"12px", color:C.text, fontSize:15, marginBottom:20, outline:"none" }}>
+              {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <Btn onClick={saveClosing}>{saved2 ? "✓ 保存しました" : "締日を更新する"}</Btn>
+          </Card>
+        );
+      })()}
 
       {subTab==="area" && (
         <Card style={{ borderColor:C.accentLight+"44", cursor:"pointer" }} onClick={onManageArea}>
