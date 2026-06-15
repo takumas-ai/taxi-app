@@ -342,12 +342,12 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
         <KpiCard label="日報入力済" value={monthReports.length} unit="日" accent={C.gold}/>
       </div>
       <label
-        htmlFor="shift-file-input"
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         style={{display:"block",border:`2px dashed ${isDragOver ? C.accentLight : C.border}`,borderRadius:14,padding:"28px 24px",textAlign:"center",cursor:"pointer",marginBottom:12,transition:"border-color 0.2s, background-color 0.2s",backgroundColor:isDragOver ? C.accentLight+"18" : "transparent"}}
       >
+        <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{display:"none"}}/>
         <div style={{fontSize:36,marginBottom:10}}>{isDragOver ? "📂" : "📋"}</div>
         <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>シフト表を読み込む</div>
         <div style={{fontSize:11,color:C.muted,marginTop:6}}>クリックまたは画像をここにドロップ</div>
@@ -367,8 +367,6 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
       )}
       {selectedDay&&<DayDetailModal dateStr={selectedDay} shift={dayShift} report={dayReport} onClose={()=>setSelectedDay(null)} onDeleteShift={async sh=>{setShifts(prev=>prev.filter(x=>x.id!==sh.id));setSelectedDay(null);if(SUPABASE_READY&&user?.id)await deleteShift(user.id,sh.date);}} onGoUpload={()=>{setSelectedDay(null);onGoUpload();}}/>}
 
-      {/* hidden file input — id で label と紐付け */}
-      <input id="shift-file-input" ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{display:"none"}}/>
     </div>
   );
 }
