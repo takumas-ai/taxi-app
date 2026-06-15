@@ -3,6 +3,7 @@ import { C, fmt, occ, dow, hourly, FREE_LIMIT } from "../lib/constants";
 import { generateReportComment, runReportOCR, runReportOCRP2 } from "../lib/ai";
 import { Card, Btn, ProgressBar } from "../components/UI";
 import { WORK_AREAS_BY_PARENT } from "../data/mockData";
+import { ZONE_AREAS } from "../data/trafficZones";
 import { supabase } from "../lib/supabase";
 import { validateImageFile, validateReportForm, sanitizeReportData } from "../lib/validate";
 
@@ -99,7 +100,7 @@ function ShotGuideModal({ onShoot, onCancel }) {
   );
 }
 
-export default function UploadScreen({ uploadCount, onSave, reports }) {
+export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   const [step, setStep]     = useState("select");
   const [isManual, setIsManual] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
@@ -297,16 +298,24 @@ export default function UploadScreen({ uploadCount, onSave, reports }) {
             {F({label:"休憩時間（h）", fk:"break_hours", ph:"1.0"})}
             {F({label:"高速料金（円）", fk:"highway_fee", ph:"800", span:2})}
           </div>
-          {/* 営業エリア選択（統計データ収集用） */}
+          {/* 営業エリア選択（所属交通圏でフィルタ） */}
           <div style={{ marginTop:12 }}>
             <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>📍 今日のメインエリア（統計に使用）</div>
             <select value={form.work_area} onChange={e=>setForm(p=>({...p,work_area:e.target.value}))} style={{ width:"100%", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:form.work_area?C.text:C.muted, fontSize:14, outline:"none" }}>
               <option value="">選択してください（任意）</option>
-              {Object.entries(WORK_AREAS_BY_PARENT).map(([parent, areas]) => (
-                <optgroup key={parent} label={parent}>
-                  {areas.map(a => <option key={a} value={a}>{a}</option>)}
-                </optgroup>
-              ))}
+              {(() => {
+                const userZones = user?.areas || [];
+                // 所属交通圏が設定済みならその圏内エリアのみ表示
+                // 未設定なら全交通圏を表示
+                const zonesToShow = userZones.length > 0
+                  ? userZones.filter(z => ZONE_AREAS[z])
+                  : Object.keys(ZONE_AREAS);
+                return zonesToShow.map(zone => (
+                  <optgroup key={zone} label={zone}>
+                    {(ZONE_AREAS[zone] || []).map(a => <option key={a} value={a}>{a}</option>)}
+                  </optgroup>
+                ));
+              })()}
             </select>
             <div style={{ fontSize:10, color:C.muted, marginTop:4 }}>入力すると「エリア別単価ランキング」に反映されます</div>
           </div>
