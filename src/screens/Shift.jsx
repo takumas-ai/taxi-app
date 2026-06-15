@@ -341,19 +341,24 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
         <KpiCard label="残り出勤" value={remainingShifts} unit="日" accent={remainingShifts<=3?C.red:C.accentLight}/>
         <KpiCard label="日報入力済" value={monthReports.length} unit="日" accent={C.gold}/>
       </div>
-      <label
-        htmlFor="shift-ocr-file"
+      {/* ドラッグ&ドロップゾーン（ドロップのみ受付） */}
+      <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        style={{display:"block",border:`2px dashed ${isDragOver ? C.accentLight : C.border}`,borderRadius:14,padding:"28px 24px",textAlign:"center",cursor:"pointer",marginBottom:12,transition:"border-color 0.2s, background-color 0.2s",backgroundColor:isDragOver ? C.accentLight+"18" : "transparent"}}
+        style={{border:`2px dashed ${isDragOver ? C.accentLight : C.border}`,borderRadius:14,padding:"16px 24px",textAlign:"center",marginBottom:8,transition:"border-color 0.2s, background-color 0.2s",backgroundColor:isDragOver ? C.accentLight+"18" : "transparent"}}
       >
-        <div style={{fontSize:36,marginBottom:10}}>{isDragOver ? "📂" : "📋"}</div>
-        <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>シフト表を読み込む</div>
-        <div style={{fontSize:11,color:C.muted,marginTop:6}}>クリックまたは画像をここにドロップ</div>
-      </label>
+        <div style={{fontSize:32,marginBottom:4}}>{isDragOver ? "📂" : "📋"}</div>
+        <div style={{fontSize:12,color:C.muted}}>画像をここにドラッグ＆ドロップ</div>
+      </div>
+      {/* ファイル選択ボタン（クリック用・PC対応） */}
+      <button
+        onClick={() => { console.log("[Shift] btn click → open picker"); fileInputRef.current?.click(); }}
+        style={{display:"block",width:"100%",backgroundColor:C.accentLight,color:"#fff",border:"none",borderRadius:11,padding:"13px 0",fontSize:14,fontWeight:700,cursor:"pointer",marginBottom:12}}
+      >
+        📂 シフト表ファイルを選択する
+      </button>
       <input
-        id="shift-ocr-file"
         ref={fileInputRef}
         type="file"
         accept="image/*"

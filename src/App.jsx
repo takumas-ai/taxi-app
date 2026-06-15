@@ -252,6 +252,13 @@ function ConsentScreen({ onAgree }) {
 }
 
 export default function App() {
+  // ─── クリック診断（デバッグ用・問題解消後に削除） ───
+  useEffect(() => {
+    const fn = e => console.log("[CLICK]", e.target.tagName, "#"+e.target.id, "."+e.target.className, "@", Math.round(e.clientX)+","+Math.round(e.clientY));
+    window.addEventListener("click", fn, true);
+    return () => window.removeEventListener("click", fn, true);
+  }, []);
+
   const [user, setUser]         = useState(() => loadS("taxi_user", null));
   // "standard" は旧モード名 → "simple" にマッピング
   const [appMode, setAppMode]   = useState(() => { const m = loadS("taxi_app_mode","simple"); return m === "standard" ? "simple" : m; });
