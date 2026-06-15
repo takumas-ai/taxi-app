@@ -4,7 +4,12 @@ import { C, TODAY, THIS_YEAR, THIS_MONTH, loadS, saveS, fmt, dow } from "../lib/
 import { Card, Btn, ProgressBar, Badge, KpiCard } from "../components/UI";
 import { MOCK_SHIFTS } from "../data/mockData";
 import { SHIFT_OCR_PROMPT } from "../lib/ai";
-import { supabase } from "../lib/supabase";
+import { supabase, fetchShifts, upsertShifts, deleteShift } from "../lib/supabase";
+
+const SUPABASE_READY = !!(
+  import.meta.env.VITE_SUPABASE_URL &&
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 const MONTH_DAYS = (y,m) => new Date(y,m,0).getDate();
 const OCR_LINES = ["画像を読み込み中...","AIに送信中...","出勤日を検出中...","出庫・帰庫時刻を読み取り中...","読み取り完了 ✓"];
@@ -90,8 +95,19 @@ function DayDetailModal({ dateStr, shift, report, onClose, onDeleteShift, onGoUp
   );
 }
 
-export default function ShiftScreen({ reports, onGoUpload }) {
-  const [shifts, setShifts]         = useState(()=>loadS("taxi_shifts",MOCK_SHIFTS));
+// SupabaseのDBレコード → ローカル形式に変換
+const dbToLocal = (row) => ({
+  id:       row.id,
+  date:     row.shift_date,
+  clockIn:  row.clock_in  || "",
+  clockOut: row.clock_out || "",
+  isNight:  row.is_night  || false,
+  note:     row.note      || "",
+});
+
+export default function ShiftScreen({ reports, onGoUpload, user }) {
+  const [shifts, setShifts]         = useState(()=>loadS("taxi_shifts",[]));
+  const [loading, setLoading]       = useState(SUPABASE_READY);
   const [viewMonth, setViewMonth]   = useState({year:THIS_YEAR,month:THIS_MONTH});
   const [ocrStep, setOcrStep]       = useState("idle");
   const [ocrResult, setOcrResult]   = useState(null);
@@ -102,7 +118,22 @@ export default function ShiftScreen({ reports, onGoUpload }) {
   const [dayShift, setDayShift]     = useState(null);
   const [dayReport, setDayReport]   = useState(null);
   const fileInputRef = useRef(null);
-  useEffect(()=>saveS("taxi_shifts",shifts),[shifts]);
+
+  // Supabaseからシフトを読み込む
+  useEffect(() => {
+    if (!SUPABASE_READY || !user?.id) { setLoading(false); return; }
+    fetchShifts(user.id).then(({ data }) => {
+      if (data?.length) {
+        const local = data.map(dbToLocal);
+        setShifts(local);
+        saveS("taxi_shifts", local);
+      }
+      setLoading(false);
+    });
+  }, [user?.id]);
+
+  // ローカルにも保存（オフライン時のキャッシュ）
+  useEffect(()=>{ if(!loading) saveS("taxi_shifts",shifts); },[shifts, loading]);
 
   const monthShifts     = shifts.filter(s=>{const d=new Date(s.date);return d.getFullYear()===viewMonth.year&&d.getMonth()+1===viewMonth.month;});
   const monthReports    = reports.filter(r=>{const d=new Date(r.date);return d.getFullYear()===viewMonth.year&&d.getMonth()+1===viewMonth.month;});
@@ -181,13 +212,24 @@ export default function ShiftScreen({ reports, onGoUpload }) {
     }
   };
 
-  const handleSaveShifts = () => {
+  const handleSaveShifts = async () => {
     const others = shifts.filter(s=>{const d=new Date(s.date);return !(d.getFullYear()===ocrResult.year&&d.getMonth()+1===ocrResult.month);});
-    setShifts([...others,...editShifts]); setViewMonth({year:ocrResult.year,month:ocrResult.month}); setOcrStep("done");
+    const next = [...others, ...editShifts];
+    setShifts(next);
+    setViewMonth({year:ocrResult.year, month:ocrResult.month});
+    setOcrStep("done");
+    // Supabaseに保存
+    if (SUPABASE_READY && user?.id) {
+      await upsertShifts(user.id, editShifts);
+    }
   };
 
   const prevMonth = () => setViewMonth(v=>v.month===1?{year:v.year-1,month:12}:{year:v.year,month:v.month-1});
   const nextMonth = () => setViewMonth(v=>v.month===12?{year:v.year+1,month:1}:{year:v.year,month:v.month+1});
+
+  if (loading) {
+    return <div style={{maxWidth:480,margin:"0 auto",padding:"60px 16px",textAlign:"center",color:C.muted}}>シフトを読み込み中...</div>;
+  }
 
   if (ocrStep==="ocr_error") {
     return (
@@ -289,7 +331,7 @@ export default function ShiftScreen({ reports, onGoUpload }) {
           })}
         </>
       )}
-      {selectedDay&&<DayDetailModal dateStr={selectedDay} shift={dayShift} report={dayReport} onClose={()=>setSelectedDay(null)} onDeleteShift={sh=>{setShifts(prev=>prev.filter(x=>x.id!==sh.id));setSelectedDay(null);}} onGoUpload={()=>{setSelectedDay(null);onGoUpload();}}/>}
+      {selectedDay&&<DayDetailModal dateStr={selectedDay} shift={dayShift} report={dayReport} onClose={()=>setSelectedDay(null)} onDeleteShift={async sh=>{setShifts(prev=>prev.filter(x=>x.id!==sh.id));setSelectedDay(null);if(SUPABASE_READY&&user?.id)await deleteShift(user.id,sh.date);}} onGoUpload={()=>{setSelectedDay(null);onGoUpload();}}/>}
 
       {/* hidden file input */}
       <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{display:"none"}}/>

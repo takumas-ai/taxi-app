@@ -267,6 +267,47 @@ export async function adminFetchMetrics() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// シフト管理
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** シフト一覧取得 */
+export async function fetchShifts(userId) {
+  const { data, error } = await supabase
+    .from("shifts")
+    .select("*")
+    .eq("user_id", userId)
+    .order("shift_date", { ascending: true });
+  return { data: data ?? [], error };
+}
+
+/** シフトをupsert（shift_dateが同じなら上書き） */
+export async function upsertShifts(userId, shifts) {
+  const rows = shifts.map(s => ({
+    user_id:    userId,
+    shift_date: s.date,
+    clock_in:   s.clockIn  || null,
+    clock_out:  s.clockOut || null,
+    is_night:   s.isNight  || false,
+    note:       s.note     || null,
+  }));
+  const { data, error } = await supabase
+    .from("shifts")
+    .upsert(rows, { onConflict: "user_id,shift_date" })
+    .select();
+  return { data: data ?? [], error };
+}
+
+/** シフト1件削除（shift_date で指定） */
+export async function deleteShift(userId, shiftDate) {
+  const { error } = await supabase
+    .from("shifts")
+    .delete()
+    .eq("user_id", userId)
+    .eq("shift_date", shiftDate);
+  return { error };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 翌日発表（daily_summaries）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
