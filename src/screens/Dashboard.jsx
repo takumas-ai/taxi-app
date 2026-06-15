@@ -1016,8 +1016,8 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
           </div>
         </Card>
 
-        {/* カレンダー */}
-        <MonthCalendar reports={monthReports} monthTarget={monthTarget} />
+        {/* 統合カレンダー */}
+        <UnifiedCalendar reports={monthReports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} />
 
         {/* AIアドバイス */}
         <AiAdviceCard reports={monthReports} appMode={appMode} />
@@ -1042,7 +1042,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
       {/* ② お知らせ欄（更新通知はInfoCenterのみ） */}
 
       {/* ③ シフト表（アコーディオン） */}
-      <ShiftSummaryCard />
+      <ShiftSummaryCard onGoShift={onGoShift} />
 
       <WeatherWidget />
 
