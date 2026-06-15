@@ -61,16 +61,22 @@ function saveRecords(recs) {
 
 // ─── 記録モーダル ─────────────────────────────
 function RecordModal({ onClose, onSave, editTarget }) {
-  const [spotName, setSpotName]     = useState(editTarget?.spotName ?? "");
-  const [time, setTime]             = useState(editTarget?.time ?? nowTime());
-  const [pickup, setPickup]         = useState(editTarget?.pickupLocation ?? "");
-  const [dropoff, setDropoff]       = useState(editTarget?.dropoffLocation ?? "");
-  const [amount, setAmount]         = useState(editTarget?.amount ?? "");
-  const [lat, setLat]               = useState(editTarget?.lat ?? null);
-  const [lng, setLng]               = useState(editTarget?.lng ?? null);
-  const [gpsLoading, setGpsLoading] = useState(false);
-  const [gpsError, setGpsError]     = useState("");
-  const [autoFilled, setAutoFilled] = useState(false);
+  const [spotName, setSpotName]       = useState(editTarget?.spotName ?? "");
+  const [time, setTime]               = useState(editTarget?.time ?? nowTime());
+  const [pickup, setPickup]           = useState(editTarget?.pickupLocation ?? "");
+  const [dropoff, setDropoff]         = useState(editTarget?.dropoffLocation ?? "");
+  const [amount, setAmount]           = useState(editTarget?.amount ?? "");
+  const [lat, setLat]                 = useState(editTarget?.lat ?? null);
+  const [lng, setLng]                 = useState(editTarget?.lng ?? null);
+  const [gpsLoading, setGpsLoading]   = useState(false);
+  const [gpsLoadingFor, setGpsLoadingFor] = useState(""); // "pickup" | "dropoff"
+  const [gpsError, setGpsError]       = useState("");
+  const [autoFilled, setAutoFilled]   = useState(false);
+
+  // 登録済み営業ポイント（#19で管理）
+  const bizPoints = (() => {
+    try { return JSON.parse(localStorage.getItem("taxi_biz_points") || "[]"); } catch { return []; }
+  })();
 
   // 初回: GPS自動取得（新規のみ）
   useEffect(() => {
@@ -95,19 +101,24 @@ function RecordModal({ onClose, onSave, editTarget }) {
     }
   }
 
-  async function refetchPickupGps() {
+  async function refetchGps(target) {
     setGpsLoading(true);
+    setGpsLoadingFor(target);
     setGpsError("");
     try {
       const pos = await getGps();
-      setLat(pos.lat);
-      setLng(pos.lng);
       const addr = await reverseGeocode(pos.lat, pos.lng);
-      setPickup(addr);
+      if (target === "pickup") {
+        setLat(pos.lat); setLng(pos.lng);
+        setPickup(addr);
+      } else {
+        setDropoff(addr);
+      }
     } catch {
       setGpsError("GPS取得失敗");
     } finally {
       setGpsLoading(false);
+      setGpsLoadingFor("");
     }
   }
 
@@ -190,13 +201,28 @@ function RecordModal({ onClose, onSave, editTarget }) {
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
             <label style={{ ...labelStyle, marginBottom:0 }}>乗車場所</label>
             <button
-              onClick={refetchPickupGps}
+              onClick={() => refetchGps("pickup")}
               disabled={gpsLoading}
               style={{ fontSize:10, color:C.accentLight, background:"none", border:"none", cursor:"pointer", padding:0 }}
             >
-              📡 現在地
+              {gpsLoadingFor === "pickup" ? "取得中..." : "📡 現在地"}
             </button>
           </div>
+          {/* 登録済みポイントのクイック選択チップ */}
+          {bizPoints.length > 0 && (
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
+              {bizPoints.map((p, i) => (
+                <button
+                  key={i}
+                  onClick={() => { setPickup(typeof p === "string" ? p : p.name); }}
+                  style={{ fontSize:11, color:C.accentLight, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`,
+                           borderRadius:99, padding:"4px 10px", cursor:"pointer", whiteSpace:"nowrap" }}
+                >
+                  📍 {typeof p === "string" ? p : p.name}
+                </button>
+              ))}
+            </div>
+          )}
           <input
             type="text" value={pickup}
             onChange={e => setPickup(e.target.value)}
@@ -207,7 +233,16 @@ function RecordModal({ onClose, onSave, editTarget }) {
 
         {/* 降車場所 */}
         <div style={{ marginBottom:14 }}>
-          <label style={labelStyle}>降車場所（任意）</label>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+            <label style={{ ...labelStyle, marginBottom:0 }}>降車場所（任意）</label>
+            <button
+              onClick={() => refetchGps("dropoff")}
+              disabled={gpsLoading}
+              style={{ fontSize:10, color:C.accentLight, background:"none", border:"none", cursor:"pointer", padding:0 }}
+            >
+              {gpsLoadingFor === "dropoff" ? "取得中..." : "📡 現在地"}
+            </button>
+          </div>
           <input
             type="text" value={dropoff}
             onChange={e => setDropoff(e.target.value)}

@@ -334,8 +334,83 @@ function MonthlyStats({ reports }) {
 }
 
 // ─── 日報一覧 ───
+// ─── 営業ポイント分析ビュー ───
+function SalesPointAnalysis() {
+  const records = (() => {
+    try { return JSON.parse(localStorage.getItem("taxi_sales_records") || "[]"); } catch { return []; }
+  })();
+
+  if (records.length === 0) {
+    return (
+      <div style={{ textAlign:"center", padding:"40px 16px", color:C.muted }}>
+        <div style={{ fontSize:36, marginBottom:12 }}>📍</div>
+        <div style={{ fontSize:15, fontWeight:700, marginBottom:8 }}>まだ記録がありません</div>
+        <div style={{ fontSize:13 }}>ホーム画面の「営業ポイント」から記録を追加すると、ここに統計が表示されます。</div>
+      </div>
+    );
+  }
+
+  // ポイント別集計
+  const spotMap = {};
+  records.forEach(r => {
+    const k = r.spotName || "不明";
+    if (!spotMap[k]) spotMap[k] = { count: 0, total: 0, records: [] };
+    spotMap[k].count++;
+    spotMap[k].total += r.amount || 0;
+    spotMap[k].records.push(r);
+  });
+  const spots = Object.entries(spotMap)
+    .map(([name, s]) => ({ name, count: s.count, total: s.total, avg: Math.round(s.total / s.count), records: s.records }))
+    .sort((a, b) => b.total - a.total);
+
+  const totalAmount = records.reduce((s, r) => s + (r.amount || 0), 0);
+  const totalCount  = records.length;
+
+  return (
+    <div>
+      {/* サマリー */}
+      <div style={{ display:"flex", gap:10, marginBottom:16 }}>
+        {[
+          { label:"総記録数", value:`${totalCount}件`, color:C.text },
+          { label:"累計金額", value:`${fmt(totalAmount)}円`, color:C.gold },
+          { label:"ポイント数", value:`${spots.length}箇所`, color:C.accentLight },
+        ].map(s => (
+          <div key={s.label} style={{ flex:1, backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 10px", textAlign:"center" }}>
+            <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>{s.label}</div>
+            <div style={{ fontSize:15, fontWeight:900, color:s.color }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ポイント別ランキング */}
+      <div style={{ fontSize:13, fontWeight:800, color:C.sub, marginBottom:10 }}>📍 営業ポイント別 稼ぎランキング</div>
+      {spots.map((s, i) => (
+        <div key={s.name} style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px", marginBottom:8 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
+            <div style={{ fontSize:18, fontWeight:900, color: i===0?C.gold:i===1?"#94a3b8":i===2?"#b45309":C.muted, width:28, textAlign:"center" }}>
+              #{i+1}
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{s.name}</div>
+              <div style={{ fontSize:11, color:C.muted }}>{s.count}回記録</div>
+            </div>
+            <div style={{ textAlign:"right" }}>
+              <div style={{ fontSize:16, fontWeight:900, color:C.gold }}>{fmt(s.avg)}<span style={{ fontSize:10, color:C.muted }}>円/回</span></div>
+              <div style={{ fontSize:10, color:C.muted }}>合計 {fmt(s.total)}円</div>
+            </div>
+          </div>
+          {/* バー */}
+          <div style={{ height:4, backgroundColor:C.bg, borderRadius:99, overflow:"hidden" }}>
+            <div style={{ height:"100%", width:`${Math.round(s.total / spots[0].total * 100)}%`, backgroundColor: i===0?C.gold:C.accentLight, borderRadius:99 }}/>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ReportList({ reports, onSelect, onEdit }) {
-  const [view, setView]   = useState("list"); // "list" | "monthly"
+  const [view, setView]   = useState("list"); // "list" | "monthly" | "spotAnalysis"
   const [filter, setFilter] = useState("all");
   const [sort, setSort] = useState("date");
   const avg = reports.length ? Math.round(reports.reduce((s,r)=>s+r.gross_sales,0)/reports.length) : 0;
@@ -347,13 +422,16 @@ export default function ReportList({ reports, onSelect, onEdit }) {
     <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
       {/* ビュー切り替えタブ */}
       <div style={{ display:"flex", gap:6, marginBottom:14, backgroundColor:C.card, borderRadius:12, padding:4, border:`1px solid ${C.border}` }}>
-        {[["list","📋 日報一覧"],["monthly","📅 月別統計"]].map(([v,l])=>(
+        {[["list","📋 日報一覧"],["monthly","📅 月別統計"],["spotAnalysis","📊 分析"]].map(([v,l])=>(
           <div key={v} onClick={()=>setView(v)} style={{ flex:1, textAlign:"center", padding:"8px 0", borderRadius:9, fontSize:12, fontWeight:view===v?700:400, backgroundColor:view===v?C.accentLight:C.surface, color:view===v?"#fff":C.muted, cursor:"pointer", transition:"all 0.15s" }}>{l}</div>
         ))}
       </div>
 
       {/* 月別統計ビュー */}
       {view === "monthly" && <MonthlyStats reports={reports}/>}
+
+      {/* 営業ポイント分析ビュー */}
+      {view === "spotAnalysis" && <SalesPointAnalysis />}
 
       {/* 日報一覧ビュー */}
       {view === "list" && <>
