@@ -854,10 +854,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         {/* AIアドバイス */}
         <AiAdviceCard reports={monthReports} appMode={appMode} />
 
-        {/* 直近日報（大きめ表示） */}
-        {reports.length > 0 ? (
-          <RecentReports reports={reports} onOpenReport={onOpenReport} simple={true} />
-        ) : (
+        {reports.length === 0 && (
           <Card style={{ textAlign:"center", padding:32 }}>
             <div style={{ fontSize:36, marginBottom:10 }}>📄</div>
             <div style={{ fontSize:18, fontWeight:700, marginBottom:8 }}>日報をアップロードしよう</div>
@@ -973,9 +970,6 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
 
       {/* ⑥ AIアドバイス（3件以上でモード別表示） */}
       <AiAdviceCard reports={monthReports} appMode={appMode} />
-
-      {/* ⑦ 直近日報 */}
-      <RecentReports reports={reports} onOpenReport={onOpenReport} simple={false} />
 
       {reports.length === 0 && (
         <Card style={{ textAlign:"center", padding:28, marginTop:8 }}>
