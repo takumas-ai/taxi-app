@@ -356,7 +356,7 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
       <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 14px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:40 }}>
 
         {/* 左：ハンバーガーメニュー ＋ エリアチップ */}
-        <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:6, flex:1, minWidth:0 }}>
           <button onClick={() => setShowDrawer(true)}
             style={{ display:"flex", flexDirection:"column", gap:4, cursor:"pointer", background:"none", border:"none", padding:"6px 8px", borderRadius:8, flexShrink:0 }}>
             <div style={{ width:20, height:2, backgroundColor:C.text, borderRadius:2 }}/>
@@ -364,43 +364,43 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
             <div style={{ width:20, height:2, backgroundColor:C.text, borderRadius:2 }}/>
           </button>
           {/* エリア表示チップ */}
-          <div onClick={() => onManageArea?.()} style={{ cursor:"pointer", maxWidth:100, overflow:"hidden" }}>
+          <div onClick={() => onManageArea?.()} style={{ cursor:"pointer", minWidth:0, overflow:"hidden" }}>
             {userAreas.length === 0 ? (
               <span style={{ fontSize:10, color:C.red, backgroundColor:C.redGlow, border:`1px solid ${C.red}44`, borderRadius:99, padding:"2px 8px", whiteSpace:"nowrap" }}>
                 📍 未設定
               </span>
             ) : (
-              <span style={{ fontSize:10, color:C.accentLight, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:99, padding:"2px 8px", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", display:"block", maxWidth:100 }}>
-                📍 {userAreas.slice(0,2).join("・")}{userAreas.length > 2 ? "…" : ""}
+              <span style={{ fontSize:10, color:C.accentLight, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:99, padding:"2px 8px", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", display:"block", maxWidth:90 }}>
+                📍 {userAreas.slice(0,1).join("・")}{userAreas.length > 1 ? "…" : ""}
               </span>
             )}
           </div>
         </div>
 
-        {/* 中央：アプリ名（絶対配置で完全センター） */}
-        <div style={{ position:"absolute", left:"50%", transform:"translateX(-50%)", display:"flex", alignItems:"baseline", gap:4, pointerEvents:"none" }}>
-          <span style={{ fontSize:17, fontWeight:900, color:C.text, letterSpacing:"-0.5px" }}>🦉 タクロー</span>
+        {/* 中央：アプリ名 */}
+        <div style={{ display:"flex", alignItems:"baseline", gap:3, flexShrink:0 }}>
+          <span style={{ fontSize:16, fontWeight:900, color:C.text, letterSpacing:"-0.5px" }}>🦉 タクロー</span>
           <span style={{ fontSize:9, color:C.muted }}>β</span>
         </div>
 
         {/* 右：モード + 強制リロード + 通知 */}
-        <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:4, flex:1, justifyContent:"flex-end" }}>
           {/* モード切替ボタン */}
           <div onClick={() => setShowModeSheet(true)}
-            style={{ display:"flex", alignItems:"center", gap:3, cursor:"pointer", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:99, padding:"4px 10px" }}>
-            <span style={{ fontSize:12, color:C.sub, fontWeight:700 }}>モード</span>
+            style={{ display:"flex", alignItems:"center", gap:2, cursor:"pointer", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:99, padding:"4px 8px", flexShrink:0 }}>
+            <span style={{ fontSize:11, color:C.sub, fontWeight:700 }}>モード</span>
             <span style={{ fontSize:9, color:C.muted }}>▾</span>
           </div>
 
           {/* 強制リロード */}
           <div onClick={() => window.location.reload()} title="最新版に更新"
-            style={{ cursor:"pointer", padding:"6px 7px", borderRadius:10, fontSize:16, opacity:0.55, lineHeight:1 }}>
+            style={{ cursor:"pointer", padding:"5px 6px", borderRadius:10, fontSize:15, opacity:0.55, lineHeight:1, flexShrink:0 }}>
             🔄
           </div>
 
           {/* 通知 */}
-          <div onClick={() => setTab("info")} style={{ position:"relative", cursor:"pointer", padding:"6px 8px", borderRadius:10, backgroundColor:tab==="info"?C.accentGlow:"transparent" }}>
-            <span style={{ fontSize:19, opacity:tab==="info"?1:0.6 }}>🔔</span>
+          <div onClick={() => setTab("info")} style={{ position:"relative", cursor:"pointer", padding:"5px 6px", borderRadius:10, backgroundColor:tab==="info"?C.accentGlow:"transparent", flexShrink:0 }}>
+            <span style={{ fontSize:18, opacity:tab==="info"?1:0.6 }}>🔔</span>
             {alertCount > 0 && !alertsSeen && <div style={{ position:"absolute", top:2, right:4, width:8, height:8, borderRadius:"50%", backgroundColor:C.red }} />}
           </div>
         </div>
