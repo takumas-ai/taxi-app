@@ -246,7 +246,7 @@ function RecentReports({ reports, onOpenReport, simple }) {
 }
 
 // ━━━ シフト表カード ━━━━━━━━━━━━━━━━━━━━━━━━
-function ShiftSummaryCard({ reports = [], user, onOpenReport, monthTarget = 380000 }) {
+function ShiftSummaryCard({ reports = [], user, onOpenReport, monthTarget = 380000, onGoShift }) {
   const [open, setOpen] = useState(false);
   const today = new Date();
   const y = today.getFullYear(), m = today.getMonth() + 1;
@@ -261,17 +261,25 @@ function ShiftSummaryCard({ reports = [], user, onOpenReport, monthTarget = 3800
 
   return (
     <Card style={{ marginBottom:14, padding:"12px 16px" }}>
-      <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span style={{ fontSize:13, fontWeight:700 }}>📆 シフト表</span>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        {/* 左: タイトル + 本日出勤バッジ */}
+        <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", flex:1 }}>
+          <span style={{ fontSize:13, fontWeight:700 }}>📅 カレンダー・シフト表</span>
           {todayShift && <span style={{ fontSize:10, backgroundColor:C.green+"22", color:C.green, fontWeight:700, padding:"2px 8px", borderRadius:99 }}>本日出勤</span>}
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          {monthShifts.length > 0
-            ? <span style={{ fontSize:11, color:C.muted }}>残り{remaining}勤</span>
-            : <span style={{ fontSize:11, color:C.red }}>未登録</span>
-          }
-          <span style={{ fontSize:11, color:C.muted }}>{open?"▲":"▼"}</span>
+        {/* 右: 読み取りボタン + 残り勤務 + 開閉 */}
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <button
+            onClick={e=>{ e.stopPropagation(); onGoShift?.(); }}
+            style={{ fontSize:11, padding:"4px 10px", borderRadius:8, border:`1px solid ${C.accentLight}55`, backgroundColor:C.accentLight+"18", color:C.accentLight, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}
+          >📷 読み取る</button>
+          <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer" }}>
+            {monthShifts.length > 0
+              ? <span style={{ fontSize:11, color:C.muted }}>残り{remaining}勤</span>
+              : <span style={{ fontSize:11, color:C.red }}>未登録</span>
+            }
+            <span style={{ fontSize:11, color:C.muted }}>{open?"▲":"▼"}</span>
+          </div>
         </div>
       </div>
       {open && (
@@ -944,7 +952,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         {/* ② お知らせ欄（更新通知はInfoCenterのみ） */}
 
         {/* ③ シフト表（開くとカレンダー展開） */}
-        <ShiftSummaryCard reports={monthReports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} />
+        <ShiftSummaryCard reports={monthReports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} onGoShift={onGoShift} />
 
         <WeatherWidget />
 
@@ -1013,7 +1021,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
       {/* ② お知らせ欄（更新通知はInfoCenterのみ） */}
 
       {/* ③ シフト表（開くとカレンダー展開） */}
-      <ShiftSummaryCard reports={reports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} />
+      <ShiftSummaryCard reports={reports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} onGoShift={onGoShift} />
 
       <WeatherWidget />
 
