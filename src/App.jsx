@@ -33,7 +33,7 @@ import OnboardingScreen   from "./screens/Onboarding";
 import CommunityScreen    from "./screens/Community";
 
 // Components
-import { BottomNav, Header } from "./components/Navigation";
+import { BottomNav, Header, TakuroFAB } from "./components/Navigation";
 import { AreaSettingModal }  from "./components/AreaFilter";
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -263,6 +263,8 @@ export default function App() {
   const [onboardingDone, setOnboardingDone] = useState(() => !!loadS("taxi_onboarding_done", false));
   const [reports, setReports]   = useState(() => loadS("taxi_reports", INITIAL_REPORTS));
   const [tab, setTab]           = useState("dashboard");
+  const [alertsSeen, setAlertsSeen]   = useState(() => loadS("taxi_alerts_seen", false));
+  const [settingsSection, setSettingsSection] = useState("");
   const [selected, setSelected] = useState(null);
   const [selectedForEdit, setSelectedForEdit] = useState(false);
   const [notif, setNotif]       = useState(() => loadS("taxi_notif", { delays:true, events:false, traffic:false, dailyTip:false, achievement:true, dailyResult:false }));
@@ -441,9 +443,32 @@ export default function App() {
     }
   };
 
+  // 通知をinfoタブで見たらバッジを消す / 設定以外に移動したらsectionリセット
+  const handleSetTab = (newTab) => {
+    if (newTab === "info" && !alertsSeen) {
+      setAlertsSeen(true);
+      saveS("taxi_alerts_seen", true);
+    }
+    if (newTab !== "settings") {
+      setSettingsSection("");
+    }
+    setTab(newTab);
+  };
+
+  // ハンバーガー → 設定の特定セクションへ
+  const handleNavigateSettings = (section) => {
+    setSettingsSection(section);
+    setTab("settings");
+  };
+
   const handleLogout = async () => {
     if (SUPABASE_READY && !user.isDemo) await signOut();
+    // 同意・オンボーディングフラグはログアウト後も保持
+    const consentFlag = localStorage.getItem("taxi_consent_done");
+    const onboardingFlag = localStorage.getItem("taxi_onboarding_done");
     localStorage.clear();
+    if (consentFlag) localStorage.setItem("taxi_consent_done", consentFlag);
+    if (onboardingFlag) localStorage.setItem("taxi_onboarding_done", onboardingFlag);
     setUser(null);
     setReports(INITIAL_REPORTS);
   };
@@ -456,18 +481,20 @@ export default function App() {
       case "info":      return <InfoCenter notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} userAreas={userAreas} onManageArea={()=>setShowAreaModal(true)}/>;
       case "guide":     return <GuideScreen userAreas={userAreas}/>;
       case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")}/>;
-      case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports}/>;
+      case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined}/>;
       case "community": return <CommunityScreen />;
+      case "feedback":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection="feedback" onBack={()=>handleSetTab("dashboard")}/>;
       default:          return null;
     }
   };
 
   return (
     <div key={themeVer} style={{ minHeight:"100vh", backgroundColor:C.bg, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text }}>
-      <Header user={user} tab={tab} setTab={setTab} appMode={appMode} onModeChange={setAppMode} />
+      <Header user={user} tab={tab} setTab={handleSetTab} appMode={appMode} onModeChange={setAppMode} alertsSeen={alertsSeen} onNavigateSettings={handleNavigateSettings} />
       {renderScreen()}
       <ReportModal key={selected ? `${selected.id}-${selectedForEdit}` : "none"} report={selected} onClose={()=>{setSelected(null);setSelectedForEdit(false);}} onUpdate={handleUpdateReport} startInEdit={selectedForEdit}/>
-      <BottomNav tab={tab} setTab={setTab} userAreas={userAreas}/>
+      <TakuroFAB setTab={handleSetTab} />
+      <BottomNav tab={tab} setTab={handleSetTab} userAreas={userAreas} alertsSeen={alertsSeen}/>
       {showAreaModal && <AreaSettingModal userAreas={userAreas} onSave={areas=>setUser(u=>({...u,areas}))} onClose={()=>setShowAreaModal(false)}/>}
     </div>
   );
