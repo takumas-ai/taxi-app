@@ -239,9 +239,10 @@ function BusinessPointModal({ onClose }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ハンバーガーメニュー（左ドロワー）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSettings }) {
+function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSettings, onManageArea }) {
   const items = [
     { icon:"🎁", label:"友達を招待",       action:()=>{ onNavigateSettings("referral"); onClose(); } },
+    { icon:"🗺️", label:"エリア設定",       action:()=>{ onManageArea?.(); onClose(); } },
     { icon:"📍", label:"営業ポイント管理", action:()=>{ onOpenBizPoints(); onClose(); } },
     { icon:"👤", label:"プロフィール",     action:()=>{ onNavigateSettings("profile"); onClose(); } },
     { icon:"💴", label:"手取り設定",       action:()=>{ onNavigateSettings("takepay"); onClose(); } },
@@ -325,7 +326,7 @@ export function TakuroFAB({ setTab }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ヘッダー
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-export function Header({ user, tab, setTab, appMode="simple", onModeChange, alertsSeen=false, onNavigateSettings }) {
+export function Header({ user, tab, setTab, appMode="simple", onModeChange, alertsSeen=false, onNavigateSettings, onManageArea }) {
   const [showDrawer, setShowDrawer]     = useState(false);
   const [showModeSheet, setShowModeSheet] = useState(false);
   const [showBizPoints, setShowBizPoints] = useState(false);
@@ -342,13 +343,27 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
     <>
       <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 14px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:40 }}>
 
-        {/* 左：ハンバーガーメニュー */}
-        <button onClick={() => setShowDrawer(true)}
-          style={{ display:"flex", flexDirection:"column", gap:4, cursor:"pointer", background:"none", border:"none", padding:"6px 8px", borderRadius:8 }}>
-          <div style={{ width:20, height:2, backgroundColor:C.text, borderRadius:2 }}/>
-          <div style={{ width:16, height:2, backgroundColor:C.text, borderRadius:2 }}/>
-          <div style={{ width:20, height:2, backgroundColor:C.text, borderRadius:2 }}/>
-        </button>
+        {/* 左：ハンバーガーメニュー ＋ エリアチップ */}
+        <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:0 }}>
+          <button onClick={() => setShowDrawer(true)}
+            style={{ display:"flex", flexDirection:"column", gap:4, cursor:"pointer", background:"none", border:"none", padding:"6px 8px", borderRadius:8, flexShrink:0 }}>
+            <div style={{ width:20, height:2, backgroundColor:C.text, borderRadius:2 }}/>
+            <div style={{ width:16, height:2, backgroundColor:C.text, borderRadius:2 }}/>
+            <div style={{ width:20, height:2, backgroundColor:C.text, borderRadius:2 }}/>
+          </button>
+          {/* エリア表示チップ */}
+          <div onClick={() => onManageArea?.()} style={{ cursor:"pointer", maxWidth:100, overflow:"hidden" }}>
+            {userAreas.length === 0 ? (
+              <span style={{ fontSize:10, color:C.red, backgroundColor:C.redGlow, border:`1px solid ${C.red}44`, borderRadius:99, padding:"2px 8px", whiteSpace:"nowrap" }}>
+                📍 未設定
+              </span>
+            ) : (
+              <span style={{ fontSize:10, color:C.accentLight, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:99, padding:"2px 8px", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", display:"block", maxWidth:100 }}>
+                📍 {userAreas.slice(0,2).join("・")}{userAreas.length > 2 ? "…" : ""}
+              </span>
+            )}
+          </div>
+        </div>
 
         {/* 中央：アプリ名（絶対配置で完全センター） */}
         <div style={{ position:"absolute", left:"50%", transform:"translateX(-50%)", display:"flex", alignItems:"baseline", gap:4, pointerEvents:"none" }}>
@@ -356,13 +371,12 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
           <span style={{ fontSize:9, color:C.muted }}>β</span>
         </div>
 
-        {/* 右：モード + 通知 */}
+        {/* 右：モード（アイコンのみ） + 通知 */}
         <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-          {/* モード切替ボタン */}
+          {/* モード切替ボタン — アイコンのみで被り防止 */}
           <div onClick={() => setShowModeSheet(true)}
-            style={{ display:"flex", alignItems:"center", gap:4, cursor:"pointer", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:99, padding:"4px 10px" }}>
-            <span style={{ fontSize:12 }}>{currentMode.icon}</span>
-            <span style={{ fontSize:10, fontWeight:700, color:C.sub }}>{currentMode.label}</span>
+            style={{ display:"flex", alignItems:"center", gap:3, cursor:"pointer", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:99, padding:"4px 10px" }}>
+            <span style={{ fontSize:14 }}>{currentMode.icon}</span>
             <span style={{ fontSize:9, color:C.muted }}>▾</span>
           </div>
 
@@ -382,6 +396,7 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
           setTab={setTab}
           onOpenBizPoints={() => setShowBizPoints(true)}
           onNavigateSettings={onNavigateSettings}
+          onManageArea={onManageArea}
         />
       )}
 

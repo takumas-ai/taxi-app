@@ -4,7 +4,6 @@
 import { useState, useEffect } from "react";
 import { C, fmt, occ, dow, hourly, THIS_YEAR, THIS_MONTH, FREE_LIMIT, loadS, saveS } from "../lib/constants";
 import { Card, Btn, ProgressBar, Badge, KpiCard } from "../components/UI";
-import { AreaFilterBanner } from "../components/AreaFilter";
 import { MOCK_YESTERDAY_SUMMARY, AREA_MASTER } from "../data/mockData";
 import { levelFromXp, getTitle, MISSIONS, getMissionState } from "../lib/xp";
 import { CURRENT_VERSION, CHANGELOG } from "../lib/changelog";
@@ -718,7 +717,6 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         {/* ③ シフト表（アコーディオン） */}
         <ShiftSummaryCard onGoShift={onGoShift} />
 
-        <AreaFilterBanner userAreas={user.areas || []} onManage={onManageArea} />
         <WeatherWidget />
 
         {/* 営業ポイント記録 */}
@@ -792,7 +790,6 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
       {/* ③ シフト表（アコーディオン） */}
       <ShiftSummaryCard />
 
-      <AreaFilterBanner userAreas={user.areas || []} onManage={onManageArea} />
       <WeatherWidget />
 
       {/* 営業ポイント記録 */}
