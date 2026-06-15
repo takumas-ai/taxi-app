@@ -3,8 +3,8 @@ import { useState, useEffect, useRef } from "react";
 import { C, TODAY, THIS_YEAR, THIS_MONTH, loadS, saveS, fmt, dow } from "../lib/constants";
 import { Card, Btn, ProgressBar, Badge, KpiCard } from "../components/UI";
 import { MOCK_SHIFTS } from "../data/mockData";
-import { SHIFT_OCR_PROMPT } from "../lib/ai";
-import { supabase, fetchShifts, upsertShifts, deleteShift } from "../lib/supabase";
+import { runShiftOCR } from "../lib/ai";
+import { fetchShifts, upsertShifts, deleteShift } from "../lib/supabase";
 
 const SUPABASE_READY = !!(
   import.meta.env.VITE_SUPABASE_URL &&
@@ -195,11 +195,8 @@ export default function ShiftScreen({ reports, onGoUpload, user }) {
       addLine("AIに送信中...");
       addLine("出勤日を検出中...");
 
-      const { data, error } = await supabase.functions.invoke("ocr-report", {
-        body: { image_base64: base64, media_type: "image/jpeg", prompt: SHIFT_OCR_PROMPT },
-      });
-
-      if (error) throw new Error(error.message || "OCRエラー");
+      const data = await runShiftOCR(base64, "image/jpeg");
+      if (!data) throw new Error("OCRエラー（claude-proxy）");
 
       addLine("出庫・帰庫時刻を読み取り中...");
       await new Promise(r => setTimeout(r, 300));
