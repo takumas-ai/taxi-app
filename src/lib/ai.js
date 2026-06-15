@@ -112,7 +112,42 @@ export async function runReportOCR(imageBase64, mimeType) {
 }
 
 export async function runShiftOCR(imageBase64, mimeType) {
-  return callOCR(imageBase64, mimeType, SHIFT_OCR_PROMPT);
+  // ocr-reportはpromptパラメータを無視するため、claude-proxyに画像+プロンプトを直接送る
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
+  const res = await fetch(`${EDGE_BASE}/claude-proxy`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      max_tokens: 2048,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: mimeType, data: imageBase64 } },
+          { type: "text", text: SHIFT_OCR_PROMPT },
+        ],
+      }],
+    }),
+  });
+
+  if (!res.ok) {
+    console.error("[ai.js] Shift OCR error:", res.status, await res.text());
+    return null;
+  }
+
+  const data = await res.json();
+  const text = data.content?.[0]?.text ?? "{}";
+  const cleaned = text.replace(/```json\n?|\n?```/g, "").trim();
+  try {
+    return { fields: JSON.parse(cleaned) };
+  } catch {
+    console.error("[ai.js] Shift OCR JSON parse error:", cleaned.slice(0, 200));
+    return null;
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
