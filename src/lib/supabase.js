@@ -72,6 +72,7 @@ export async function upsertProfile(profile) {
   const { error } = await supabase
     .from("users")
     .upsert(profile, { onConflict: "id" });
+  if (error) console.error("[upsertProfile] 400 detail:", error.message, error.details, error.hint, JSON.stringify(profile));
   return { error };
 }
 
