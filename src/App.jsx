@@ -252,12 +252,17 @@ function ConsentScreen({ onAgree }) {
 }
 
 export default function App() {
-  const [swUpdated, setSwUpdated] = useState(false);
-
-  // ─── SW更新検知: 新バージョンが起動したらバナーを表示 ───
+  // ─── SW更新検知: 新バージョンが起動したら自動リロード ───
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
-    const onCtrlChange = () => setSwUpdated(true);
+    // controllerchange = 新しいSWがページを掌握した = 新バージョンのアセットが使える状態
+    const onCtrlChange = () => {
+      // 初回インストール時（controllerがなかった → ある）はリロード不要
+      // 2回目以降（既存controller → 新controller）が更新
+      if (navigator.serviceWorker.controller) {
+        window.location.reload();
+      }
+    };
     navigator.serviceWorker.addEventListener("controllerchange", onCtrlChange);
     return () => navigator.serviceWorker.removeEventListener("controllerchange", onCtrlChange);
   }, []);
@@ -525,13 +530,6 @@ export default function App() {
 
   return (
     <div key={themeVer} style={{ minHeight:"100vh", backgroundColor:C.bg, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text }}>
-      {/* SW更新バナー */}
-      {swUpdated && (
-        <div style={{ position:"fixed", top:0, left:0, right:0, zIndex:999, backgroundColor:"#22c55e", color:"#fff", fontSize:13, fontWeight:700, textAlign:"center", padding:"10px 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-          <span>🔄 アプリが更新されました</span>
-          <button onClick={()=>setSwUpdated(false)} style={{ background:"none", border:"none", color:"#fff", fontSize:16, cursor:"pointer", lineHeight:1, padding:"0 4px" }}>×</button>
-        </div>
-      )}
       <Header user={user} tab={tab} setTab={handleSetTab} appMode={appMode} onModeChange={setAppMode} alertsSeen={alertsSeen} onNavigateSettings={handleNavigateSettings} onManageArea={()=>setShowAreaModal(true)} />
       {renderScreen()}
       <ReportModal key={selected ? `${selected.id}-${selectedForEdit}` : "none"} report={selected} onClose={()=>{setSelected(null);setSelectedForEdit(false);}} onUpdate={handleUpdateReport} startInEdit={selectedForEdit}/>

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <!-- Content Security Policy: XSSと外部スクリプト注入を防止 -->
+    <meta http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src 'self' 'unsafe-inline' 'unsafe-eval';
+        style-src 'self' 'unsafe-inline';
+        connect-src 'self' https://*.supabase.co https://api.anthropic.com https://nominatim.openstreetmap.org;
+        img-src 'self' data: blob: https://*.supabase.co;
+        font-src 'self' data:;
+        frame-src 'none';
+        object-src 'none';
+        base-uri 'self';
+      " />
+<title>タクロー — 勘と経験を、データに変える。</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #0A0F1E; color: #F1F5F9; }
+      #root { min-height: 100vh; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+    <script>
+      // Service Worker: 登録＋タブ復帰時に更新チェック
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then(reg => {
+            // 登録直後に即チェック
+            reg.update();
+            // タブがフォアグラウンドに戻るたびに再チェック
+            document.addEventListener('visibilitychange', () => {
+              if (!document.hidden) reg.update();
+            });
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
