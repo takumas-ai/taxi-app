@@ -9,6 +9,7 @@ import { MOCK_YESTERDAY_SUMMARY, AREA_MASTER } from "../data/mockData";
 import { levelFromXp, getTitle, MISSIONS, getMissionState } from "../lib/xp";
 import { CURRENT_VERSION, CHANGELOG } from "../lib/changelog";
 import { getCachedWeather, weatherMeta } from "../lib/weather";
+import { SalesPointCard } from "../components/SalesPointCard";
 
 // ━━━ 更新通知バナー ━━━━━━━━━━━━━━━━━━━━━━━━
 function UpdateBanner() {
@@ -720,6 +721,9 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         <AreaFilterBanner userAreas={user.areas || []} onManage={onManageArea} />
         <WeatherWidget />
 
+        {/* 営業ポイント記録 */}
+        <SalesPointCard />
+
         {/* 売上メインカード（大きな文字） */}
         <Card style={{ marginBottom:14, padding:"24px 20px", borderColor:C.gold+"33" }}>
           <div style={{ fontSize:13, color:C.muted, marginBottom:6 }}>今月の総売上</div>
@@ -790,6 +794,9 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
 
       <AreaFilterBanner userAreas={user.areas || []} onManage={onManageArea} />
       <WeatherWidget />
+
+      {/* 営業ポイント記録 */}
+      <SalesPointCard />
 
       {/* ① 売上サマリー（最上位） */}
       <Card style={{ marginBottom:14, borderColor:C.gold+"33" }}>
