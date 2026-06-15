@@ -69,10 +69,21 @@ export async function fetchProfile(userId) {
 
 /** ユーザープロフィールを作成 or 更新（upsert） */
 export async function upsertProfile(profile) {
+  const { id, ...fields } = profile;
   const { error } = await supabase
     .from("users")
-    .upsert(profile, { onConflict: "id" });
-  if (error) console.error("[upsertProfile] 400 detail:", error.message, error.details, error.hint, JSON.stringify(profile));
+    .update(fields)
+    .eq("id", id);
+  if (error) console.error("[upsertProfile] error:", error.message, JSON.stringify(profile));
+  return { error };
+}
+
+/** 新規登録時の初回プロフィール作成（INSERT） */
+export async function insertProfile(profile) {
+  const { error } = await supabase
+    .from("users")
+    .insert(profile);
+  if (error) console.error("[insertProfile] error:", error.message, JSON.stringify(profile));
   return { error };
 }
 

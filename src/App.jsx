@@ -16,6 +16,7 @@ import {
   onAuthStateChange,
   fetchProfile,
   upsertProfile,
+  insertProfile,
   fetchReports,
   insertReport,
   updateReport,
@@ -83,7 +84,7 @@ function LoginScreen({ onLogin }) {
         };
         // 紹介コード経由なら referred_by を保存
         if (refFromUrl) profileData.referred_by = refFromUrl.toUpperCase();
-        await upsertProfile(profileData);
+        await insertProfile(profileData);
         onLogin({ id: data.user.id, name: form.name, company: form.company, workType: form.workType, target: form.target, plan:"free", uploadCount:0, areas });
       }
     } else {
