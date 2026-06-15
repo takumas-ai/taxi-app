@@ -104,6 +104,9 @@ function ShotGuideModal({ onShoot, onCancel }) {
 export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   const [step, setStep]     = useState("select");
   const [isManual, setIsManual] = useState(false);
+  const [isClosure, setIsClosure] = useState(false);
+  const [closureDate, setClosureDate] = useState(() => new Date().toISOString().slice(0,10));
+  const [closureCount, setClosureCount] = useState(0);
   const [showGuide, setShowGuide] = useState(false);
   const [form, setForm]     = useState(EMPTY);
   const [errors, setErrors] = useState({});
@@ -223,6 +226,50 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
     }
   };
 
+  // 締め作業: 選択日の乗車記録を集計してconfirmへ
+  const handleClosureLoad = () => {
+    const allRecords = JSON.parse(localStorage.getItem("taxi_sales_records") || "[]");
+    const dayRecords = allRecords.filter(r =>
+      (r.workDate || r.boardingTime?.slice(0,10)) === closureDate
+    );
+    if (dayRecords.length === 0) {
+      alert("この日の乗車記録がありません\n先にホーム画面から乗車を記録してください");
+      return;
+    }
+    const sum = (arr, fn) => arr.reduce((s, r) => s + (fn(r) || 0), 0);
+    const grossSales   = sum(dayRecords, r => r.fare);
+    const cashSales    = sum(dayRecords.filter(r => r.paymentMethod === "現金"), r => r.fare);
+    const cardSales    = sum(dayRecords.filter(r => r.paymentMethod === "カード"), r => r.fare);
+    const appSales     = sum(dayRecords.filter(r => ["配車アプリ","アプリ"].includes(r.paymentMethod)), r => r.fare);
+    const highwayFee   = sum(dayRecords, r => r.highwayFee);
+    const rides = dayRecords.map((r, i) => ({
+      no:           i + 1,
+      pickup_time:  r.boardingTime  ? r.boardingTime.slice(11,16)  : null,
+      dropoff_time: r.dropoffTime   ? r.dropoffTime.slice(11,16)   : null,
+      pickup_area:  r.pickupLocation  || r.spotName || null,
+      dropoff_area: r.dropoffLocation || null,
+      amount:       r.fare || 0,
+      km:           null,
+      point_name:   r.pickupLocation  || r.spotName || null,
+      source:       "manual",
+    }));
+    setClosureCount(dayRecords.length);
+    setForm({
+      ...EMPTY,
+      date:         closureDate,
+      gross_sales:  String(grossSales),
+      cash_sales:   cashSales  > 0 ? String(cashSales)  : "",
+      card_sales:   cardSales  > 0 ? String(cardSales)  : "",
+      app_sales:    appSales   > 0 ? String(appSales)   : "",
+      ride_count:   String(dayRecords.length),
+      highway_fee:  String(highwayFee),
+      rides,
+    });
+    setIsManual(false);
+    setIsClosure(true);
+    setStep("confirm");
+  };
+
   const handleSave = async () => {
     // バリデーション（強化版）
     const { errors: validationErrors, isValid } = validateReportForm(form);
@@ -301,7 +348,9 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   if (step === "confirm") {
     return (
       <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
-        <div style={{ fontSize:13, color:C.muted, marginBottom:12 }}>{isManual ? "📝 日報を入力してください" : "📋 読み取り結果を確認・修正してください"}</div>
+        <div style={{ fontSize:13, color:C.muted, marginBottom:12 }}>
+          {isClosure ? `🚕 乗車記録 ${closureCount}件から自動集計 — 勤務時間を入力して保存` : isManual ? "📝 日報を入力してください" : "📋 読み取り結果を確認・修正してください"}
+        </div>
         <Card>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
             {F({label:"日付", fk:"date", type:"date", required:true, span:2})}
@@ -363,7 +412,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
           <Card style={{ padding:12, textAlign:"center" }}><span style={{ fontSize:12, color:C.muted }}>実車率（自動計算）: </span><span style={{ fontSize:16, fontWeight:700, color:C.green }}>{Math.round(parseInt(form.occupied_distance)/parseInt(form.total_distance)*100)}%</span></Card>
         )}
         <Btn onClick={handleSave} disabled={saving}>{saving?"保存中...":"保存する"}</Btn>
-        <Btn onClick={()=>{ setIsManual(false); setStep("select"); }} variant="ghost" style={{ marginTop:10 }}>戻る</Btn>
+        <Btn onClick={()=>{ setIsManual(false); setIsClosure(false); setStep("select"); }} variant="ghost" style={{ marginTop:10 }}>戻る</Btn>
       </div>
     );
   }
@@ -412,6 +461,25 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         <div style={{ flex:1, height:1, backgroundColor:C.border }}/>
       </div>
       <Btn onClick={()=>{ setIsManual(true); setForm(EMPTY); setStep("confirm"); }} variant="secondary">✏️ 手動で入力する</Btn>
+
+      {/* 個タク・締め作業 */}
+      <div style={{ marginTop:14, backgroundColor:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"16px 16px" }}>
+        <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>🚕 乗車記録から締める</div>
+        <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>個人タクシー・手入力オンリーの方向け。乗車記録を集計して日報を作成します。</div>
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <input
+            type="date"
+            value={closureDate}
+            onChange={e => setClosureDate(e.target.value)}
+            style={{ flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}
+          />
+          <button
+            onClick={handleClosureLoad}
+            style={{ flexShrink:0, padding:"10px 18px", borderRadius:9, backgroundColor:C.accentLight, color:"#fff", border:"none", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+            締める
+          </button>
+        </div>
+      </div>
 
       {/* 撮影ガイドモーダル */}
       {showGuide && <ShotGuideModal onShoot={handleOCR} onCancel={()=>setShowGuide(false)}/>}
