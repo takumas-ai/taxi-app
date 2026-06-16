@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { C, fmt, occ, dow, hourly } from "../lib/constants";
 import { Card, Badge, Btn } from "../components/UI";
 import { WORK_AREAS_BY_PARENT } from "../data/mockData";
@@ -51,28 +51,6 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
   const [rides, setRides] = useState(() => Array.isArray(report?.rides) ? report.rides : []);
   const [editingRideIdx, setEditingRideIdx] = useState(null);
   const [ridePointInput, setRidePointInput] = useState("");
-  // スワイプで閉じる（native event listener + scrollTop check）
-  const touchStartY = useRef(null);
-  const sheetRef    = useRef(null);
-  useEffect(() => {
-    const el = sheetRef.current;
-    if (!el) return;
-    const onStart = (e) => { touchStartY.current = e.touches[0].clientY; };
-    const onEnd   = (e) => {
-      if (touchStartY.current === null) return;
-      // スクロール中でない（シートが最上部）の時だけ閉じる
-      if (el.scrollTop > 0) { touchStartY.current = null; return; }
-      const delta = e.changedTouches[0].clientY - touchStartY.current;
-      if (delta > 80) onClose();
-      touchStartY.current = null;
-    };
-    el.addEventListener("touchstart", onStart, { passive: true });
-    el.addEventListener("touchend",   onEnd,   { passive: true });
-    return () => {
-      el.removeEventListener("touchstart", onStart);
-      el.removeEventListener("touchend",   onEnd);
-    };
-  }, [onClose]);
   const [showRides, setShowRides] = useState(false);
 
   if (!report || !report.gross_sales) return null;
@@ -114,7 +92,7 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
   if (mode === "view") {
     return (
       <div style={{ position:"fixed", inset:0, backgroundColor:"#00000090", zIndex:100, display:"flex", alignItems:"flex-end" }} onClick={onClose}>
-        <div ref={sheetRef} onClick={e=>e.stopPropagation()} style={baseSheet}>
+        <div onClick={e=>e.stopPropagation()} style={baseSheet}>
           <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 18px" }}/>
 
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
@@ -226,8 +204,8 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
             </div>
           )}
 
-          <button onClick={onClose} style={{ width:"100%", padding:"13px 0", borderRadius:11, fontSize:14, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.sub, marginTop:18 }}>
-            閉じる
+          <button onClick={onClose} style={{ width:"100%", padding:"14px 0", borderRadius:11, fontSize:15, fontWeight:800, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff", marginTop:18 }}>
+            ✕ 閉じる
           </button>
         </div>
       </div>

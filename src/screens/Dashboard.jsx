@@ -1015,25 +1015,13 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         </div>
         {open && hasData && (
           <div style={{ borderTop:`1px solid ${C.border}` }}>
-            {/* 日報ベースの売上（日報がある場合） */}
+            {/* 日報ベースの売上（税抜のみ・高速代除外） */}
             {hasReport && (
               <>
-                <div style={{ display:"flex" }}>
-                  <div style={{ flex:1, textAlign:"center", padding:"12px 4px" }}>
-                    <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>売上（税込）</div>
-                    <div style={{ fontSize:18, fontWeight:900, color:C.text }}>{fmt(todayTaxInc)}<span style={{ fontSize:10, color:C.muted }}>円</span></div>
-                  </div>
-                  <div style={{ width:1, backgroundColor:C.border }}/>
-                  <div style={{ flex:1, textAlign:"center", padding:"12px 4px" }}>
-                    <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>売上（税抜）</div>
-                    <div style={{ fontSize:18, fontWeight:900, color:C.sub }}>{fmt(todayTaxExc)}<span style={{ fontSize:10, color:C.muted }}>円</span></div>
-                  </div>
+                <div style={{ textAlign:"center", padding:"16px 14px" }}>
+                  <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>売上（税抜 / 高速代除く）</div>
+                  <div style={{ fontSize:28, fontWeight:900, color:C.text }}>{fmt(todayTaxExc)}<span style={{ fontSize:13, color:C.muted, marginLeft:4 }}>円</span></div>
                 </div>
-                {todayHighway > 0 && (
-                  <div style={{ padding:"6px 14px", borderTop:`1px solid ${C.border}`, fontSize:11, color:C.muted }}>
-                    高速代 {fmt(todayHighway)}円（税抜計算から除外）
-                  </div>
-                )}
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", borderTop:`1px solid ${C.border}` }}>
                   {[
                     { label:"乗車回数", value:todayRideCount, unit:"回", color:C.accentLight },
