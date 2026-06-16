@@ -361,7 +361,9 @@ export default function App() {
   const [selectedForEdit, setSelectedForEdit] = useState(false);
   const [notif, setNotif]       = useState(() => loadS("taxi_notif", { delays:true, events:false, traffic:false, dailyTip:false, achievement:true, dailyResult:false }));
   const [showAreaModal, setShowAreaModal] = useState(false);
-  const [authReady, setAuthReady] = useState(!SUPABASE_READY);
+  const areaModalShownRef = useRef(false); // セッション中1回だけ表示
+  // SUPABASE_READYでもキャッシュユーザーがあればすぐ表示（リフレッシュ対策）
+  const [authReady, setAuthReady] = useState(!SUPABASE_READY || !!loadS("taxi_user", null));
 
   // ─── Supabase 認証セッション復元 ───
   useEffect(() => {
@@ -441,9 +443,11 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // ─── ローカル保存（Supabase未設定時） ───
+  // ─── ローカル保存 ───
+  // reports: Supabase未設定時のみ（SUPABASE_READY時はSupabaseが正）
   useEffect(() => { if (!SUPABASE_READY) saveS("taxi_reports", reports); }, [reports]);
-  useEffect(() => { if (!SUPABASE_READY) saveS("taxi_user", user); }, [user]);
+  // user: 常に保存（リフレッシュ時にローディング画面をスキップするため）
+  useEffect(() => { saveS("taxi_user", user); }, [user]);
   useEffect(() => { saveS("taxi_app_mode", appMode); }, [appMode]);
 
   // ─── テーマ管理 ───
@@ -469,7 +473,12 @@ export default function App() {
     return () => clearInterval(id);
   }, [themeMode]);
   useEffect(() => saveS("taxi_notif", notif), [notif]);
-  useEffect(() => { if (user && (!user.areas || user.areas.length === 0)) setShowAreaModal(true); }, [user]);
+  useEffect(() => {
+    if (user && (!user.areas || user.areas.length === 0) && !areaModalShownRef.current) {
+      areaModalShownRef.current = true;
+      setShowAreaModal(true);
+    }
+  }, [user]);
 
   if (!authReady) {
     return <div style={{ minHeight:"100vh", backgroundColor:C.bg, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted, fontFamily:"'Inter','Hiragino Sans',sans-serif" }}>読み込み中...</div>;

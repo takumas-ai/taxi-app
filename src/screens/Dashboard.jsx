@@ -959,7 +959,9 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   const neededToday     = remainingDays > 0 ? Math.round(remainingAmount / remainingDays) : 0;
 
   // ── 今日の売り上げカード（カレンダー直下） ──
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // ※ toISOString()はUTCなので、ローカル日付を使用する
+  const _todayLocal = new Date();
+  const todayStr = `${_todayLocal.getFullYear()}-${String(_todayLocal.getMonth()+1).padStart(2,"0")}-${String(_todayLocal.getDate()).padStart(2,"0")}`;
   const todayReport   = reports.find(r => r.date === todayStr);
   const todayRides    = todayReport?.rides || [];
   const todayHighway  = Number(todayReport?.highway_fee || 0);

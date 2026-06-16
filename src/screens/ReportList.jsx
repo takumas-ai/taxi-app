@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { C, fmt, occ, dow, hourly } from "../lib/constants";
 import { Card, Badge, Btn } from "../components/UI";
 import { WORK_AREAS_BY_PARENT } from "../data/mockData";
@@ -51,6 +51,28 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
   const [rides, setRides] = useState(() => Array.isArray(report?.rides) ? report.rides : []);
   const [editingRideIdx, setEditingRideIdx] = useState(null);
   const [ridePointInput, setRidePointInput] = useState("");
+  // スワイプで閉じる（native event listener + scrollTop check）
+  const touchStartY = useRef(null);
+  const sheetRef    = useRef(null);
+  useEffect(() => {
+    const el = sheetRef.current;
+    if (!el) return;
+    const onStart = (e) => { touchStartY.current = e.touches[0].clientY; };
+    const onEnd   = (e) => {
+      if (touchStartY.current === null) return;
+      // スクロール中でない（シートが最上部）の時だけ閉じる
+      if (el.scrollTop > 0) { touchStartY.current = null; return; }
+      const delta = e.changedTouches[0].clientY - touchStartY.current;
+      if (delta > 80) onClose();
+      touchStartY.current = null;
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchend",   onEnd,   { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchend",   onEnd);
+    };
+  }, [onClose]);
   const [showRides, setShowRides] = useState(false);
 
   if (!report || !report.gross_sales) return null;
@@ -92,7 +114,7 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
   if (mode === "view") {
     return (
       <div style={{ position:"fixed", inset:0, backgroundColor:"#00000090", zIndex:100, display:"flex", alignItems:"flex-end" }} onClick={onClose}>
-        <div onClick={e=>e.stopPropagation()} style={baseSheet}>
+        <div ref={sheetRef} onClick={e=>e.stopPropagation()} style={baseSheet}>
           <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 18px" }}/>
 
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
@@ -127,13 +149,6 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
           ))}
 
           <div style={{ height:1, backgroundColor:C.border, margin:"12px 0" }}/>
-          {/* 基本情報を1行で表示 */}
-          <div style={{ display:"flex", gap:16, fontSize:12, color:C.muted, marginBottom:12 }}>
-            <span>🚗 {report.ride_count}回</span>
-            {report.total_distance>0 && <span>📍 {report.total_distance}km</span>}
-            {report.work_hours>0 && <span>⏱ {report.work_hours}h勤務</span>}
-            <span style={{ color:C.gold }}>⚡ {fmt(hourly(report))}円/h</span>
-          </div>
 
           {report.trouble_note && (
             <div style={{ backgroundColor:C.orangeGlow, border:`1px solid ${C.orange}44`, borderRadius:10, padding:12, marginBottom:10, fontSize:13, color:C.orange }}>
