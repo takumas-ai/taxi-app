@@ -127,27 +127,13 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
           ))}
 
           <div style={{ height:1, backgroundColor:C.border, margin:"12px 0" }}/>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:12 }}>
-            {[{l:"営業回数",v:report.ride_count,u:"回",c:C.accentLight},{l:"時間単価",v:fmt(hourly(report)),u:"円/h",c:C.gold},{l:"実車率",v:or,u:"%",c:oc}].map(({l,v,u,c})=>(
-              <div key={l} style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 8px", textAlign:"center" }}>
-                <div style={{ fontSize:18, fontWeight:800, color:c }}>{v}<span style={{ fontSize:10, color:C.muted, marginLeft:2 }}>{u}</span></div>
-                <div style={{ fontSize:10, color:C.muted, marginTop:4 }}>{l}</div>
-              </div>
-            ))}
+          {/* 基本情報を1行で表示 */}
+          <div style={{ display:"flex", gap:16, fontSize:12, color:C.muted, marginBottom:12 }}>
+            <span>🚗 {report.ride_count}回</span>
+            {report.total_distance>0 && <span>📍 {report.total_distance}km</span>}
+            {report.work_hours>0 && <span>⏱ {report.work_hours}h勤務</span>}
+            <span style={{ color:C.gold }}>⚡ {fmt(hourly(report))}円/h</span>
           </div>
-
-          {report.total_distance>0 && (
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12, fontSize:12, color:C.sub }}>
-              <div style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px" }}>
-                <div style={{ color:C.muted, fontSize:11, marginBottom:2 }}>走行距離</div>
-                <div style={{ fontWeight:700, color:C.text }}>{report.total_distance} km</div>
-              </div>
-              <div style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px" }}>
-                <div style={{ color:C.muted, fontSize:11, marginBottom:2 }}>勤務時間</div>
-                <div style={{ fontWeight:700, color:C.text }}>{report.work_hours} h</div>
-              </div>
-            </div>
-          )}
 
           {report.trouble_note && (
             <div style={{ backgroundColor:C.orangeGlow, border:`1px solid ${C.orange}44`, borderRadius:10, padding:12, marginBottom:10, fontSize:13, color:C.orange }}>

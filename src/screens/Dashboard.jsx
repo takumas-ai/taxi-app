@@ -958,41 +958,65 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   const neededPerShift  = remainingShifts > 0 ? Math.round(remainingAmount / remainingShifts) : 0;
   const neededToday     = remainingDays > 0 ? Math.round(remainingAmount / remainingDays) : 0;
 
-  // ── 乗車記録サマリーバー ──
-  const RideSummaryBar = () => {
-    const [open, setOpen] = useState(monthReports.length > 0);
-    if (monthReports.length === 0) return (
-      <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 14px", marginBottom:10, borderRadius:10, backgroundColor:C.surface, border:`1px solid ${C.border}`, cursor:"pointer" }}>
-        <span style={{ fontSize:11, color:C.muted, flex:1 }}>📊 今月の乗車記録サマリー</span>
-        <span style={{ fontSize:10, color:C.muted }}>記録なし</span>
-      </div>
-    );
+  // ── 月次統計カード（カレンダー直下） ──
+  const totalRides    = monthReports.reduce((s,r) => s + (r.ride_count || 0), 0);
+  const totalDist     = Math.round(monthReports.reduce((s,r) => s + (r.total_distance || 0), 0));
+  const totalHours    = Math.round(monthReports.reduce((s,r) => s + (r.work_hours || 0), 0) * 10) / 10;
+  const avgHourly     = monthReports.length ? Math.round(monthReports.reduce((s,r) => s + hourly(r), 0) / monthReports.length) : 0;
+  const avgOccMonth   = monthReports.length ? Math.round(monthReports.reduce((s,r) => s + occ(r), 0) / monthReports.length) : 0;
+
+  const MonthlyStatsCard = () => {
+    const [open, setOpen] = useState(false);
+    const hasData = monthReports.length > 0;
     return (
-      <div style={{ marginBottom:10, borderRadius:10, backgroundColor:C.surface, border:`1px solid ${C.border}`, overflow:"hidden" }}>
-        <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 14px", cursor:"pointer" }}>
-          <span style={{ fontSize:11, fontWeight:700, color:C.text, flex:1 }}>📊 今月の乗車記録</span>
-          <span style={{ fontSize:11, color:C.accentLight, fontWeight:700 }}>{monthReports.length}件</span>
+      <Card style={{ marginBottom:14, padding:0, overflow:"hidden" }}>
+        <div onClick={() => setOpen(p => !p)} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px", cursor:"pointer" }}>
+          <span style={{ fontSize:13, fontWeight:700, color:C.text, flex:1 }}>📊 今月の集計</span>
+          {hasData && <span style={{ fontSize:11, color:C.accentLight, fontWeight:700 }}>{monthReports.length}件</span>}
+          {!hasData && <span style={{ fontSize:11, color:C.muted }}>記録なし</span>}
           <span style={{ fontSize:10, color:C.muted }}>{open ? "▲" : "▼"}</span>
         </div>
-        {open && (
-          <div style={{ display:"flex", borderTop:`1px solid ${C.border}` }}>
-            <div style={{ flex:1, textAlign:"center", padding:"8px 4px" }}>
-              <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>乗車回数</div>
-              <div style={{ fontSize:16, fontWeight:900, color:C.text }}>{totalRideCount}<span style={{ fontSize:10, color:C.muted }}>回</span></div>
+        {open && hasData && (
+          <div style={{ borderTop:`1px solid ${C.border}` }}>
+            {/* 売上行 */}
+            <div style={{ display:"flex", borderBottom:`1px solid ${C.border}` }}>
+              <div style={{ flex:1, textAlign:"center", padding:"10px 4px" }}>
+                <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>売上（税込）</div>
+                <div style={{ fontSize:15, fontWeight:900, color:C.text }}>{fmt(totalSalesInc)}<span style={{ fontSize:9, color:C.muted }}>円</span></div>
+              </div>
+              <div style={{ width:1, backgroundColor:C.border }}/>
+              <div style={{ flex:1, textAlign:"center", padding:"10px 4px" }}>
+                <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>売上（税抜）</div>
+                <div style={{ fontSize:15, fontWeight:900, color:C.sub }}>{fmt(totalSalesExc)}<span style={{ fontSize:9, color:C.muted }}>円</span></div>
+              </div>
             </div>
-            <div style={{ width:1, backgroundColor:C.border }}/>
-            <div style={{ flex:1, textAlign:"center", padding:"8px 4px" }}>
-              <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>売上（税込）</div>
-              <div style={{ fontSize:15, fontWeight:900, color:C.text }}>{fmt(totalSalesInc)}<span style={{ fontSize:10, color:C.muted }}>円</span></div>
+            {/* 統計グリッド */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", borderBottom:`1px solid ${C.border}` }}>
+              {[
+                { label:"乗車回数", value:totalRides, unit:"回", color:C.accentLight },
+                { label:"平均時間単価", value:fmt(avgHourly), unit:"円/h", color:C.gold },
+                { label:"平均実車率", value:avgOccMonth, unit:"%", color:avgOccMonth>=55?C.green:avgOccMonth>=45?C.gold:C.orange },
+              ].map(({label,value,unit,color},i) => (
+                <div key={i} style={{ textAlign:"center", padding:"10px 4px", borderRight:i<2?`1px solid ${C.border}`:"none" }}>
+                  <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>{label}</div>
+                  <div style={{ fontSize:14, fontWeight:900, color }}>{value}<span style={{ fontSize:9, color:C.muted, marginLeft:1 }}>{unit}</span></div>
+                </div>
+              ))}
             </div>
-            <div style={{ width:1, backgroundColor:C.border }}/>
-            <div style={{ flex:1, textAlign:"center", padding:"8px 4px" }}>
-              <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>売上（税抜）</div>
-              <div style={{ fontSize:15, fontWeight:900, color:C.sub }}>{fmt(totalSalesExc)}<span style={{ fontSize:10, color:C.muted }}>円</span></div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", }}>
+              {[
+                { label:"総走行距離", value:totalDist, unit:"km" },
+                { label:"総勤務時間", value:totalHours, unit:"h" },
+              ].map(({label,value,unit},i) => (
+                <div key={i} style={{ textAlign:"center", padding:"10px 4px", borderRight:i<1?`1px solid ${C.border}`:"none" }}>
+                  <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>{label}</div>
+                  <div style={{ fontSize:14, fontWeight:900, color:C.text }}>{value}<span style={{ fontSize:9, color:C.muted, marginLeft:1 }}>{unit}</span></div>
+                </div>
+              ))}
             </div>
           </div>
         )}
-      </div>
+      </Card>
     );
   };
 
@@ -1002,12 +1026,12 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
       <div style={{ maxWidth:600, margin:"0 auto", padding: isSimpleLarge ? "16px 10px 100px" : "16px 16px 100px", zoom: isSimpleLarge ? 1.32 : 1 }}>
         {/* ① レベル欄 */}
         <XpCard user={user} />
-        <RideSummaryBar />
 
-        {/* ② お知らせ欄（更新通知はInfoCenterのみ） */}
-
-        {/* ③ シフト表（開くとカレンダー展開） */}
+        {/* ② シフト表（カレンダー） */}
         <ShiftSummaryCard reports={monthReports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} onGoShift={onGoShift} />
+
+        {/* ③ 月次統計（カレンダー直下、折りたたみ） */}
+        <MonthlyStatsCard />
 
         <WeatherWidget />
 
@@ -1072,12 +1096,12 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
     <div style={{ maxWidth:600, margin:"0 auto", padding:"16px 16px 100px" }}>
       {/* ① レベル欄 */}
       <XpCard user={user} />
-      <RideSummaryBar />
 
-      {/* ② お知らせ欄（更新通知はInfoCenterのみ） */}
-
-      {/* ③ シフト表（開くとカレンダー展開） */}
+      {/* ② シフト表（カレンダー） */}
       <ShiftSummaryCard reports={reports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} onGoShift={onGoShift} />
+
+      {/* ③ 月次統計（カレンダー直下、折りたたみ） */}
+      <MonthlyStatsCard />
 
       <WeatherWidget />
 
