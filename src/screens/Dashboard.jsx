@@ -958,59 +958,67 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   const neededPerShift  = remainingShifts > 0 ? Math.round(remainingAmount / remainingShifts) : 0;
   const neededToday     = remainingDays > 0 ? Math.round(remainingAmount / remainingDays) : 0;
 
-  // ── 月次統計カード（カレンダー直下） ──
-  const totalRides    = monthReports.reduce((s,r) => s + (r.ride_count || 0), 0);
-  const totalDist     = Math.round(monthReports.reduce((s,r) => s + (r.total_distance || 0), 0));
-  const totalHours    = Math.round(monthReports.reduce((s,r) => s + (r.work_hours || 0), 0) * 10) / 10;
-  const avgHourly     = monthReports.length ? Math.round(monthReports.reduce((s,r) => s + hourly(r), 0) / monthReports.length) : 0;
-  const avgOccMonth   = monthReports.length ? Math.round(monthReports.reduce((s,r) => s + occ(r), 0) / monthReports.length) : 0;
+  // ── 今日の売り上げカード（カレンダー直下） ──
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayReport   = reports.find(r => r.date === todayStr);
+  const todayRides    = todayReport?.rides || [];
+  const todayHighway  = Number(todayReport?.highway_fee || 0);
+
+  // rides個票がある場合はそちらから集計、なければ日報のgross_salesを使用
+  let todayTaxInc, todayTaxExc, todayRideCount;
+  if (todayRides.length > 0) {
+    const ridesTotal  = todayRides.reduce((s, r) => s + (r.amount || 0), 0);
+    todayTaxInc       = ridesTotal + todayHighway;           // メーター計 + 高速代
+    todayTaxExc       = Math.round(ridesTotal / 1.1);        // メーター分のみ税抜（高速代除外）
+    todayRideCount    = todayRides.length;
+  } else if (todayReport) {
+    todayTaxInc       = todayReport.gross_sales || 0;
+    todayTaxExc       = Math.round((todayTaxInc - todayHighway) / 1.1);
+    todayRideCount    = todayReport.ride_count || 0;
+  } else {
+    todayTaxInc = 0; todayTaxExc = 0; todayRideCount = 0;
+  }
 
   const MonthlyStatsCard = () => {
     const [open, setOpen] = useState(false);
-    const hasData = monthReports.length > 0;
+    const hasData = todayTaxInc > 0 || todayRideCount > 0;
     return (
       <Card style={{ marginBottom:14, padding:0, overflow:"hidden" }}>
         <div onClick={() => setOpen(p => !p)} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px", cursor:"pointer" }}>
-          <span style={{ fontSize:13, fontWeight:700, color:C.text, flex:1 }}>📊 今月の集計</span>
-          {hasData && <span style={{ fontSize:11, color:C.accentLight, fontWeight:700 }}>{monthReports.length}件</span>}
-          {!hasData && <span style={{ fontSize:11, color:C.muted }}>記録なし</span>}
+          <span style={{ fontSize:13, fontWeight:700, color:C.text, flex:1 }}>🚕 今日の売り上げ</span>
+          {hasData
+            ? <span style={{ fontSize:11, color:C.accentLight, fontWeight:700 }}>{todayRideCount}回</span>
+            : <span style={{ fontSize:11, color:C.muted }}>記録なし</span>
+          }
           <span style={{ fontSize:10, color:C.muted }}>{open ? "▲" : "▼"}</span>
         </div>
         {open && hasData && (
           <div style={{ borderTop:`1px solid ${C.border}` }}>
-            {/* 売上行 */}
-            <div style={{ display:"flex", borderBottom:`1px solid ${C.border}` }}>
-              <div style={{ flex:1, textAlign:"center", padding:"10px 4px" }}>
+            <div style={{ display:"flex" }}>
+              <div style={{ flex:1, textAlign:"center", padding:"12px 4px" }}>
                 <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>売上（税込）</div>
-                <div style={{ fontSize:15, fontWeight:900, color:C.text }}>{fmt(totalSalesInc)}<span style={{ fontSize:9, color:C.muted }}>円</span></div>
+                <div style={{ fontSize:18, fontWeight:900, color:C.text }}>{fmt(todayTaxInc)}<span style={{ fontSize:10, color:C.muted }}>円</span></div>
               </div>
               <div style={{ width:1, backgroundColor:C.border }}/>
-              <div style={{ flex:1, textAlign:"center", padding:"10px 4px" }}>
+              <div style={{ flex:1, textAlign:"center", padding:"12px 4px" }}>
                 <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>売上（税抜）</div>
-                <div style={{ fontSize:15, fontWeight:900, color:C.sub }}>{fmt(totalSalesExc)}<span style={{ fontSize:9, color:C.muted }}>円</span></div>
+                <div style={{ fontSize:18, fontWeight:900, color:C.sub }}>{fmt(todayTaxExc)}<span style={{ fontSize:10, color:C.muted }}>円</span></div>
               </div>
             </div>
-            {/* 統計グリッド */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", borderBottom:`1px solid ${C.border}` }}>
+            {todayHighway > 0 && (
+              <div style={{ padding:"6px 14px", borderTop:`1px solid ${C.border}`, fontSize:11, color:C.muted }}>
+                高速代 {fmt(todayHighway)}円（税抜計算から除外）
+              </div>
+            )}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", borderTop:`1px solid ${C.border}` }}>
               {[
-                { label:"乗車回数", value:totalRides, unit:"回", color:C.accentLight },
-                { label:"平均時間単価", value:fmt(avgHourly), unit:"円/h", color:C.gold },
-                { label:"平均実車率", value:avgOccMonth, unit:"%", color:avgOccMonth>=55?C.green:avgOccMonth>=45?C.gold:C.orange },
+                { label:"乗車回数", value:todayRideCount, unit:"回", color:C.accentLight },
+                { label:"走行距離", value:todayReport?.total_distance || 0, unit:"km", color:C.text },
+                { label:"勤務時間", value:todayReport?.work_hours || 0, unit:"h", color:C.text },
               ].map(({label,value,unit,color},i) => (
                 <div key={i} style={{ textAlign:"center", padding:"10px 4px", borderRight:i<2?`1px solid ${C.border}`:"none" }}>
                   <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>{label}</div>
                   <div style={{ fontSize:14, fontWeight:900, color }}>{value}<span style={{ fontSize:9, color:C.muted, marginLeft:1 }}>{unit}</span></div>
-                </div>
-              ))}
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", }}>
-              {[
-                { label:"総走行距離", value:totalDist, unit:"km" },
-                { label:"総勤務時間", value:totalHours, unit:"h" },
-              ].map(({label,value,unit},i) => (
-                <div key={i} style={{ textAlign:"center", padding:"10px 4px", borderRight:i<1?`1px solid ${C.border}`:"none" }}>
-                  <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>{label}</div>
-                  <div style={{ fontSize:14, fontWeight:900, color:C.text }}>{value}<span style={{ fontSize:9, color:C.muted, marginLeft:1 }}>{unit}</span></div>
                 </div>
               ))}
             </div>
