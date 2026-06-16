@@ -970,8 +970,8 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   let todayTaxInc, todayTaxExc, todayRideCount;
   if (todayRides.length > 0) {
     const ridesTotal  = todayRides.reduce((s, r) => s + (r.amount || 0), 0);
-    todayTaxInc       = ridesTotal + todayHighway;           // メーター計 + 高速代
-    todayTaxExc       = Math.round(ridesTotal / 1.1);        // メーター分のみ税抜（高速代除外）
+    todayTaxInc       = ridesTotal + todayHighway;
+    todayTaxExc       = Math.round(ridesTotal / 1.1);
     todayRideCount    = todayRides.length;
   } else if (todayReport) {
     todayTaxInc       = todayReport.gross_sales || 0;
@@ -981,49 +981,89 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
     todayTaxInc = 0; todayTaxExc = 0; todayRideCount = 0;
   }
 
+  // 乗車記録カード（SalesPointCard）から今日の個別記録を取得して統合
+  const todaySalesRecs = (() => {
+    try {
+      const all = JSON.parse(localStorage.getItem("taxi_sales_records") || "[]");
+      return all.filter(r => {
+        const d = r.workDate || (r.timestamp ? r.timestamp.slice(0,10) : "");
+        return d === todayStr;
+      });
+    } catch { return []; }
+  })();
+  const todaySalesCount = todaySalesRecs.length;
+  const todaySalesTotal = todaySalesRecs.reduce((s, r) => s + (r.fare || r.amount || 0), 0);
+
   const MonthlyStatsCard = () => {
     const [open, setOpen] = useState(false);
-    const hasData = todayTaxInc > 0 || todayRideCount > 0;
+    const hasReport = todayTaxInc > 0 || todayRideCount > 0;
+    const hasRecs   = todaySalesCount > 0;
+    const hasData   = hasReport || hasRecs;
+
+    // ヘッダーに表示する回数（乗車記録カードの件数を優先）
+    const displayCount = hasRecs ? todaySalesCount : todayRideCount;
+
     return (
       <Card style={{ marginBottom:14, padding:0, overflow:"hidden" }}>
         <div onClick={() => setOpen(p => !p)} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px", cursor:"pointer" }}>
           <span style={{ fontSize:13, fontWeight:700, color:C.text, flex:1 }}>🚕 今日の売り上げ</span>
           {hasData
-            ? <span style={{ fontSize:11, color:C.accentLight, fontWeight:700 }}>{todayRideCount}回</span>
+            ? <span style={{ fontSize:11, color:C.accentLight, fontWeight:700 }}>{displayCount}回</span>
             : <span style={{ fontSize:11, color:C.muted }}>記録なし</span>
           }
           <span style={{ fontSize:10, color:C.muted }}>{open ? "▲" : "▼"}</span>
         </div>
         {open && hasData && (
           <div style={{ borderTop:`1px solid ${C.border}` }}>
-            <div style={{ display:"flex" }}>
-              <div style={{ flex:1, textAlign:"center", padding:"12px 4px" }}>
-                <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>売上（税込）</div>
-                <div style={{ fontSize:18, fontWeight:900, color:C.text }}>{fmt(todayTaxInc)}<span style={{ fontSize:10, color:C.muted }}>円</span></div>
-              </div>
-              <div style={{ width:1, backgroundColor:C.border }}/>
-              <div style={{ flex:1, textAlign:"center", padding:"12px 4px" }}>
-                <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>売上（税抜）</div>
-                <div style={{ fontSize:18, fontWeight:900, color:C.sub }}>{fmt(todayTaxExc)}<span style={{ fontSize:10, color:C.muted }}>円</span></div>
-              </div>
-            </div>
-            {todayHighway > 0 && (
-              <div style={{ padding:"6px 14px", borderTop:`1px solid ${C.border}`, fontSize:11, color:C.muted }}>
-                高速代 {fmt(todayHighway)}円（税抜計算から除外）
+            {/* 日報ベースの売上（日報がある場合） */}
+            {hasReport && (
+              <>
+                <div style={{ display:"flex" }}>
+                  <div style={{ flex:1, textAlign:"center", padding:"12px 4px" }}>
+                    <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>売上（税込）</div>
+                    <div style={{ fontSize:18, fontWeight:900, color:C.text }}>{fmt(todayTaxInc)}<span style={{ fontSize:10, color:C.muted }}>円</span></div>
+                  </div>
+                  <div style={{ width:1, backgroundColor:C.border }}/>
+                  <div style={{ flex:1, textAlign:"center", padding:"12px 4px" }}>
+                    <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>売上（税抜）</div>
+                    <div style={{ fontSize:18, fontWeight:900, color:C.sub }}>{fmt(todayTaxExc)}<span style={{ fontSize:10, color:C.muted }}>円</span></div>
+                  </div>
+                </div>
+                {todayHighway > 0 && (
+                  <div style={{ padding:"6px 14px", borderTop:`1px solid ${C.border}`, fontSize:11, color:C.muted }}>
+                    高速代 {fmt(todayHighway)}円（税抜計算から除外）
+                  </div>
+                )}
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", borderTop:`1px solid ${C.border}` }}>
+                  {[
+                    { label:"乗車回数", value:todayRideCount, unit:"回", color:C.accentLight },
+                    { label:"走行距離", value:todayReport?.total_distance || 0, unit:"km", color:C.text },
+                    { label:"勤務時間", value:todayReport?.work_hours || 0, unit:"h", color:C.text },
+                  ].map(({label,value,unit,color},i) => (
+                    <div key={i} style={{ textAlign:"center", padding:"10px 4px", borderRight:i<2?`1px solid ${C.border}`:"none" }}>
+                      <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>{label}</div>
+                      <div style={{ fontSize:14, fontWeight:900, color }}>{value}<span style={{ fontSize:9, color:C.muted, marginLeft:1 }}>{unit}</span></div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            {/* 乗車記録カードの今日の記録 */}
+            {hasRecs && (
+              <div style={{ borderTop: hasReport ? `1px solid ${C.border}` : "none" }}>
+                <div style={{ display:"flex" }}>
+                  <div style={{ flex:1, textAlign:"center", padding:"12px 4px" }}>
+                    <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>乗車記録 合計</div>
+                    <div style={{ fontSize:18, fontWeight:900, color:C.gold }}>{fmt(todaySalesTotal)}<span style={{ fontSize:10, color:C.muted }}>円</span></div>
+                  </div>
+                  <div style={{ width:1, backgroundColor:C.border }}/>
+                  <div style={{ flex:1, textAlign:"center", padding:"12px 4px" }}>
+                    <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>乗車記録 件数</div>
+                    <div style={{ fontSize:18, fontWeight:900, color:C.accentLight }}>{todaySalesCount}<span style={{ fontSize:10, color:C.muted }}>件</span></div>
+                  </div>
+                </div>
               </div>
             )}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", borderTop:`1px solid ${C.border}` }}>
-              {[
-                { label:"乗車回数", value:todayRideCount, unit:"回", color:C.accentLight },
-                { label:"走行距離", value:todayReport?.total_distance || 0, unit:"km", color:C.text },
-                { label:"勤務時間", value:todayReport?.work_hours || 0, unit:"h", color:C.text },
-              ].map(({label,value,unit,color},i) => (
-                <div key={i} style={{ textAlign:"center", padding:"10px 4px", borderRight:i<2?`1px solid ${C.border}`:"none" }}>
-                  <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>{label}</div>
-                  <div style={{ fontSize:14, fontWeight:900, color }}>{value}<span style={{ fontSize:9, color:C.muted, marginLeft:1 }}>{unit}</span></div>
-                </div>
-              ))}
-            </div>
           </div>
         )}
       </Card>

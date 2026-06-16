@@ -5,6 +5,12 @@
 import { useState, useEffect } from "react";
 import { C, fmt, loadS } from "../lib/constants";
 import { Card } from "../components/UI";
+import { fetchRideRecords, upsertRideRecord, deleteRideRecord } from "../lib/supabase";
+
+const SUPABASE_READY = !!(
+  import.meta.env.VITE_SUPABASE_URL &&
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 const LS_KEY = "taxi_sales_records";
 
@@ -347,22 +353,6 @@ function DetailModal({ records, onClose, onEdit, onDelete, onSendToReport }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const sorted = [...records].sort((a,b) => b.timestamp.localeCompare(a.timestamp));
 
-  // 統計
-  const totalFare = records.reduce((s,r) => s + (r.fare || r.amount || 0), 0);
-  const avgFare   = records.length ? Math.round(totalFare / records.length) : 0;
-
-  // 乗車場所別集計
-  const spotStats = {};
-  records.forEach(r => {
-    const k = r.pickupLocation || r.spotName || "不明";
-    if (!spotStats[k]) spotStats[k] = { count:0, total:0 };
-    spotStats[k].count++;
-    spotStats[k].total += r.fare || r.amount || 0;
-  });
-  const topSpots = Object.entries(spotStats)
-    .map(([name,s]) => ({ name, ...s, avg:Math.round(s.total/s.count) }))
-    .sort((a,b) => b.total-a.total).slice(0,5);
-
   return (
     <div style={{ position:"fixed", inset:0, backgroundColor:"#00000099", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
       onClick={onClose}>
@@ -375,39 +365,6 @@ function DetailModal({ records, onClose, onEdit, onDelete, onSendToReport }) {
           <div style={{ fontSize:12, color:C.muted }}>{records.length}件</div>
         </div>
 
-        {/* 統計サマリー */}
-        {records.length > 0 && (
-          <div style={{ backgroundColor:C.bg, borderRadius:12, padding:"14px 16px", marginBottom:18 }}>
-            <div style={{ fontSize:12, fontWeight:700, color:C.sub, marginBottom:10 }}>📊 統計</div>
-            <div style={{ display:"flex", gap:10, marginBottom:12 }}>
-              <div style={{ flex:1, textAlign:"center" }}>
-                <div style={{ fontSize:10, color:C.muted }}>累計運賃</div>
-                <div style={{ fontSize:18, fontWeight:900, color:C.gold }}>{fmt(totalFare)}<span style={{ fontSize:11 }}>円</span></div>
-              </div>
-              <div style={{ flex:1, textAlign:"center" }}>
-                <div style={{ fontSize:10, color:C.muted }}>平均運賃</div>
-                <div style={{ fontSize:18, fontWeight:900, color:C.text }}>{fmt(avgFare)}<span style={{ fontSize:11 }}>円</span></div>
-              </div>
-              <div style={{ flex:1, textAlign:"center" }}>
-                <div style={{ fontSize:10, color:C.muted }}>記録数</div>
-                <div style={{ fontSize:18, fontWeight:900, color:C.text }}>{records.length}<span style={{ fontSize:11 }}>件</span></div>
-              </div>
-            </div>
-            {topSpots.length > 0 && (
-              <>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:8 }}>📍 稼げた乗車場所 TOP{topSpots.length}</div>
-                {topSpots.map((s,i) => (
-                  <div key={s.name} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
-                    <div style={{ fontSize:12, color:C.accentLight, fontWeight:800, width:18 }}>#{i+1}</div>
-                    <div style={{ flex:1, fontSize:12, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.name}</div>
-                    <div style={{ fontSize:12, color:C.muted }}>{s.count}回</div>
-                    <div style={{ fontSize:12, fontWeight:700, color:C.gold }}>{fmt(s.avg)}円/回</div>
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
-        )}
 
         {/* 記録一覧 */}
         {sorted.length === 0 ? (
@@ -471,22 +428,67 @@ function DetailModal({ records, onClose, onEdit, onDelete, onSendToReport }) {
 }
 
 // ─── メインコンポーネント ─────────────────────
-export function SalesPointCard() {
+export function SalesPointCard({ user }) {
   const [records,    setRecords]    = useState(() => loadRecords());
   const [showRecord, setShowRecord] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
 
+  // Supabaseから乗車記録を取得してlocalStorageとマージ
+  useEffect(() => {
+    if (!SUPABASE_READY || !user?.id) return;
+    fetchRideRecords(user.id).then(({ data }) => {
+      if (!data?.length) return;
+      // Supabaseのsnake_caseをcamelCaseに変換
+      const fromServer = data.map(r => ({
+        id:              r.id,
+        timestamp:       r.created_at,
+        workDate:        r.work_date,
+        boardingTime:    r.boarding_time,
+        pickupLocation:  r.pickup_location,
+        dropoffTime:     r.dropoff_time,
+        dropoffLocation: r.dropoff_location,
+        passengers:      r.passengers,
+        fare:            r.fare,
+        amount:          r.fare,
+        highwayFee:      r.highway_fee,
+        paymentMethod:   r.payment_method,
+        boardingMethod:  r.boarding_method,
+        memo:            r.memo,
+        lat:             r.lat,
+        lng:             r.lng,
+        spotName:        r.pickup_location || "未記入",
+      }));
+      // ローカルと統合（Supabase側を優先、idで重複排除）
+      setRecords(prev => {
+        const serverIds = new Set(fromServer.map(r => r.id));
+        const localOnly = prev.filter(r => !serverIds.has(r.id));
+        const merged = [...fromServer, ...localOnly]
+          .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+        saveRecords(merged);
+        return merged;
+      });
+    });
+  }, [user?.id]);
+
   useEffect(() => { saveRecords(records); }, [records]);
 
-  function handleSave(rec) {
+  async function handleSave(rec) {
     setRecords(prev => {
       const exists = prev.find(r => r.id === rec.id);
       return exists ? prev.map(r => r.id === rec.id ? rec : r) : [rec, ...prev];
     });
+    if (SUPABASE_READY && user?.id) {
+      await upsertRideRecord(user.id, rec);
+    }
   }
 
-  function handleDelete(id) { setRecords(prev => prev.filter(r => r.id !== id)); }
+  async function handleDelete(id) {
+    setRecords(prev => prev.filter(r => r.id !== id));
+    if (SUPABASE_READY && user?.id) {
+      await deleteRideRecord(id);
+    }
+  }
 
   function handleEdit(rec) {
     setEditTarget(rec); setShowDetail(false); setShowRecord(true);
