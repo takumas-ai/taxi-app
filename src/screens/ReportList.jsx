@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C, fmt, occ, dow, hourly } from "../lib/constants";
 import { Card, Badge, Btn } from "../components/UI";
 import { WORK_AREAS_BY_PARENT } from "../data/mockData";
