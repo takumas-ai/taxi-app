@@ -304,29 +304,28 @@ function XpCard({ user }) {
   const completedCount = missionState.completed.length;
 
   return (
-    <Card style={{ marginBottom:14, padding:"12px 16px" }}>
-      <div onClick={() => setOpen(p => !p)} style={{ display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}>
-        <div style={{ width:40, height:40, borderRadius:"50%", background:`conic-gradient(${title.color} ${xpData.progress}%, ${C.border} 0)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-          <div style={{ width:30, height:30, borderRadius:"50%", backgroundColor:C.card, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column" }}>
-            <span style={{ fontSize:7, color:C.muted, lineHeight:1 }}>Lv</span>
-            <span style={{ fontSize:13, fontWeight:900, color:title.color, lineHeight:1.1 }}>{xpData.level}</span>
+    <Card style={{ marginBottom:14, padding:"6px 14px" }}>
+      <div onClick={() => setOpen(p => !p)} style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }}>
+        <div style={{ width:28, height:28, borderRadius:"50%", background:`conic-gradient(${title.color} ${xpData.progress}%, ${C.border} 0)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+          <div style={{ width:20, height:20, borderRadius:"50%", backgroundColor:C.card, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column" }}>
+            <span style={{ fontSize:5, color:C.muted, lineHeight:1 }}>Lv</span>
+            <span style={{ fontSize:10, fontWeight:900, color:title.color, lineHeight:1.1 }}>{xpData.level}</span>
           </div>
         </div>
         <div style={{ flex:1 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
-            <span style={{ fontSize:12, fontWeight:700, color:title.color }}>{title.name}</span>
-            <span style={{ fontSize:10, color:C.muted }}>次まで {xpData.xpForNext - xpData.xpInLevel} XP</span>
+          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
+            <span style={{ fontSize:11, fontWeight:700, color:title.color }}>{title.name}</span>
+            <span style={{ fontSize:9, color:C.muted }}>次まで {xpData.xpForNext - xpData.xpInLevel} XP</span>
           </div>
-          <div style={{ backgroundColor:C.border, borderRadius:99, height:4, overflow:"hidden" }}>
+          <div style={{ backgroundColor:C.border, borderRadius:99, height:3, overflow:"hidden" }}>
             <div style={{ width:`${xpData.progress}%`, height:"100%", backgroundColor:title.color, borderRadius:99 }}/>
           </div>
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
           <div style={{ textAlign:"right" }}>
-            <div style={{ fontSize:14, fontWeight:800 }}>{user.xp || 0}</div>
-            <div style={{ fontSize:9, color:C.muted }}>総XP</div>
+            <div style={{ fontSize:12, fontWeight:800 }}>{user.xp || 0} XP</div>
           </div>
-          <span style={{ fontSize:11, color:C.muted }}>{open ? "▲" : "▼"}</span>
+          <span style={{ fontSize:10, color:C.muted }}>{open ? "▲" : "▼"}</span>
         </div>
       </div>
 
@@ -358,6 +357,7 @@ function XpCard({ user }) {
 function BreakTimeCard({ reports, onUpdateReport }) {
   const [showInput,  setShowInput]  = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+  const [collapsed,  setCollapsed]  = useState(true); // デフォルト折りたたみ
   const [inputDate,  setInputDate]  = useState(() => new Date().toISOString().slice(0,10));
   const [inputVal,   setInputVal]   = useState("");
   const [saving,     setSaving]     = useState(false);
@@ -447,13 +447,24 @@ function BreakTimeCard({ reports, onUpdateReport }) {
     <>
       <Card style={{ marginBottom:14 }}>
         {/* ヘッダー */}
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-          <div style={{ fontSize:14, fontWeight:800, color:C.text }}>☕ 休憩時間</div>
-          <button onClick={() => setShowInput(p => !p)}
-            style={{ backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:10, padding:"8px 16px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
-            {showInput ? "閉じる" : "＋ 記録する"}
-          </button>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: collapsed ? 0 : 12 }}>
+          <div onClick={() => setCollapsed(p => !p)} style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer", flex:1 }}>
+            <div style={{ fontSize:14, fontWeight:800, color:C.text }}>☕ 休憩時間</div>
+            {withBreak.length > 0 && !collapsed && (
+              <span style={{ fontSize:10, color:C.muted }}>計 {totalBreak}h</span>
+            )}
+            <span style={{ fontSize:11, color:C.muted, marginLeft:2 }}>{collapsed ? "▼" : "▲"}</span>
+          </div>
+          {!collapsed && (
+            <button onClick={() => setShowInput(p => !p)}
+              style={{ backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:10, padding:"8px 16px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+              {showInput ? "閉じる" : "＋ 記録する"}
+            </button>
+          )}
         </div>
+
+        {/* 折りたたみ時は何も表示しない */}
+        {collapsed ? null : <>
 
         {/* 入力フォーム */}
         {showInput && (
@@ -491,6 +502,7 @@ function BreakTimeCard({ reports, onUpdateReport }) {
             </button>
           </div>
         )}
+        </> /* end collapsed check */}
       </Card>
 
       {/* 詳細モーダル */}
@@ -930,6 +942,11 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   const isSimpleLarge = appMode === "simple_large";
   const isAnalysis    = appMode === "analysis";
 
+  // ── 乗車記録サマリー（税込/税抜） ──
+  const totalRideCount = monthReports.reduce((s,r) => s + (r.ride_count || 0), 0);
+  const totalSalesInc  = monthTotal; // 税込
+  const totalSalesExc  = Math.round(monthTotal / 1.1); // 税抜（10%消費税）
+
   // ── 残りシフト・今日必要な売上 ──
   const today         = new Date();
   const daysInMonth   = new Date(THIS_YEAR, THIS_MONTH, 0).getDate();
@@ -941,12 +958,51 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   const neededPerShift  = remainingShifts > 0 ? Math.round(remainingAmount / remainingShifts) : 0;
   const neededToday     = remainingDays > 0 ? Math.round(remainingAmount / remainingDays) : 0;
 
+  // ── 乗車記録サマリーバー ──
+  const RideSummaryBar = () => {
+    const [open, setOpen] = useState(monthReports.length > 0);
+    if (monthReports.length === 0) return (
+      <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 14px", marginBottom:10, borderRadius:10, backgroundColor:C.surface, border:`1px solid ${C.border}`, cursor:"pointer" }}>
+        <span style={{ fontSize:11, color:C.muted, flex:1 }}>📊 今月の乗車記録サマリー</span>
+        <span style={{ fontSize:10, color:C.muted }}>記録なし</span>
+      </div>
+    );
+    return (
+      <div style={{ marginBottom:10, borderRadius:10, backgroundColor:C.surface, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+        <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 14px", cursor:"pointer" }}>
+          <span style={{ fontSize:11, fontWeight:700, color:C.text, flex:1 }}>📊 今月の乗車記録</span>
+          <span style={{ fontSize:11, color:C.accentLight, fontWeight:700 }}>{monthReports.length}件</span>
+          <span style={{ fontSize:10, color:C.muted }}>{open ? "▲" : "▼"}</span>
+        </div>
+        {open && (
+          <div style={{ display:"flex", borderTop:`1px solid ${C.border}` }}>
+            <div style={{ flex:1, textAlign:"center", padding:"8px 4px" }}>
+              <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>乗車回数</div>
+              <div style={{ fontSize:16, fontWeight:900, color:C.text }}>{totalRideCount}<span style={{ fontSize:10, color:C.muted }}>回</span></div>
+            </div>
+            <div style={{ width:1, backgroundColor:C.border }}/>
+            <div style={{ flex:1, textAlign:"center", padding:"8px 4px" }}>
+              <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>売上（税込）</div>
+              <div style={{ fontSize:15, fontWeight:900, color:C.text }}>{fmt(totalSalesInc)}<span style={{ fontSize:10, color:C.muted }}>円</span></div>
+            </div>
+            <div style={{ width:1, backgroundColor:C.border }}/>
+            <div style={{ flex:1, textAlign:"center", padding:"8px 4px" }}>
+              <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>売上（税抜）</div>
+              <div style={{ fontSize:15, fontWeight:900, color:C.sub }}>{fmt(totalSalesExc)}<span style={{ fontSize:10, color:C.muted }}>円</span></div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ━━━ かんたんモード ━━━━━━━━━━━━━━━━━━━━━━━━━
   if (isSimple) {
     return (
       <div style={{ maxWidth:600, margin:"0 auto", padding: isSimpleLarge ? "16px 10px 100px" : "16px 16px 100px", zoom: isSimpleLarge ? 1.32 : 1 }}>
         {/* ① レベル欄 */}
         <XpCard user={user} />
+        <RideSummaryBar />
 
         {/* ② お知らせ欄（更新通知はInfoCenterのみ） */}
 
@@ -1016,6 +1072,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
     <div style={{ maxWidth:600, margin:"0 auto", padding:"16px 16px 100px" }}>
       {/* ① レベル欄 */}
       <XpCard user={user} />
+      <RideSummaryBar />
 
       {/* ② お知らせ欄（更新通知はInfoCenterのみ） */}
 
