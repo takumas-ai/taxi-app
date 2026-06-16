@@ -264,7 +264,7 @@ function ShiftSummaryCard({ reports = [], user, onOpenReport, monthTarget = 3800
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
         {/* 左: タイトル + 本日出勤バッジ */}
         <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", flex:1 }}>
-          <span style={{ fontSize:13, fontWeight:700 }}>📅 カレンダー・シフト表</span>
+          <span style={{ fontSize:13, fontWeight:700 }}>📅 カレンダー</span>
           {todayShift && <span style={{ fontSize:10, backgroundColor:C.green+"22", color:C.green, fontWeight:700, padding:"2px 8px", borderRadius:99 }}>本日出勤</span>}
         </div>
         {/* 右: 読み取りボタン + 残り勤務 + 開閉 */}
@@ -272,7 +272,7 @@ function ShiftSummaryCard({ reports = [], user, onOpenReport, monthTarget = 3800
           <button
             onClick={e=>{ e.stopPropagation(); onGoShift?.(); }}
             style={{ fontSize:11, padding:"4px 10px", borderRadius:8, border:`1px solid ${C.accentLight}55`, backgroundColor:C.accentLight+"18", color:C.accentLight, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}
-          >📷 読み取る</button>
+          >📷 シフトを読み取る</button>
           <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer" }}>
             {monthShifts.length > 0
               ? <span style={{ fontSize:11, color:C.muted }}>残り{remaining}勤</span>
