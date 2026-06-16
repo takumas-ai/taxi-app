@@ -14,7 +14,7 @@ const SUPABASE_READY = !!(
 
 const ADMIN_EMAIL = "white-t@hotmail.co.jp";
 
-export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, onManageArea, notifSettings, onUpdateNotif, appMode="standard", onModeChange, themeMode="auto", onThemeChange, reports=[], initialSection="", onBack, onOpenAdmin }) {
+export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, onManageArea, notifSettings, onUpdateNotif, appMode="standard", onModeChange, themeMode="auto", onThemeChange, reports=[], initialSection="", onBack, onOpenAdmin, onAccountLink }) {
   const [subTab, setSubTab] = useState(initialSection);
   const [form, setForm] = useState({ name:user.name||"", company:user.company||"", workType:user.workType||"隔日勤務", target:user.target||"380000" });
   const [saved, setSaved] = useState(false);
@@ -70,6 +70,16 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
 
       {subTab==="profile" && (
         <Card>
+          {/* ゲストユーザー：アカウント連携バナー */}
+          {user?._isGuest && onAccountLink && (
+            <div style={{ backgroundColor:"#FFF3E0", border:"1px solid #FF980055", borderRadius:10, padding:"12px 14px", marginBottom:16 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:"#E65100", marginBottom:6 }}>⚠️ データが保護されていません</div>
+              <div style={{ fontSize:12, color:"#BF360C", lineHeight:1.6, marginBottom:10 }}>アカウント未連携のため、機種変更やアプリ削除でデータが失われます。</div>
+              <button onClick={onAccountLink} style={{ width:"100%", padding:"10px 0", borderRadius:9, fontSize:13, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:"#E65100", color:"#fff" }}>
+                アカウントを連携してデータを守る
+              </button>
+            </div>
+          )}
           {[{l:"お名前",k:"name",t:"text"}].map(({l,k,t})=>(
             <div key={k} style={{ marginBottom:14 }}><div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>{l}</div><input type={t} value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:15, outline:"none" }}/></div>
           ))}
@@ -81,8 +91,8 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
               ))}
             </div>
           </div>
-          <Btn onClick={save}>{saved?"✓ 保存しました":"設定を保存"}</Btn>
-          <Btn onClick={onLogout} variant="danger" style={{ marginTop:10 }}>ログアウト</Btn>
+          {!user?._isGuest && <Btn onClick={save}>{saved?"✓ 保存しました":"設定を保存"}</Btn>}
+          {!user?._isGuest && <Btn onClick={onLogout} variant="danger" style={{ marginTop:10 }}>ログアウト</Btn>}
           {/* アカウント削除 */}
           {(() => {
             const [deleteStep, setDeleteStep] = useState(0); // 0:非表示 1:確認 2:最終確認

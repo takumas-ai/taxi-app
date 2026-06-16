@@ -113,7 +113,7 @@ function PWAInstallBanner() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ログイン画面
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function LoginScreen({ onLogin }) {
+function LoginScreen({ onLogin, onGuestLogin }) {
   const [step, setStep]   = useState("top");
   const [form, setForm]   = useState({ name:"", email:"", password:"", company:"", workType:"隔日勤務", target:"380000" });
   const [areas, setAreas] = useState([]);
@@ -147,7 +147,7 @@ function LoginScreen({ onLogin }) {
         // 紹介コード経由なら referred_by を保存
         if (refFromUrl) profileData.referred_by = refFromUrl.toUpperCase();
         await insertProfile(profileData);
-        onLogin({ id: data.user.id, name: form.name, company: form.company, workType: form.workType, target: form.target, plan:"free", uploadCount:0, areas });
+        onLogin({ id: data.user.id, name: form.name, company: form.company, workType: form.workType, target: form.target, plan:"free", uploadCount:0, areas, _migrationUserId: data.user.id });
       }
     } else {
       // Supabase未設定時はローカルで動作
@@ -186,6 +186,11 @@ function LoginScreen({ onLogin }) {
   // OAuth（Google / Apple）
   const doOAuth = async (provider) => {
     setLoading(true); setError("");
+    // ゲストデータがあれば移行フラグをセット（OAuthはリダイレクトするため）
+    const localReports = loadS("taxi_reports", []);
+    if (localReports.length > 0 && loadS("taxi_user", null)?._isGuest) {
+      localStorage.setItem("taxi_migration_pending", "1");
+    }
     const { error: err } = await signInWithOAuth(provider);
     if (err) { setError(err.message); setLoading(false); }
     // 成功時はリダイレクトされるので setLoading(false) 不要
@@ -227,7 +232,12 @@ function LoginScreen({ onLogin }) {
           </div>
 
           <button onClick={()=>setStep("login")} style={{ ...btnPrimary, marginBottom:12 }}>メールでログイン</button>
-          <button onClick={()=>setStep("register")} style={{ ...btnGhost }}>新規登録</button>
+          <button onClick={()=>setStep("register")} style={{ ...btnGhost, marginBottom:10 }}>新規登録</button>
+          {onGuestLogin && (
+            <button onClick={onGuestLogin} style={{ width:"100%", padding:"12px 0", borderRadius:11, fontSize:13, fontWeight:600, cursor:"pointer", backgroundColor:"transparent", color:C.muted, border:"none" }}>
+              とりあえず使ってみる（登録不要）
+            </button>
+          )}
         </div>
       )}
 
@@ -292,6 +302,62 @@ function LoginScreen({ onLogin }) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ゲストユーザー向け アカウント連携モーダル
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function GuestAccountModal({ onClose, onOAuth, onSwitchToRegister }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState("");
+  const doOAuth = async (provider) => {
+    setLoading(true); setError("");
+    localStorage.setItem("taxi_migration_pending", "1");
+    const { error: err } = await signInWithOAuth(provider);
+    if (err) { setError(err.message); setLoading(false); }
+  };
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, backgroundColor:"#0008", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, padding:"24px 24px 48px" }}>
+        {/* 警告バナー */}
+        <div style={{ backgroundColor:"#FFF3E0", border:"1px solid #FF980055", borderRadius:12, padding:"12px 14px", marginBottom:20, display:"flex", alignItems:"flex-start", gap:10 }}>
+          <span style={{ fontSize:18 }}>⚠️</span>
+          <span style={{ fontSize:13, color:"#E65100", lineHeight:1.6 }}>外部アカウント未連携のため、機種変更またはアプリを消した場合にデータが失われます</span>
+        </div>
+
+        <div style={{ fontSize:17, fontWeight:800, color:C.text, marginBottom:6 }}>外部アカウント連携すればすべてのデータが安全に保存されます</div>
+        <div style={{ marginBottom:20 }}>
+          {[
+            "端末をなくしてもデータ復旧可能",
+            "機種変更時にもデータの引き継ぎが可能",
+            "複数端末でデータの同期が可能",
+            "締日設定が可能",
+          ].map(t => (
+            <div key={t} style={{ display:"flex", alignItems:"center", gap:10, padding:"6px 0", fontSize:14, color:C.sub }}>
+              <span style={{ color:C.accentLight, fontSize:16 }}>✓</span>{t}
+            </div>
+          ))}
+        </div>
+
+        {error && <div style={{ backgroundColor:"#ffebee", borderRadius:8, padding:"8px 12px", fontSize:12, color:"#c62828", marginBottom:12 }}>{error}</div>}
+
+        {/* Appleボタン */}
+        <button onClick={()=>doOAuth("apple")} disabled={loading} style={{ width:"100%", padding:"14px 0", borderRadius:12, fontSize:15, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.text, color:C.bg, display:"flex", alignItems:"center", justifyContent:"center", gap:10, marginBottom:10 }}>
+          <svg width="18" height="18" viewBox="0 0 814 1000" fill={C.bg}><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57.8-155.5-127.4C46 790.7 0 663.2 0 541.8c0-207.4 134.9-316.8 267.5-316.8 79.7 0 146 52.1 197.9 52.1 49.9 0 128.2-55.2 218.8-55.2 35.4 0 127.5 3.2 190.5 106.3zm-183.9-177.2c32.3-38.2 56.1-91 56.1-143.7 0-7.7-.6-15.4-1.9-21.7-53.4 2-116.7 35.4-155.1 82.4-29 33.9-56.1 86.6-56.1 139.9 0 8.3 1.3 16.6 1.9 19.2 3.2.6 8.3 1.3 13.4 1.3 48 0 109.3-32.3 141.7-77.4z"/></svg>
+          Appleでサインイン
+        </button>
+        {/* Googleボタン */}
+        <button onClick={()=>doOAuth("google")} disabled={loading} style={{ width:"100%", padding:"14px 0", borderRadius:12, fontSize:15, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:C.surface, color:C.text, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+          <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.2 33.5 29.7 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 2.9l6-6C34.5 6.5 29.6 4.5 24 4.5 12.7 4.5 3.5 13.7 3.5 25S12.7 45.5 24 45.5c11 0 20.5-8 20.5-20.5 0-1.4-.1-2.7-.5-5z"/><path fill="#34A853" d="M6.3 14.7l7 5.1C15.1 16 19.2 13 24 13c3 0 5.7 1.1 7.8 2.9l6-6C34.5 6.5 29.6 4.5 24 4.5c-7.5 0-14 4.3-17.7 10.2z"/><path fill="#FBBC05" d="M24 45.5c5.5 0 10.5-1.8 14.3-4.9l-6.6-5.4C29.7 36.9 27 38 24 38c-5.7 0-10.5-3.7-12.2-8.8l-7 5.4C8.3 41.4 15.5 45.5 24 45.5z"/><path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.8 2.3-2.3 4.3-4.3 5.6l6.6 5.4C42 36.4 44.5 31 44.5 25c0-1.4-.1-2.7-.5-5z"/></svg>
+          Googleでサインイン
+        </button>
+
+        <button onClick={onClose} style={{ width:"100%", padding:"12px 0", marginTop:14, borderRadius:11, fontSize:13, color:C.muted, background:"none", border:"none", cursor:"pointer" }}>
+          あとで連携する
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Root App
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -348,7 +414,12 @@ export default function App() {
   const [themeVer, setThemeVer] = useState(0); // テーマ変更時に全体を再描画させるカウンター
   const [consentDone, setConsentDone]       = useState(() => !!loadS("taxi_consent_done", false));
   const [onboardingDone, setOnboardingDone] = useState(() => !!loadS("taxi_onboarding_done", false));
-  const [reports, setReports]   = useState(() => SUPABASE_READY ? [] : loadS("taxi_reports", INITIAL_REPORTS));
+  const [reports, setReports]   = useState(() => {
+    const savedUser = loadS("taxi_user", null);
+    // ゲストユーザーまたはSupabase未設定ならlocalStorageから読む
+    if (!SUPABASE_READY || savedUser?._isGuest) return loadS("taxi_reports", INITIAL_REPORTS);
+    return [];
+  });
   const [tab, setTab]           = useState(() => {
     const saved = loadS("taxi_last_tab", "dashboard");
     // adminタブはリロード後に復元しない（セキュリティ）
@@ -361,6 +432,7 @@ export default function App() {
   const [selectedForEdit, setSelectedForEdit] = useState(false);
   const [notif, setNotif]       = useState(() => loadS("taxi_notif", { delays:true, events:false, traffic:false, dailyTip:false, achievement:true, dailyResult:false }));
   const [showAreaModal, setShowAreaModal] = useState(false);
+  const [showAccountLink, setShowAccountLink] = useState(false);
   const areaModalShownRef = useRef(false); // セッション中1回だけ表示
   // SUPABASE_READYでもキャッシュユーザーがあればすぐ表示（リフレッシュ対策）
   const [authReady, setAuthReady] = useState(!SUPABASE_READY || !!loadS("taxi_user", null));
@@ -418,7 +490,38 @@ export default function App() {
             monthly_target: 380000,
             areas: [],
           });
-          setReports([]);
+          // ゲストデータの移行
+          let migratedReports = [];
+          if (localStorage.getItem("taxi_migration_pending")) {
+            localStorage.removeItem("taxi_migration_pending");
+            const localReports = loadS("taxi_reports", []);
+            if (localReports.length > 0) {
+              for (const r of localReports) {
+                await insertReport({
+                  user_id: session.user.id,
+                  report_date: r.date,
+                  gross_sales: r.gross_sales,
+                  cash_sales: r.cash_sales,
+                  card_sales: r.card_sales,
+                  app_sales: r.app_sales,
+                  highway_fee: r.highway_fee,
+                  ride_count: r.ride_count,
+                  total_distance: r.total_distance,
+                  occupied_distance: r.occupied_distance || null,
+                  work_hours: r.work_hours,
+                  break_hours: r.break_hours,
+                  format_type: r.format_type || "manual",
+                  confidence_score: r.confidence_score || null,
+                  raw_ocr_fields: r.raw_ocr_fields || null,
+                  ai_comment: r.ai_comment,
+                  trouble_note: r.trouble_note,
+                });
+              }
+              const { data: reps } = await fetchReports(session.user.id);
+              if (reps?.length) migratedReports = reps.map(r => ({ ...r, date: r.report_date }));
+            }
+          }
+          setReports(migratedReports);
           // オンボーディングを表示（onboarding_done はセットしない）
           setUser({
             id: session.user.id,
@@ -444,8 +547,8 @@ export default function App() {
   }, []);
 
   // ─── ローカル保存 ───
-  // reports: Supabase未設定時のみ（SUPABASE_READY時はSupabaseが正）
-  useEffect(() => { if (!SUPABASE_READY) saveS("taxi_reports", reports); }, [reports]);
+  // reports: Supabase未設定時 or ゲストユーザー時はlocalStorageに保存
+  useEffect(() => { if (!SUPABASE_READY || user?._isGuest) saveS("taxi_reports", reports); }, [reports, user]);
   // user: 常に保存（リフレッシュ時にローディング画面をスキップするため）
   useEffect(() => { saveS("taxi_user", user); }, [user]);
   useEffect(() => { saveS("taxi_app_mode", appMode); }, [appMode]);
@@ -488,11 +591,52 @@ export default function App() {
     return <ConsentScreen onAgree={() => { saveS("taxi_consent_done", true); setConsentDone(true); }}/>;
   }
 
+  // ゲストとして使い始める
+  const handleGuestLogin = () => {
+    const guestUser = { id: "guest_" + Date.now(), name: "ゲスト", _isGuest: true, plan:"free", uploadCount:0, areas:[] };
+    setReports(loadS("taxi_reports", INITIAL_REPORTS));
+    setOnboardingDone(true); // オンボーディングはスキップ
+    saveS("taxi_onboarding_done", true);
+    setUser(guestUser);
+  };
+
   if (!user) {
     return <LoginScreen onLogin={u => {
       if (u._returningUser) { saveS("taxi_onboarding_done", true); setOnboardingDone(true); }
-      setUser({ ...u, uploadCount: u.uploadCount ?? 0, areas: u.areas || [] });
-    }} />;
+      // メール登録でゲストデータがある場合は移行
+      if (u._migrationUserId && SUPABASE_READY) {
+        const localReports = loadS("taxi_reports", []);
+        if (localReports.length > 0) {
+          (async () => {
+            for (const r of localReports) {
+              await insertReport({
+                user_id: u._migrationUserId,
+                report_date: r.date,
+                gross_sales: r.gross_sales,
+                cash_sales: r.cash_sales,
+                card_sales: r.card_sales,
+                app_sales: r.app_sales,
+                highway_fee: r.highway_fee,
+                ride_count: r.ride_count,
+                total_distance: r.total_distance,
+                occupied_distance: r.occupied_distance || null,
+                work_hours: r.work_hours,
+                break_hours: r.break_hours,
+                format_type: r.format_type || "manual",
+                confidence_score: r.confidence_score || null,
+                raw_ocr_fields: r.raw_ocr_fields || null,
+                ai_comment: r.ai_comment,
+                trouble_note: r.trouble_note,
+              });
+            }
+            const { data: reps } = await fetchReports(u._migrationUserId);
+            if (reps?.length) setReports(reps.map(r => ({ ...r, date: r.report_date })));
+          })();
+        }
+      }
+      const { _migrationUserId: _, ...cleanUser } = u;
+      setUser({ ...cleanUser, uploadCount: cleanUser.uploadCount ?? 0, areas: cleanUser.areas || [] });
+    }} onGuestLogin={handleGuestLogin} />;
   }
 
   if (!onboardingDone) {
@@ -633,7 +777,7 @@ export default function App() {
       case "info":      return <InfoCenter notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} userAreas={userAreas} onManageArea={()=>setShowAreaModal(true)}/>;
       case "guide":     return <GuideScreen userAreas={userAreas} user={user}/>;
       case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")} user={user} onBack={()=>handleSetTab("dashboard")}/>;
-      case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined} onOpenAdmin={()=>handleSetTab("admin")}/>;
+      case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={u=>setUser(prev=>({...prev,...u}))} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined} onOpenAdmin={()=>handleSetTab("admin")} onAccountLink={user?._isGuest ? ()=>setShowAccountLink(true) : undefined}/>;
       case "community": return <CommunityScreen />;
       case "ranking":   return <RankingScreen user={user} rankPrefs={rankPrefs} />;
       case "stats":     return <StatsScreen reports={reports} />;
@@ -651,6 +795,7 @@ export default function App() {
       <TakuroFAB setTab={handleSetTab} />
       <BottomNav tab={tab} setTab={handleSetTab} userAreas={userAreas} alertsSeen={alertsSeen}/>
       {showAreaModal && <AreaSettingModal userAreas={userAreas} onSave={areas=>setUser(u=>({...u,areas}))} onClose={()=>setShowAreaModal(false)}/>}
+      {showAccountLink && <GuestAccountModal onClose={()=>setShowAccountLink(false)} />}
       <PWAInstallBanner />
     </div>
   );

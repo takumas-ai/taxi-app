@@ -1233,13 +1233,6 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
       {/* ⑥ AIアドバイス（3件以上でモード別表示） */}
       <AiAdviceCard reports={monthReports} appMode={appMode} />
 
-      {reports.length === 0 && (
-        <Card style={{ textAlign:"center", padding:28, marginTop:8 }}>
-          <div style={{ fontSize:32, marginBottom:10 }}>📄</div>
-          <div style={{ fontSize:15, fontWeight:700, marginBottom:8 }}>日報をアップロードしよう</div>
-          <div style={{ fontSize:12, color:C.muted, marginBottom:14 }}>日報を登録すると、売上グラフや<br/>AI分析コメントが表示されます</div>
-        </Card>
-      )}
     </div>
   );
 }
