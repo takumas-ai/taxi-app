@@ -420,9 +420,8 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   // 選択画面
   return (
     <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
-      <div style={{ backgroundColor:C.goldGlow, border:`1px solid ${C.gold}44`, borderRadius:12, padding:"10px 14px", marginBottom:14, display:"flex", justifyContent:"space-between" }}>
+      <div style={{ backgroundColor:C.goldGlow, border:`1px solid ${C.gold}44`, borderRadius:12, padding:"10px 14px", marginBottom:14 }}>
         <span style={{ fontSize:13, color:C.sub }}>今月残り <strong style={{ color:C.gold }}>{remaining}件</strong> 無料</span>
-        <span style={{ fontSize:11, color:C.muted }}>無制限は月額480円</span>
       </div>
 
       {/* 撮影ガイドの簡易プレビュー（常時表示） */}
