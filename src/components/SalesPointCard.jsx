@@ -437,10 +437,13 @@ export function SalesPointCard({ user }) {
   // Supabaseから乗車記録を取得してlocalStorageとマージ
   useEffect(() => {
     if (!SUPABASE_READY || !user?.id) return;
-    fetchRideRecords(user.id).then(({ data }) => {
-      if (!data?.length) return;
+    fetchRideRecords(user.id).then(({ data, error }) => {
+      if (error) {
+        console.error("[SalesPointCard] fetchRideRecords:", error.message);
+        return; // テーブル未作成などのエラー時はlocalStorageで続行
+      }
       // Supabaseのsnake_caseをcamelCaseに変換
-      const fromServer = data.map(r => ({
+      const fromServer = (data || []).map(r => ({
         id:              r.id,
         timestamp:       r.created_at,
         workDate:        r.work_date,
@@ -463,6 +466,10 @@ export function SalesPointCard({ user }) {
       setRecords(prev => {
         const serverIds = new Set(fromServer.map(r => r.id));
         const localOnly = prev.filter(r => !serverIds.has(r.id));
+        // ローカルのみの記録をSupabaseに一括アップロード（端末間同期）
+        if (localOnly.length > 0) {
+          localOnly.forEach(rec => upsertRideRecord(user.id, rec));
+        }
         const merged = [...fromServer, ...localOnly]
           .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
         saveRecords(merged);
