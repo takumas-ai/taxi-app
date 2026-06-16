@@ -794,7 +794,10 @@ export default function App() {
       <ReportModal key={selected ? `${selected.id}-${selectedForEdit}` : "none"} report={selected} onClose={()=>{setSelected(null);setSelectedForEdit(false);}} onUpdate={handleUpdateReport} startInEdit={selectedForEdit}/>
       <TakuroFAB setTab={handleSetTab} />
       <BottomNav tab={tab} setTab={handleSetTab} userAreas={userAreas} alertsSeen={alertsSeen}/>
-      {showAreaModal && <AreaSettingModal userAreas={userAreas} onSave={areas=>setUser(u=>({...u,areas}))} onClose={()=>setShowAreaModal(false)}/>}
+      {showAreaModal && <AreaSettingModal userAreas={userAreas} onSave={areas=>{
+        setUser(u=>({...u,areas}));
+        if (SUPABASE_READY && user?.id) upsertProfile({ id: user.id, areas });
+      }} onClose={()=>setShowAreaModal(false)}/>}
       {showAccountLink && <GuestAccountModal onClose={()=>setShowAccountLink(false)} />}
       <PWAInstallBanner />
     </div>
