@@ -348,7 +348,7 @@ export default function App() {
   const [themeVer, setThemeVer] = useState(0); // テーマ変更時に全体を再描画させるカウンター
   const [consentDone, setConsentDone]       = useState(() => !!loadS("taxi_consent_done", false));
   const [onboardingDone, setOnboardingDone] = useState(() => !!loadS("taxi_onboarding_done", false));
-  const [reports, setReports]   = useState(() => loadS("taxi_reports", INITIAL_REPORTS));
+  const [reports, setReports]   = useState(() => SUPABASE_READY ? [] : loadS("taxi_reports", INITIAL_REPORTS));
   const [tab, setTab]           = useState(() => {
     const saved = loadS("taxi_last_tab", "dashboard");
     // adminタブはリロード後に復元しない（セキュリティ）
@@ -372,6 +372,7 @@ export default function App() {
       if (session?.user) {
         const { data: profile } = await fetchProfile(session.user.id);
         if (profile) {
+          // 既存ユーザー
           const loginResult = processLogin(
             profile.last_active_date,
             profile.streak_days || 0,
@@ -383,7 +384,6 @@ export default function App() {
           if (!loginResult.alreadyLogged) {
             upsertProfile({ id: session.user.id, xp: nextXp, streak_days: loginResult.newStreak, last_active_date: today, badges: nextBadges });
           }
-          // セッション復元 = 既存ユーザーなのでオンボーディング済みにする
           localStorage.setItem("taxi_onboarding_done", "true");
           setOnboardingDone(true);
           setUser({
@@ -400,9 +400,35 @@ export default function App() {
             streakDays: loginResult.newStreak,
             badges: nextBadges,
           });
-          // Supabaseから日報を取得
           const { data: reps } = await fetchReports(session.user.id);
           if (reps?.length) setReports(reps.map(r => ({ ...r, date: r.report_date })));
+          else setReports([]);
+        } else {
+          // Google/Apple OAuth 新規ユーザー → プロフィール作成してオンボーディングへ
+          const oauthName = session.user.user_metadata?.full_name
+            || session.user.user_metadata?.name
+            || session.user.email?.split("@")[0]
+            || "ドライバー";
+          await insertProfile({
+            id: session.user.id,
+            name: oauthName,
+            work_type: "隔日勤務",
+            monthly_target: 380000,
+            areas: [],
+          });
+          setReports([]);
+          // オンボーディングを表示（onboarding_done はセットしない）
+          setUser({
+            id: session.user.id,
+            email: session.user.email,
+            name: oauthName,
+            company: "",
+            workType: "隔日勤務",
+            target: "380000",
+            plan: "free",
+            uploadCount: 0,
+            areas: [],
+          });
         }
       }
       setAuthReady(true);
@@ -410,7 +436,7 @@ export default function App() {
 
     // 認証状態の変化を監視
     const { data: { subscription } } = onAuthStateChange(session => {
-      if (!session) { setUser(null); setReports(INITIAL_REPORTS); }
+      if (!session) { setUser(null); setReports([]); }
     });
     return () => subscription.unsubscribe();
   }, []);
