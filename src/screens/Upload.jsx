@@ -529,9 +529,9 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         <Card>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
             {F({label:"日付", fk:"date", type:"date", required:true, span:2})}
-            {F({label:"総売上（円）", fk:"gross_sales", required:true, ph:"62000"})}
+            {F({label:"売上（税込）（円）", fk:"gross_sales", required:true, ph:"62000"})}
             {F({label:"営業回数（回）", fk:"ride_count", ph:"30"})}
-            {F({label:"現金売上（円）", fk:"cash_sales", ph:"37000"})}
+            {F({label:"売上（税抜）（円）", fk:"cash_sales", ph:"37000"})}
             {F({label:"カード売上（円）", fk:"card_sales", ph:"18000"})}
             {F({label:"配車アプリ（円）", fk:"app_sales", ph:"7000", span:2})}
             {F({label:"走行距離（km）", fk:"total_distance", ph:"300"})}
