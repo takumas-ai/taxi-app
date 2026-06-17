@@ -210,6 +210,7 @@ export async function upsertRideRecord(userId, rec) {
     highway_fee:      rec.highwayFee || null,
     payment_method:   rec.paymentMethod || null,
     boarding_method:  rec.boardingMethod || null,
+    radio_type:       rec.radioType || null,
     memo:             rec.memo || null,
     lat:              rec.lat || null,
     lng:              rec.lng || null,

@@ -80,6 +80,8 @@ function saveRecords(recs) {
 
 const PAYMENT_OPTIONS = ["現金", "カード", "アプリ", "QRコード", "その他"];
 const BOARDING_OPTIONS = ["流し", "付け待ち", "配車アプリ", "無線", "定額", "その他"];
+const RADIO_TYPE_OPTIONS = ["GO（ゴー）", "S.RIDE（エスライド）", "DiDi（ディディ）", "Uber Taxi", "NearMe（ニアミー）", "全日本無線", "東京無線", "その他"];
+const RADIO_BOARDING = ["配車アプリ", "無線"]; // 無線種別を表示する乗車方法
 
 // ─── 記録モーダル ─────────────────────────────
 function RecordModal({ onClose, onSave, editTarget }) {
@@ -96,6 +98,7 @@ function RecordModal({ onClose, onSave, editTarget }) {
   const [highwayFee,     setHighwayFee]     = useState(editTarget?.highwayFee ?? "");
   const [paymentMethod,  setPaymentMethod]  = useState(editTarget?.paymentMethod ?? "");
   const [boardingMethod, setBoardingMethod] = useState(editTarget?.boardingMethod ?? "");
+  const [radioType,      setRadioType]      = useState(editTarget?.radioType ?? "");
   const [memo,           setMemo]           = useState(editTarget?.memo ?? "");
   const [lat,            setLat]            = useState(editTarget?.lat ?? null);
   const [lng,            setLng]            = useState(editTarget?.lng ?? null);
@@ -150,6 +153,7 @@ function RecordModal({ onClose, onSave, editTarget }) {
       highwayFee:      parseInt(highwayFee, 10) || null,
       paymentMethod,
       boardingMethod,
+      radioType:       RADIO_BOARDING.includes(boardingMethod) ? radioType : "",
       memo:            memo.trim(),
       lat,
       lng,
@@ -323,6 +327,18 @@ function RecordModal({ onClose, onSave, editTarget }) {
           </select>
         </div>
 
+        {/* 無線の種類（配車アプリ・無線選択時のみ表示） */}
+        {RADIO_BOARDING.includes(boardingMethod) && (
+          <div style={sectionStyle}>
+            <label style={labelStyle}>無線の種類 <span style={{ fontSize:10, backgroundColor:C.border, color:C.muted, borderRadius:4, padding:"1px 5px", marginLeft:4 }}>任意</span></label>
+            <select value={radioType} onChange={e=>setRadioType(e.target.value)}
+              style={{ ...inputStyle, appearance:"none", backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`, backgroundRepeat:"no-repeat", backgroundPosition:"right 12px center" }}>
+              <option value="">選択してください</option>
+              {RADIO_TYPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+        )}
+
         {/* メモ（任意） */}
         <div style={{ marginBottom:22 }}>
           <label style={labelStyle}>メモ <span style={{ fontSize:10, backgroundColor:C.border, color:C.muted, borderRadius:4, padding:"1px 5px", marginLeft:4 }}>任意</span></label>
@@ -389,6 +405,7 @@ function DetailModal({ records, onClose, onEdit, onDelete, onSendToReport }) {
               {r.highwayFee > 0 && <span>🛣 高速 {fmt(r.highwayFee)}円</span>}
               {r.paymentMethod && <span>💳 {r.paymentMethod}</span>}
               {r.boardingMethod && <span>🚕 {r.boardingMethod}</span>}
+              {r.radioType && <span>📡 {r.radioType}</span>}
             </div>
             {r.memo && <div style={{ fontSize:11, color:C.muted, backgroundColor:C.surface, borderRadius:7, padding:"5px 8px", marginBottom:6 }}>📝 {r.memo}</div>}
             {r.lat && r.lng && (
@@ -457,6 +474,7 @@ export function SalesPointCard({ user }) {
         highwayFee:      r.highway_fee,
         paymentMethod:   r.payment_method,
         boardingMethod:  r.boarding_method,
+        radioType:       r.radio_type,
         memo:            r.memo,
         lat:             r.lat,
         lng:             r.lng,
@@ -543,6 +561,7 @@ export function SalesPointCard({ user }) {
                   <div style={{ fontSize:10, color:C.muted, marginTop:1 }}>
                     {r.workDate ? fmtDate(r.workDate) : new Date(r.timestamp).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric",weekday:"short"})}
                     {r.boardingMethod && <span style={{ marginLeft:6 }}>· {r.boardingMethod}</span>}
+                    {r.radioType      && <span style={{ marginLeft:4 }}>({r.radioType})</span>}
                     {r.paymentMethod  && <span style={{ marginLeft:4 }}>· {r.paymentMethod}</span>}
                   </div>
                 </div>
