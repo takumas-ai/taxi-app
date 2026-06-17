@@ -68,7 +68,7 @@ serve(async (req) => {
     if (!apiKey) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
 
     const body = await req.json();
-    const { image_base64, media_type = "image/jpeg", prompt } = body;
+    const { image_base64, media_type = "image/jpeg" } = body;
 
     // 入力バリデーション
     if (!image_base64 || typeof image_base64 !== "string") {
@@ -99,7 +99,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 2048,
+        max_tokens: 1024,
         messages: [{
           role: "user",
           content: [
@@ -107,7 +107,7 @@ serve(async (req) => {
               type: "image",
               source: { type: "base64", media_type: normalizedType, data: image_base64 },
             },
-            { type: "text", text: prompt || REPORT_OCR_PROMPT },
+            { type: "text", text: REPORT_OCR_PROMPT },
           ],
         }],
       }),

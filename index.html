@@ -7,24 +7,18 @@
     <meta http-equiv="Content-Security-Policy"
       content="
         default-src 'self';
-        script-src 'self' 'unsafe-inline' 'unsafe-eval';
+        script-src 'self' 'unsafe-inline';
         style-src 'self' 'unsafe-inline';
-        connect-src 'self' https://*.supabase.co https://api.anthropic.com https://nominatim.openstreetmap.org;
+        connect-src 'self' https://*.supabase.co https://api.anthropic.com;
         img-src 'self' data: blob: https://*.supabase.co;
         font-src 'self' data:;
         frame-src 'none';
         object-src 'none';
         base-uri 'self';
       " />
-<title>タクロー — 勘と経験を、データに変える。</title>
-    <link rel="manifest" href="/manifest.json" />
-    <!-- iOS PWA サポート -->
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="タクロー" />
-    <link rel="apple-touch-icon" href="/icon-192.png" />
-    <!-- テーマカラー（Androidブラウザのアドレスバー） -->
-    <meta name="theme-color" content="#1E2D45" />
+    <!-- クリックジャッキング対策 -->
+    <meta http-equiv="X-Frame-Options" content="DENY" />
+    <title>タクロー — 勘と経験を、データに変える。</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { background: #0A0F1E; color: #F1F5F9; }
@@ -34,31 +28,5 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-    <script>
-      // Service Worker: React より前にリスナーを張る（mount前の発火を拾うため）
-      if ('serviceWorker' in navigator) {
-        var _swFirstController = navigator.serviceWorker.controller;
-
-        // controllerchange = 新しいSWがページを掌握 → リロードして新JSを読み込む
-        navigator.serviceWorker.addEventListener('controllerchange', function() {
-          // 初回インストール（controller が null → 有）ではリロードしない
-          if (_swFirstController) {
-            window.location.reload();
-          }
-          // 次回からは必ずリロード対象にする
-          _swFirstController = true;
-        });
-
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('/sw.js').then(function(reg) {
-            reg.update(); // 起動時に即チェック
-            // タブ復帰時にも再チェック
-            document.addEventListener('visibilitychange', function() {
-              if (!document.hidden) reg.update();
-            });
-          });
-        });
-      }
-    </script>
   </body>
 </html>

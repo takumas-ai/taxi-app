@@ -47,41 +47,6 @@ export function downloadCSV(reports, label) {
   URL.revokeObjectURL(url);
 }
 
-// 乗車記録 CSV ダウンロード
-export function downloadRideRecordsCSV(records, label) {
-  const RIDE_HEADERS = ["乗務日","乗車日時","乗車場所","降車日時","降車場所","乗車人数","運賃","高速料金","支払い方法","乗車方法","無線の種類","メモ"];
-  const fmt = s => (s ?? "").toString().replace(/,/g,"、").replace(/\n/g," ");
-  const rows = [
-    RIDE_HEADERS,
-    ...records
-      .slice()
-      .sort((a,b) => (a.workDate||"").localeCompare(b.workDate||""))
-      .map(r => [
-        fmt(r.workDate),
-        fmt(r.boardingTime),
-        fmt(r.pickupLocation || r.spotName),
-        fmt(r.dropoffTime),
-        fmt(r.dropoffLocation),
-        r.passengers ?? "",
-        r.fare || r.amount || 0,
-        r.highwayFee || "",
-        fmt(r.paymentMethod),
-        fmt(r.boardingMethod),
-        fmt(r.radioType),
-        fmt(r.memo),
-      ]),
-  ];
-  const csv  = rows.map(r => r.join(",")).join("\n");
-  const bom  = "﻿";
-  const blob = new Blob([bom + csv], { type:"text/csv;charset=utf-8;" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href     = url;
-  a.download = `タクロー_乗車記録_${label}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 // 印刷用HTML → PDF（ブラウザの印刷ダイアログ）
 export function printAsPDF(reports, label, user) {
   const sorted = [...reports].sort((a,b) => a.date.localeCompare(b.date));

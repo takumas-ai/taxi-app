@@ -38,7 +38,6 @@ function buildForm(report) {
     break_hours:        report.break_hours        != null ? String(report.break_hours)        : "1.0",
     trouble_note:       report.trouble_note || "",
     work_area:          report.work_area   || "",
-    dispatch_type:      report.dispatch_type || "",
   };
 }
 
@@ -48,19 +47,6 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
   const [form, setForm] = useState(() => startInEdit && report ? buildForm(report) : {});
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
-  // OCR抽出の乗車記録（report.rides）
-  const [rides, setRides] = useState(() => Array.isArray(report?.rides) ? report.rides : []);
-  const [editingRideIdx, setEditingRideIdx] = useState(null);
-  const [ridePointInput, setRidePointInput] = useState("");
-  const [showRides, setShowRides] = useState(false);
-  // SalesPointCard の手動乗車記録（localStorageから日付でフィルタ）
-  const salesRecs = (() => {
-    try {
-      const all = JSON.parse(localStorage.getItem("taxi_sales_records") || "[]");
-      return all.filter(r => (r.workDate || (r.timestamp ? r.timestamp.slice(0,10) : "")) === report?.date);
-    } catch { return []; }
-  })();
-  const [showSalesRecs, setShowSalesRecs] = useState(false);
 
   if (!report || !report.gross_sales) return null;
 
@@ -136,6 +122,27 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
           ))}
 
           <div style={{ height:1, backgroundColor:C.border, margin:"12px 0" }}/>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:12 }}>
+            {[{l:"営業回数",v:report.ride_count,u:"回",c:C.accentLight},{l:"時間単価",v:fmt(hourly(report)),u:"円/h",c:C.gold},{l:"実車率",v:or,u:"%",c:oc}].map(({l,v,u,c})=>(
+              <div key={l} style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 8px", textAlign:"center" }}>
+                <div style={{ fontSize:18, fontWeight:800, color:c }}>{v}<span style={{ fontSize:10, color:C.muted, marginLeft:2 }}>{u}</span></div>
+                <div style={{ fontSize:10, color:C.muted, marginTop:4 }}>{l}</div>
+              </div>
+            ))}
+          </div>
+
+          {report.total_distance>0 && (
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12, fontSize:12, color:C.sub }}>
+              <div style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px" }}>
+                <div style={{ color:C.muted, fontSize:11, marginBottom:2 }}>走行距離</div>
+                <div style={{ fontWeight:700, color:C.text }}>{report.total_distance} km</div>
+              </div>
+              <div style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px" }}>
+                <div style={{ color:C.muted, fontSize:11, marginBottom:2 }}>勤務時間</div>
+                <div style={{ fontWeight:700, color:C.text }}>{report.work_hours} h</div>
+              </div>
+            </div>
+          )}
 
           {report.trouble_note && (
             <div style={{ backgroundColor:C.orangeGlow, border:`1px solid ${C.orange}44`, borderRadius:10, padding:12, marginBottom:10, fontSize:13, color:C.orange }}>
@@ -148,117 +155,8 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
             </div>
           )}
 
-          {/* 乗車記録セクション */}
-          {rides.length > 0 && (
-            <div style={{ marginTop:14 }}>
-              <div onClick={() => setShowRides(p => !p)}
-                style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", padding:"10px 0", borderTop:`1px solid ${C.border}` }}>
-                <span style={{ fontSize:13, fontWeight:700, color:C.text }}>🚕 乗車記録（{rides.length}件）</span>
-                <span style={{ fontSize:11, color:C.muted }}>{showRides ? "▲ 閉じる" : "▼ 開く"}</span>
-              </div>
-              {showRides && (
-                <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:6 }}>
-                  {rides.map((r, i) => (
-                    <div key={i} style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px" }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:11, color:C.muted, marginBottom:2 }}>
-                            {r.pickup_time}{r.dropoff_time ? ` → ${r.dropoff_time}` : ""}
-                            {r.km ? `  ${r.km}km` : ""}
-                          </div>
-                          <div style={{ fontSize:12, color:C.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                            {r.pickup_area || "—"} → {r.dropoff_area || "—"}
-                          </div>
-                          {/* ポイント名 */}
-                          {editingRideIdx === i ? (
-                            <div style={{ display:"flex", gap:6, marginTop:6 }}>
-                              <input
-                                autoFocus
-                                value={ridePointInput}
-                                onChange={e => setRidePointInput(e.target.value)}
-                                placeholder="ポイント名（例: 六本木ヒルズ）"
-                                style={{ flex:1, fontSize:12, padding:"5px 8px", borderRadius:7, border:`1px solid ${C.accentLight}`, backgroundColor:C.bg, color:C.text, outline:"none" }}
-                              />
-                              <button onClick={async () => {
-                                const updated = rides.map((ride, j) =>
-                                  j === i ? { ...ride, point_name: ridePointInput.trim() || null } : ride
-                                );
-                                setRides(updated);
-                                setEditingRideIdx(null);
-                                if (onUpdate) await onUpdate({ ...report, rides: updated });
-                              }} style={{ fontSize:12, padding:"5px 10px", borderRadius:7, backgroundColor:C.accentLight, color:"#fff", border:"none", cursor:"pointer", fontWeight:700 }}>保存</button>
-                              <button onClick={() => setEditingRideIdx(null)}
-                                style={{ fontSize:12, padding:"5px 8px", borderRadius:7, border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.muted, cursor:"pointer" }}>✕</button>
-                            </div>
-                          ) : (
-                            <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:4 }}>
-                              <span style={{ fontSize:12, color: r.point_name ? C.accentLight : C.muted, fontWeight: r.point_name ? 700 : 400 }}>
-                                {r.point_name || "ポイント名未設定"}
-                              </span>
-                              <button onClick={() => { setEditingRideIdx(i); setRidePointInput(r.point_name || ""); }}
-                                style={{ fontSize:10, color:C.accentLight, background:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:6, padding:"2px 8px", cursor:"pointer" }}>
-                                編集
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        <div style={{ fontSize:14, fontWeight:800, color:C.text, whiteSpace:"nowrap" }}>
-                          {(r.amount||0).toLocaleString()}円
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* SalesPointCard 手動乗車記録 */}
-          {salesRecs.length > 0 && (
-            <div style={{ marginTop:14 }}>
-              <div onClick={() => setShowSalesRecs(p => !p)}
-                style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", padding:"10px 0", borderTop:`1px solid ${C.border}` }}>
-                <span style={{ fontSize:13, fontWeight:700, color:C.text }}>📝 手動乗車記録（{salesRecs.length}件）</span>
-                <span style={{ fontSize:11, color:C.muted }}>{showSalesRecs ? "▲ 閉じる" : "▼ 開く"}</span>
-              </div>
-              {showSalesRecs && (
-                <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:6 }}>
-                  {[...salesRecs].sort((a,b) => (a.boardingTime||a.timestamp||"").localeCompare(b.boardingTime||b.timestamp||"")).map((r, i) => (
-                    <div key={r.id || i} style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px" }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:11, color:C.muted, marginBottom:2 }}>
-                            {r.boardingTime ? new Date(r.boardingTime).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}) : "—"}
-                            {r.dropoffTime  ? ` → ${new Date(r.dropoffTime).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})}` : ""}
-                          </div>
-                          <div style={{ fontSize:13, color:C.text, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                            {r.pickupLocation || "—"}
-                            {r.dropoffLocation ? <span style={{ color:C.muted, fontWeight:400 }}> → {r.dropoffLocation}</span> : ""}
-                          </div>
-                          <div style={{ display:"flex", gap:8, flexWrap:"wrap", fontSize:11, color:C.muted, marginTop:3 }}>
-                            {r.boardingMethod && <span>{r.boardingMethod}</span>}
-                            {r.paymentMethod  && <span>· {r.paymentMethod}</span>}
-                            {r.passengers     && <span>· {r.passengers}人</span>}
-                            {r.highwayFee > 0 && <span>· 高速 {fmt(r.highwayFee)}円</span>}
-                          </div>
-                          {r.memo && <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>📝 {r.memo}</div>}
-                        </div>
-                        <div style={{ fontSize:15, fontWeight:900, color:C.gold, whiteSpace:"nowrap" }}>
-                          {(r.fare || r.amount) ? `${fmt(r.fare || r.amount)}円` : "—"}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  <div style={{ fontSize:11, color:C.muted, textAlign:"right", marginTop:4 }}>
-                    合計: {fmt(salesRecs.reduce((s,r) => s + (r.fare || r.amount || 0), 0))}円
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          <button onClick={onClose} style={{ width:"100%", padding:"14px 0", borderRadius:11, fontSize:15, fontWeight:800, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff", marginTop:18 }}>
-            ✕ 閉じる
+          <button onClick={onClose} style={{ width:"100%", padding:"13px 0", borderRadius:11, fontSize:14, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.sub, marginTop:18 }}>
+            閉じる
           </button>
         </div>
       </div>
@@ -282,23 +180,6 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
           <Field label="現金売上（円）" fk="cash_sales" form={form} setForm={setForm} errors={errors} ph="37000"/>
           <Field label="カード売上（円）" fk="card_sales" form={form} setForm={setForm} errors={errors} ph="18000"/>
           <Field label="配車アプリ（円）" fk="app_sales" form={form} setForm={setForm} errors={errors} ph="7000" span={2}/>
-        </div>
-
-        {/* 配車アプリ・無線の種類 */}
-        <div style={{ marginTop:12 }}>
-          <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>配車アプリ・無線の種類 <span style={{ fontSize:10, backgroundColor:"#2a2a4a", color:C.muted, borderRadius:4, padding:"1px 5px", marginLeft:4 }}>任意</span></div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-            {["GO（ゴー）","S.RIDE（エスライド）","DiDi（ディディ）","Uber Taxi","NearMe","全日本無線","東京無線","その他"].map(opt => (
-              <button key={opt} type="button"
-                onClick={() => setForm(p => ({ ...p, dispatch_type: p.dispatch_type === opt ? "" : opt }))}
-                style={{ padding:"7px 14px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer", border:`1.5px solid ${form.dispatch_type === opt ? C.accentLight : C.border}`, backgroundColor: form.dispatch_type === opt ? C.accentLight+"22" : "transparent", color: form.dispatch_type === opt ? C.accentLight : C.muted }}>
-                {opt}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:12 }}>
           <Field label="走行距離（km）" fk="total_distance" form={form} setForm={setForm} errors={errors} ph="300"/>
           <Field label="実車距離（km）" fk="occupied_distance" form={form} setForm={setForm} errors={errors} ph="155"/>
           <Field label="勤務時間（h）" fk="work_hours" form={form} setForm={setForm} errors={errors} ph="13.5"/>
@@ -453,83 +334,8 @@ function MonthlyStats({ reports }) {
 }
 
 // ─── 日報一覧 ───
-// ─── 営業ポイント分析ビュー ───
-function SalesPointAnalysis() {
-  const records = (() => {
-    try { return JSON.parse(localStorage.getItem("taxi_sales_records") || "[]"); } catch { return []; }
-  })();
-
-  if (records.length === 0) {
-    return (
-      <div style={{ textAlign:"center", padding:"40px 16px", color:C.muted }}>
-        <div style={{ fontSize:36, marginBottom:12 }}>📍</div>
-        <div style={{ fontSize:15, fontWeight:700, marginBottom:8 }}>まだ記録がありません</div>
-        <div style={{ fontSize:13 }}>ホーム画面の「営業ポイント」から記録を追加すると、ここに統計が表示されます。</div>
-      </div>
-    );
-  }
-
-  // ポイント別集計
-  const spotMap = {};
-  records.forEach(r => {
-    const k = r.spotName || "不明";
-    if (!spotMap[k]) spotMap[k] = { count: 0, total: 0, records: [] };
-    spotMap[k].count++;
-    spotMap[k].total += r.amount || 0;
-    spotMap[k].records.push(r);
-  });
-  const spots = Object.entries(spotMap)
-    .map(([name, s]) => ({ name, count: s.count, total: s.total, avg: Math.round(s.total / s.count), records: s.records }))
-    .sort((a, b) => b.total - a.total);
-
-  const totalAmount = records.reduce((s, r) => s + (r.amount || 0), 0);
-  const totalCount  = records.length;
-
-  return (
-    <div>
-      {/* サマリー */}
-      <div style={{ display:"flex", gap:10, marginBottom:16 }}>
-        {[
-          { label:"総記録数", value:`${totalCount}件`, color:C.text },
-          { label:"累計金額", value:`${fmt(totalAmount)}円`, color:C.gold },
-          { label:"ポイント数", value:`${spots.length}箇所`, color:C.accentLight },
-        ].map(s => (
-          <div key={s.label} style={{ flex:1, backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 10px", textAlign:"center" }}>
-            <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>{s.label}</div>
-            <div style={{ fontSize:15, fontWeight:900, color:s.color }}>{s.value}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* ポイント別ランキング */}
-      <div style={{ fontSize:13, fontWeight:800, color:C.sub, marginBottom:10 }}>📍 営業ポイント別 稼ぎランキング</div>
-      {spots.map((s, i) => (
-        <div key={s.name} style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px", marginBottom:8 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
-            <div style={{ fontSize:18, fontWeight:900, color: i===0?C.gold:i===1?"#94a3b8":i===2?"#b45309":C.muted, width:28, textAlign:"center" }}>
-              #{i+1}
-            </div>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{s.name}</div>
-              <div style={{ fontSize:11, color:C.muted }}>{s.count}回記録</div>
-            </div>
-            <div style={{ textAlign:"right" }}>
-              <div style={{ fontSize:16, fontWeight:900, color:C.gold }}>{fmt(s.avg)}<span style={{ fontSize:10, color:C.muted }}>円/回</span></div>
-              <div style={{ fontSize:10, color:C.muted }}>合計 {fmt(s.total)}円</div>
-            </div>
-          </div>
-          {/* バー */}
-          <div style={{ height:4, backgroundColor:C.bg, borderRadius:99, overflow:"hidden" }}>
-            <div style={{ height:"100%", width:`${Math.round(s.total / spots[0].total * 100)}%`, backgroundColor: i===0?C.gold:C.accentLight, borderRadius:99 }}/>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export default function ReportList({ reports, onSelect, onEdit }) {
-  const [view, setView]   = useState("list"); // "list" | "monthly" | "spotAnalysis"
+  const [view, setView]   = useState("list"); // "list" | "monthly"
   const [filter, setFilter] = useState("all");
   const [sort, setSort] = useState("date");
   const avg = reports.length ? Math.round(reports.reduce((s,r)=>s+r.gross_sales,0)/reports.length) : 0;
@@ -541,16 +347,13 @@ export default function ReportList({ reports, onSelect, onEdit }) {
     <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
       {/* ビュー切り替えタブ */}
       <div style={{ display:"flex", gap:6, marginBottom:14, backgroundColor:C.card, borderRadius:12, padding:4, border:`1px solid ${C.border}` }}>
-        {[["list","📋 日報一覧"],["monthly","📅 月別統計"],["spotAnalysis","📊 分析"]].map(([v,l])=>(
+        {[["list","📋 日報一覧"],["monthly","📅 月別統計"]].map(([v,l])=>(
           <div key={v} onClick={()=>setView(v)} style={{ flex:1, textAlign:"center", padding:"8px 0", borderRadius:9, fontSize:12, fontWeight:view===v?700:400, backgroundColor:view===v?C.accentLight:C.surface, color:view===v?"#fff":C.muted, cursor:"pointer", transition:"all 0.15s" }}>{l}</div>
         ))}
       </div>
 
       {/* 月別統計ビュー */}
       {view === "monthly" && <MonthlyStats reports={reports}/>}
-
-      {/* 営業ポイント分析ビュー */}
-      {view === "spotAnalysis" && <SalesPointAnalysis />}
 
       {/* 日報一覧ビュー */}
       {view === "list" && <>

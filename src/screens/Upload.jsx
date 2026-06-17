@@ -232,6 +232,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   const [editingRideIdx, setEditingRideIdx] = useState(null); // null=非表示, -1=新規追加, 0以上=編集
   const [ocrProg, setOcrProg]   = useState(0);
   const [ocrError, setOcrError] = useState("");
+  const [isDragOver, setIsDragOver] = useState(false);
   const [matchData, setMatchData] = useState(null); // { ocrRides, manualRecords }
   const fileInputRef = useRef(null);
   const remaining = FREE_LIMIT - uploadCount;
@@ -620,17 +621,39 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         </div>
       </div>
 
-      {/* 撮影ボタン（タップ→ガイドモーダル） */}
+      {/* 撮影ボタン（タップ→ガイドモーダル、ドラッグ＆ドロップ対応） */}
       <div
         onClick={() => setShowGuide(true)}
-        onMouseEnter={e=>e.currentTarget.style.borderColor=C.accentLight}
-        onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}
-        style={{ border:`2px dashed ${C.border}`, borderRadius:14, padding:"32px 24px", textAlign:"center", cursor:"pointer", marginBottom:14, transition:"border-color 0.2s" }}
+        onMouseEnter={e => { if (!isDragOver) e.currentTarget.style.borderColor = C.accentLight; }}
+        onMouseLeave={e => { if (!isDragOver) e.currentTarget.style.borderColor = C.border; }}
+        onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
+        onDragEnter={e => { e.preventDefault(); setIsDragOver(true); }}
+        onDragLeave={e => { e.preventDefault(); setIsDragOver(false); }}
+        onDrop={e => {
+          e.preventDefault();
+          setIsDragOver(false);
+          const files = e.dataTransfer.files;
+          if (files && files.length > 0) {
+            handleFileSelect({ target: { files } });
+          }
+        }}
+        style={{
+          border: `2px dashed ${isDragOver ? C.accentLight : C.border}`,
+          borderRadius: 14,
+          padding: "32px 24px",
+          textAlign: "center",
+          cursor: "pointer",
+          marginBottom: 14,
+          transition: "border-color 0.2s",
+          backgroundColor: isDragOver ? C.accentLight + "11" : "transparent",
+        }}
       >
-        <div style={{ fontSize:44, marginBottom:12 }}>📄</div>
+        <div style={{ fontSize:44, marginBottom:12 }}>{isDragOver ? "📥" : "📄"}</div>
         <div style={{ fontSize:16, fontWeight:700, marginBottom:6 }}>日報を撮影・選択</div>
-        <div style={{ fontSize:12, color:C.muted, marginBottom:4 }}>JPEG / PNG / PDF 対応</div>
-        <div style={{ display:"inline-block", backgroundColor:C.accentLight+"22", color:C.accentLight, fontSize:11, fontWeight:700, padding:"4px 12px", borderRadius:99 }}>タップして撮影ガイドを確認 →</div>
+        <div style={{ fontSize:12, color:C.muted, marginBottom:4 }}>JPEG / PNG / PDF 対応 ・ ドラッグ＆ドロップ可</div>
+        <div style={{ display:"inline-block", backgroundColor:C.accentLight+"22", color:C.accentLight, fontSize:11, fontWeight:700, padding:"4px 12px", borderRadius:99 }}>
+          {isDragOver ? "ここにドロップ" : "タップして撮影ガイドを確認 →"}
+        </div>
       </div>
 
       <div style={{ display:"flex", alignItems:"center", gap:10, margin:"14px 0" }}>

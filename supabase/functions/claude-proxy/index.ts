@@ -14,7 +14,7 @@ serve(async (req) => {
     const apiKey = req.headers.get("apikey") || req.headers.get("Authorization");
     if (!apiKey) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
 
-    const { messages, system, max_tokens = 1024, model = "claude-haiku-4-5-20251001" } = await req.json();
+    const { messages, system, max_tokens = 1024 } = await req.json();
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: "messages is required" }), { status: 400, headers: corsHeaders });
@@ -33,7 +33,7 @@ serve(async (req) => {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model,
+        model: "claude-haiku-4-5-20251001",
         max_tokens,
         ...(system ? { system } : {}),
         messages,
