@@ -43,7 +43,7 @@ function buildForm(report) {
 }
 
 // ─── 日報詳細 / 編集モーダル ───
-export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) {
+export function ReportModal({ report, onClose, onUpdate, onDelete, startInEdit = false }) {
   const [mode, setMode] = useState(startInEdit ? "edit" : "view");
   const [form, setForm] = useState(() => startInEdit && report ? buildForm(report) : {});
   const [errors, setErrors] = useState({});
@@ -53,6 +53,7 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
   const [editingRideIdx, setEditingRideIdx] = useState(null);
   const [ridePointInput, setRidePointInput] = useState("");
   const [showRides, setShowRides] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   // SalesPointCard の手動乗車記録（localStorageから日付でフィルタ）
   const salesRecs = (() => {
     try {
@@ -257,9 +258,31 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
             </div>
           )}
 
-          <button onClick={onClose} style={{ width:"100%", padding:"14px 0", borderRadius:11, fontSize:15, fontWeight:800, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff", marginTop:18 }}>
-            ✕ 閉じる
-          </button>
+          {!confirmDelete ? (
+            <div style={{ display:"flex", gap:10, marginTop:18 }}>
+              {onDelete && (
+                <button onClick={() => setConfirmDelete(true)} style={{ flex:1, padding:"14px 0", borderRadius:11, fontSize:14, fontWeight:700, cursor:"pointer", border:`1px solid ${C.red}66`, backgroundColor:"transparent", color:C.red }}>
+                  🗑 削除
+                </button>
+              )}
+              <button onClick={onClose} style={{ flex:2, padding:"14px 0", borderRadius:11, fontSize:15, fontWeight:800, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff" }}>
+                ✕ 閉じる
+              </button>
+            </div>
+          ) : (
+            <div style={{ marginTop:18, backgroundColor:`${C.red}18`, border:`1px solid ${C.red}44`, borderRadius:12, padding:16 }}>
+              <div style={{ fontSize:14, fontWeight:700, color:C.red, marginBottom:4 }}>本当に削除しますか？</div>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:14 }}>削除した日報は元に戻せません</div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button onClick={() => setConfirmDelete(false)} style={{ flex:1, padding:"12px 0", borderRadius:10, fontSize:14, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.muted }}>
+                  キャンセル
+                </button>
+                <button onClick={() => onDelete?.(report.id)} style={{ flex:1, padding:"12px 0", borderRadius:10, fontSize:14, fontWeight:800, cursor:"pointer", border:"none", backgroundColor:C.red, color:"#fff" }}>
+                  削除する
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

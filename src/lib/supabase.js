@@ -130,6 +130,15 @@ export async function updateReport(id, updates) {
   return { data, error };
 }
 
+/** 日報を削除 */
+export async function deleteReport(id) {
+  const { error } = await supabase
+    .from("daily_reports")
+    .delete()
+    .eq("id", id);
+  return { error };
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 画像アップロード
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

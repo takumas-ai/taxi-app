@@ -20,6 +20,7 @@ import {
   fetchReports,
   insertReport,
   updateReport,
+  deleteReport,
   saveReferredBy,
   signInWithOAuth,
   resetPasswordForEmail,
@@ -890,6 +891,16 @@ export default function App() {
     }
   };
 
+  // 日報削除
+  const handleDeleteReport = async (id) => {
+    setReports(prev => prev.filter(r => r.id !== id));
+    setSelected(null);
+    setSelectedForEdit(false);
+    if (SUPABASE_READY && id) {
+      await deleteReport(id);
+    }
+  };
+
   // 通知をinfoタブで見たらバッジを消す / 設定以外に移動したらsectionリセット
   const handleSetTab = (newTab) => {
     if (newTab === "info" && !alertsSeen) {
@@ -957,7 +968,7 @@ export default function App() {
     <div key={themeVer} style={{ minHeight:"100vh", backgroundColor:C.bg, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text, overflowX:"hidden" }}>
       <Header user={user} tab={tab} setTab={handleSetTab} appMode={appMode} onModeChange={setAppMode} alertsSeen={alertsSeen} onNavigateSettings={handleNavigateSettings} onManageArea={()=>setShowAreaModal(true)} hasNewRanking={hasNewRanking && notif.dailyResult} />
       {renderScreen()}
-      <ReportModal key={selected ? `${selected.id}-${selectedForEdit}` : "none"} report={selected} onClose={()=>{setSelected(null);setSelectedForEdit(false);}} onUpdate={handleUpdateReport} startInEdit={selectedForEdit}/>
+      <ReportModal key={selected ? `${selected.id}-${selectedForEdit}` : "none"} report={selected} onClose={()=>{setSelected(null);setSelectedForEdit(false);}} onUpdate={handleUpdateReport} onDelete={handleDeleteReport} startInEdit={selectedForEdit}/>
       <TakuroFAB setTab={handleSetTab} />
       <BottomNav tab={tab} setTab={handleSetTab} userAreas={userAreas} alertsSeen={alertsSeen}/>
       {showAreaModal && <AreaSettingModal userAreas={userAreas} onSave={areas=>{
