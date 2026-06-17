@@ -202,6 +202,7 @@ function LoginScreen({ onLogin, onGuestLogin }) {
         plan: profile?.plan || "free",
         uploadCount: profile?.monthly_upload_count || 0,
         areas: profile?.areas || [],
+        closing_day: profile?.closing_day ?? null,
         _returningUser: true,
       });
     }
@@ -913,12 +914,14 @@ export default function App() {
 
   const handleLogout = async () => {
     if (SUPABASE_READY) await signOut();
-    // 同意・オンボーディングフラグはログアウト後も保持
-    const consentFlag = localStorage.getItem("taxi_consent_done");
-    const onboardingFlag = localStorage.getItem("taxi_onboarding_done");
+    // 同意・オンボーディング・締日フラグはログアウト後も保持
+    const consentFlag     = localStorage.getItem("taxi_consent_done");
+    const onboardingFlag  = localStorage.getItem("taxi_onboarding_done");
+    const closingFlag     = localStorage.getItem("taxi_closing_prompted");
     localStorage.clear();
-    if (consentFlag) localStorage.setItem("taxi_consent_done", consentFlag);
+    if (consentFlag)    localStorage.setItem("taxi_consent_done", consentFlag);
     if (onboardingFlag) localStorage.setItem("taxi_onboarding_done", onboardingFlag);
+    if (closingFlag)    localStorage.setItem("taxi_closing_prompted", closingFlag);
     setUser(null);
     setReports(INITIAL_REPORTS);
   };
