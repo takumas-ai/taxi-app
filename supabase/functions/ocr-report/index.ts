@@ -18,7 +18,7 @@ const REPORT_OCR_PROMPT = `あなたはタクシー日報OCRの専門AIです。
 
 | 出力フィールド | よく使われる欄名・手がかり |
 |---|---|
-| gross_sales | 運収 / 総営収 / 合計金額 / 総売上 / 運収合計 / 売上合計（「税込運収」より「運収」を優先） |
+| gross_sales | 税込運収 / 税込売上 / 税込合計 ※「税込」と明記された値を最優先。なければ 運収 / 総営収 / 合計金額 |
 | cash_sales | 現金 / 現収 / 現金売上 / 現金運収 |
 | card_sales | カード / クレジット / カード売上 / カード運収 |
 | app_sales | アプリ / GO / S.RIDE / 配車アプリ / Uber |
@@ -163,14 +163,24 @@ serve(async (req) => {
     }
 
     const text = result.content?.[0]?.text ?? "{}";
-    const cleaned = text.replace(/```json\n?|\n?```/g, "").trim();
+    console.log("[ocr-report] raw text:", text.slice(0, 400));
+
+    // JSON抽出: マークダウンfence付き・余計なテキスト混在でも対応
+    let cleaned = text.trim();
+    const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch) {
+      cleaned = fenceMatch[1].trim();
+    } else {
+      const objMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (objMatch) cleaned = objMatch[0];
+    }
 
     let json: Record<string, unknown>;
     try {
       json = JSON.parse(cleaned);
     } catch {
-      console.error("[ocr-report] JSON parse error:", cleaned.slice(0, 200));
-      return new Response(JSON.stringify({ error: "AIの返答をパースできませんでした" }), { status: 422, headers: corsHeaders });
+      console.error("[ocr-report] JSON parse error. cleaned:", cleaned.slice(0, 300));
+      return new Response(JSON.stringify({ error: "AIの返答をパースできませんでした", raw: text.slice(0, 200) }), { status: 422, headers: corsHeaders });
     }
 
     // 距離の後処理: 1シフトで500km超は累積メーター誤読なので無効化
