@@ -3,7 +3,6 @@ import { C, fmt, occ, dow, hourly, FREE_LIMIT } from "../lib/constants";
 import { generateReportComment, runReportOCR, runReportOCRP2 } from "../lib/ai";
 import { Card, Btn, ProgressBar } from "../components/UI";
 import { RideMatchModal } from "../components/RideMatchModal";
-import { WORK_AREAS_BY_PARENT } from "../data/mockData";
 import { ZONE_AREAS } from "../data/trafficZones";
 import { supabase } from "../lib/supabase";
 import { validateImageFile, validateReportForm, sanitizeReportData } from "../lib/validate";

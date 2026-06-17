@@ -41,30 +41,6 @@ async function callClaude(prompt, maxTokens = 1000) {
   return data.content?.[0]?.text ?? data.text ?? "";
 }
 
-/**
- * OCR専用: 画像をBase64で送り、JSON文字列を返す
- * Edge Function "ocr-report" に画像データを送信
- */
-async function callOCR(imageBase64, mimeType, prompt) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
-
-  const res = await fetch(`${EDGE_BASE}/ocr-report`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { "Authorization": `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ image: imageBase64, mime_type: mimeType, prompt }),
-  });
-
-  if (!res.ok) {
-    console.error("[ai.js] OCR Edge Function エラー:", res.status, await res.text());
-    return null;
-  }
-  return await res.json();  // { result: {...OCRデータ}, raw: "..." }
-}
-
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 日報のAIコメント生成
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -155,83 +131,58 @@ export async function runShiftOCR(imageBase64, mimeType) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // OCRプロンプト定数（Edge Function 側でも使用）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-export const REPORT_OCR_PROMPT = `あなたはタクシー日報OCRシステムです。画像を丁寧に観察し、JSONのみ返してください。前置き・説明・マークダウン不要。
+// 汎用タクシー日報OCRプロンプト（会社フォーマット自動検出）
+export const REPORT_OCR_PROMPT = `あなたはタクシー日報OCRの専門AIです。
+画像を解析し、JSONのみを返してください。前置き・説明・マークダウン不要。
 
-## 会社別フォーマット
+どんな会社の日報でも、以下の対応表を使って柔軟にマッピングしてください:
 
-### グリーンキャブ（日報 I）の読み方
-画像に「グリーンキャブ」または「日報Ⅰ」「日報 I」と書かれていればこのフォーマット。
+| 出力フィールド | よく使われる欄名 |
+|---|---|
+| gross_sales | 税込運収 / 総営収 / 合計金額 / 売上合計 |
+| cash_sales | 現金 / 現収 / 現金売上 |
+| card_sales | カード / クレジット / カード売上 |
+| app_sales | アプリ / GO / S.RIDE / DiDi / Uber |
+| highway_fee | 高速納金 / 高速料金 / 高速代 |
+| ride_count | 回数 / 乗車回数 / 営業回数 / 件数 |
+| total_distance | 走行粁 / 走行距離 / 総走行 |
+| occupied_distance | 実車距離 / 実車粁（なければnull） |
+| clock_in | 出庫時刻 / 出庫 / 出発 |
+| clock_out | 帰庫時刻 / 帰庫 / 到着 |
 
-**ヘッダー行（最上部）**
-- 日付 → report_date（"YYYY-MM-DD"）
-- 出庫日時 → clock_in（"HH:MM"）
-- 帰庫日時 → clock_out（"HH:MM"）
-- 乗務員氏名 → driver_name
-- 乗務員コード → driver_code
+乗車記録テーブルが読み取れる場合は全行をridesに追加。
+「休」と書かれた行は break_times に追加（{ "start":"HH:MM", "end":"HH:MM" }）。
+乗車地・降車地は丁目・番地まで正確に読み取ること。
 
-**右側の金額ボックス（最重要）**
-右上に縦並びのボックスがある。上から順に読む:
-- 「税込運収」の右の数字 → gross_sales（例: 22,300 → 22300）
-- 「高速納金」の右の数字 → highway_fee（空欄なら0）
-- 「納金額」の右の数字 → payment_amount
-- 「消費税」の右の数字 → tax_amount
-- 「運収」の右の数字 → net_sales（税抜き運収）
+出庫・帰庫が読み取れたら work_hours を計算（日付またぎ対応、小数第1位）。
 
-**集計表の差引行**
-表の左側に帰庫/出庫/差引の3行がある。差引行を読む:
-- 走行粁（走行キロ）の列 → total_distance
-- 実車粁（実車キロ）の列 → occupied_distance（列がなければnull）
-- 回数の列 → ride_count（この日の総乗車回数）
-
-**乗車記録テーブル**
-「No | 乗 | 降 | 乗車地 | 降車地 | 経由地 | 営業Km | 人員 | 金額 | 現収 | 未収 | 備考」の表を全行読む。
-
-「休」と書かれた行は休憩: その行の時刻を "HH:MM-HH:MM" として break_times に追加
-通常の乗車行: rides 配列に追加
-
-乗車地・降車地はできる限り正確に読み取る（丁目・番地まで含める）。
-例: "新宿区新宿7丁目" や "港区六本木5-3" などそのまま記録する。
-
-### 美松交通フォーマット
-- 簡易版: 合計金額列の合計 → gross_sales
-- フル版: 「総営収」 → gross_sales
-
-## 出力JSON
 {
-  "company": "会社名",
+  "company": "会社名またはnull",
   "driver_name": "氏名またはnull",
-  "driver_code": "乗務員コードまたはnull",
   "report_date": "YYYY-MM-DD",
-  "clock_in": "HH:MM",
-  "clock_out": "HH:MM",
-  "gross_sales": 整数,
-  "net_sales": 整数またはnull,
-  "tax_amount": 整数またはnull,
-  "highway_fee": 整数,
-  "payment_amount": 整数またはnull,
-  "ride_count": 整数,
+  "clock_in": "HH:MM またはnull",
+  "clock_out": "HH:MM またはnull",
+  "work_hours": 小数またはnull,
+  "gross_sales": 整数またはnull,
+  "cash_sales": 整数またはnull,
+  "card_sales": 整数またはnull,
+  "app_sales": 整数またはnull,
+  "highway_fee": 整数またはnull,
+  "ride_count": 整数またはnull,
   "total_distance": 整数またはnull,
   "occupied_distance": 整数またはnull,
-  "break_times": [
-    { "start": "HH:MM", "end": "HH:MM" }
-  ],
-  "rides": [
-    {
-      "no": 番号,
-      "pickup_time": "HH:MM",
-      "dropoff_time": "HH:MM",
-      "pickup_area": "正規化済み乗車地",
-      "dropoff_area": "正規化済み降車地",
-      "km": 小数またはnull,
-      "passengers": 整数,
-      "amount": 整数,
-      "cash": 整数またはnull,
-      "uncollected": 整数またはnull,
-      "note": "備考またはnull"
-    }
-  ],
-  "work_area": null,
-  "format_type": "greencab|mismatsu_simple|mismatsu_full|unknown",
+  "break_times": [{ "start": "HH:MM", "end": "HH:MM" }],
+  "rides": [{
+    "no": 番号,
+    "pickup_time": "HH:MM",
+    "dropoff_time": "HH:MM",
+    "pickup_area": "乗車地",
+    "dropoff_area": "降車地",
+    "km": 小数またはnull,
+    "passengers": 整数,
+    "amount": 整数,
+    "note": "備考またはnull"
+  }],
   "confidence": 0〜100,
   "notes": "読み取れなかった項目・特記事項"
 }`;
