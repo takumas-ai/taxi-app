@@ -34,7 +34,7 @@ export default function AiAdviceCard({ reports }) {
         onClick={toggle}
         style={{ display:"flex", alignItems:"center", gap:10, padding:"13px 16px", cursor:"pointer", userSelect:"none" }}
       >
-        <span style={{ fontSize:20 }}>🤖</span>
+        <span style={{ fontSize:20 }}>🦉</span>
         <div style={{ flex:1 }}>
           <div style={{ fontSize:13, fontWeight:800, color:C.text }}>AIアドバイス</div>
           <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>{dateLabel}の記録をもとに分析</div>

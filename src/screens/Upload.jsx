@@ -564,7 +564,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
             {wantAiAdvice && <span style={{ color:"#fff", fontSize:13, fontWeight:900, lineHeight:1 }}>✓</span>}
           </div>
           <div>
-            <div style={{ fontSize:13, fontWeight:700, color: wantAiAdvice ? C.accentLight : C.text }}>🤖 AIアドバイスをもらう</div>
+            <div style={{ fontSize:13, fontWeight:700, color: wantAiAdvice ? C.accentLight : C.text }}>🦉 AIアドバイスをもらう</div>
             <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>データを分析して今後のヒントをお届け（任意）</div>
           </div>
         </div>
