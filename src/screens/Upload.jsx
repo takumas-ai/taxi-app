@@ -50,6 +50,102 @@ function calcBreakHours(breakTimes) {
   return String(Math.round(total / 60 * 10) / 10);
 }
 
+// ━━━ 乗車記録編集モーダル ━━━━━━━━━━━━━━━━━━━━━━━━
+const PAYMENT_OPTIONS = ["現金", "カード", "GO", "S.RIDE", "DiDi", "Uber", "未収", "その他"];
+const EMPTY_RIDE = { pickup_time:"", dropoff_time:"", pickup_area:"", dropoff_area:"", amount:"", passengers:1, payment:"現金", note:"" };
+
+function RideEditModal({ ride, index, onSave, onDelete, onClose }) {
+  const [r, setR] = useState({
+    pickup_time:  ride.pickup_time  ?? "",
+    dropoff_time: ride.dropoff_time ?? "",
+    pickup_area:  ride.pickup_area  ?? "",
+    dropoff_area: ride.dropoff_area ?? "",
+    amount:       ride.amount       != null ? String(ride.amount) : "",
+    passengers:   ride.passengers   ?? 1,
+    payment:      ride.payment ?? (ride.cash != null ? "現金" : ride.note?.includes("カード") ? "カード" : "現金"),
+    note:         ride.note         ?? "",
+  });
+  const set = (k, v) => setR(p => ({ ...p, [k]: v }));
+  const isNew = index === -1;
+
+  return (
+    <div style={{ position:"fixed", inset:0, backgroundColor:"#000000bb", zIndex:300, display:"flex", alignItems:"flex-end" }} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:"20px 20px 40px", maxHeight:"90vh", overflowY:"auto" }}>
+        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 16px" }}/>
+        <div style={{ fontSize:16, fontWeight:800, marginBottom:16, color:C.text }}>
+          {isNew ? "🚕 乗車記録を追加" : `🚕 乗車記録 #${index + 1} を編集`}
+        </div>
+
+        {/* 時刻 */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+          {[["乗車時刻","pickup_time"],["降車時刻","dropoff_time"]].map(([label, key]) => (
+            <div key={key}>
+              <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>{label}</div>
+              <input type="time" value={r[key]} onChange={e=>set(key,e.target.value)}
+                style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}/>
+            </div>
+          ))}
+        </div>
+
+        {/* 乗車地・降車地 */}
+        {[["乗車地","pickup_area","例: 新宿区新宿3丁目"],["降車地","dropoff_area","例: 渋谷区道玄坂1丁目"]].map(([label,key,ph]) => (
+          <div key={key} style={{ marginBottom:12 }}>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>{label}</div>
+            <input type="text" value={r[key]} onChange={e=>set(key,e.target.value)} placeholder={ph}
+              style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}/>
+          </div>
+        ))}
+
+        {/* 金額・人数 */}
+        <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:10, marginBottom:12 }}>
+          <div>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>運賃（円）</div>
+            <input type="number" value={r.amount} onChange={e=>set("amount",e.target.value)} placeholder="1800"
+              style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}/>
+          </div>
+          <div>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>人数</div>
+            <input type="number" min="1" max="9" value={r.passengers} onChange={e=>set("passengers",parseInt(e.target.value)||1)}
+              style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}/>
+          </div>
+        </div>
+
+        {/* 支払い方法 */}
+        <div style={{ marginBottom:12 }}>
+          <div style={{ fontSize:11, color:C.muted, marginBottom:6 }}>支払い方法</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+            {PAYMENT_OPTIONS.map(opt => (
+              <div key={opt} onClick={()=>set("payment",opt)} style={{ padding:"6px 12px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer", border:`1.5px solid ${r.payment===opt?C.accentLight:C.border}`, backgroundColor:r.payment===opt?C.accentLight+"22":"transparent", color:r.payment===opt?C.accentLight:C.muted, transition:"all 0.15s" }}>{opt}</div>
+            ))}
+          </div>
+        </div>
+
+        {/* 備考 */}
+        <div style={{ marginBottom:20 }}>
+          <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>備考（任意）</div>
+          <input type="text" value={r.note} onChange={e=>set("note",e.target.value)} placeholder="高速使用など"
+            style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}/>
+        </div>
+
+        <button onClick={()=>onSave({ ...r, amount: parseInt(r.amount)||0, passengers: parseInt(r.passengers)||1 })}
+          style={{ width:"100%", padding:"14px 0", borderRadius:12, fontSize:15, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff", marginBottom:10 }}>
+          {isNew ? "追加する" : "保存する"}
+        </button>
+        {!isNew && (
+          <button onClick={onDelete}
+            style={{ width:"100%", padding:"12px 0", borderRadius:12, fontSize:13, fontWeight:600, cursor:"pointer", border:`1px solid ${C.red}44`, backgroundColor:"transparent", color:C.red, marginBottom:10 }}>
+            この記録を削除する
+          </button>
+        )}
+        <button onClick={onClose}
+          style={{ width:"100%", padding:"12px 0", borderRadius:12, fontSize:13, fontWeight:600, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.muted }}>
+          キャンセル
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // 撮影ガイドのチェックリスト
 const SHOT_GUIDE = [
   { icon:"📄", ok:"平らな場所に置く",            ng:"手で持ったまま撮らない"         },
@@ -112,6 +208,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [ocrLines, setOcrLines] = useState([]);
+  const [editingRideIdx, setEditingRideIdx] = useState(null); // null=非表示, -1=新規追加, 0以上=編集
   const [ocrProg, setOcrProg]   = useState(0);
   const [ocrError, setOcrError] = useState("");
   const [matchData, setMatchData] = useState(null); // { ocrRides, manualRecords }
@@ -391,22 +488,68 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
             <textarea value={form.trouble_note} onChange={e=>setForm(p=>({...p,trouble_note:e.target.value}))} placeholder="特記事項があれば（任意）" rows={2} style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:13, outline:"none", resize:"none" }}/>
           </div>
         </Card>
-        {/* 乗車記録プレビュー */}
-        {form.rides && form.rides.length > 0 && (
-          <Card style={{ marginTop:10, padding:"10px 12px" }}>
-            <div style={{ fontSize:12, color:C.accentLight, fontWeight:700, marginBottom:8 }}>🚕 乗車記録 {form.rides.length}件（エリア統計に使用）</div>
-            <div style={{ maxHeight:180, overflowY:"auto" }}>
-              {form.rides.map((r, i) => (
-                <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 0", borderBottom:i<form.rides.length-1?`1px solid ${C.border}`:"none", fontSize:11 }}>
-                  <span style={{ color:C.muted, width:22, flexShrink:0 }}>#{r.no ?? i+1}</span>
-                  <span style={{ flex:1, color:C.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                    {r.pickup_area ?? "?"} → {r.dropoff_area ?? "?"}
-                  </span>
-                  <span style={{ color:C.green, fontWeight:700, marginLeft:8, flexShrink:0 }}>¥{(r.amount ?? 0).toLocaleString()}</span>
+        {/* 乗車記録 — 編集・削除・追加 */}
+        <Card style={{ marginTop:10, padding:"10px 12px" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+            <div style={{ fontSize:12, color:C.accentLight, fontWeight:700 }}>
+              🚕 乗車記録 {(form.rides||[]).length}件
+            </div>
+            <button onClick={()=>setEditingRideIdx(-1)}
+              style={{ padding:"5px 12px", borderRadius:20, fontSize:11, fontWeight:700, cursor:"pointer", border:`1.5px solid ${C.accentLight}`, backgroundColor:`${C.accentLight}22`, color:C.accentLight }}>
+              ＋ 追加
+            </button>
+          </div>
+          {(form.rides||[]).length === 0 ? (
+            <div style={{ textAlign:"center", padding:"16px 0", color:C.muted, fontSize:12 }}>乗車記録なし（＋追加で手動入力できます）</div>
+          ) : (
+            <div>
+              {(form.rides||[]).map((r, i) => (
+                <div key={i} onClick={()=>setEditingRideIdx(i)}
+                  style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 0", borderBottom:i<form.rides.length-1?`1px solid ${C.border}`:"none", cursor:"pointer" }}>
+                  <span style={{ color:C.muted, fontSize:10, width:20, flexShrink:0 }}>#{i+1}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:12, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {r.pickup_area || "?"} → {r.dropoff_area || "?"}
+                    </div>
+                    <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>
+                      {r.pickup_time && r.dropoff_time ? `${r.pickup_time}〜${r.dropoff_time}` : ""}
+                      {r.payment ? `　${r.payment}` : ""}
+                    </div>
+                  </div>
+                  <span style={{ color:C.green, fontWeight:700, fontSize:13, flexShrink:0 }}>¥{(r.amount ?? 0).toLocaleString()}</span>
+                  <span style={{ color:C.muted, fontSize:16, paddingLeft:4 }}>›</span>
                 </div>
               ))}
             </div>
-          </Card>
+          )}
+        </Card>
+        {/* 乗車記録編集モーダル */}
+        {editingRideIdx !== null && (
+          <RideEditModal
+            ride={editingRideIdx === -1 ? EMPTY_RIDE : (form.rides||[])[editingRideIdx]}
+            index={editingRideIdx}
+            onSave={saved => {
+              setForm(p => {
+                const rides = [...(p.rides||[])];
+                if (editingRideIdx === -1) {
+                  rides.push({ ...saved, no: rides.length + 1 });
+                } else {
+                  rides[editingRideIdx] = { ...rides[editingRideIdx], ...saved };
+                }
+                return { ...p, rides };
+              });
+              setEditingRideIdx(null);
+            }}
+            onDelete={() => {
+              setForm(p => {
+                const rides = (p.rides||[]).filter((_,i) => i !== editingRideIdx)
+                  .map((r,i) => ({ ...r, no: i+1 }));
+                return { ...p, rides };
+              });
+              setEditingRideIdx(null);
+            }}
+            onClose={() => setEditingRideIdx(null)}
+          />
         )}
         {form.total_distance && form.occupied_distance && parseInt(form.total_distance)>0 && (
           <Card style={{ padding:12, textAlign:"center" }}><span style={{ fontSize:12, color:C.muted }}>実車率（自動計算）: </span><span style={{ fontSize:16, fontWeight:700, color:C.green }}>{Math.round(parseInt(form.occupied_distance)/parseInt(form.total_distance)*100)}%</span></Card>
