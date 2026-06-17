@@ -377,12 +377,13 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         }
       } catch { /* ignore */ }
 
+      const pos = (v) => (v != null && Number(v) >= 0) ? String(v) : ""; // マイナス値は除去
       setForm({
         date:               reportDate,
-        gross_sales:        f.gross_sales        != null ? String(f.gross_sales)        : "",
-        cash_sales:         f.cash_sales         != null ? String(f.cash_sales)         : "",
-        card_sales:         f.card_sales         != null ? String(f.card_sales)         : "",
-        app_sales:          f.app_sales          != null ? String(f.app_sales)          : "",
+        gross_sales:        pos(f.gross_sales),
+        cash_sales:         pos(f.cash_sales),
+        card_sales:         pos(f.card_sales),
+        app_sales:          pos(f.app_sales),
         ride_count:         f.ride_count         != null ? String(f.ride_count)         : rides.length > 0 ? String(rides.length) : "",
         total_distance:     f.total_distance     != null ? String(f.total_distance)     : "",
         occupied_distance:  f.occupied_distance  != null ? String(f.occupied_distance)
@@ -581,16 +582,16 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         <Card>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
             {F({label:"日付", fk:"date", type:"date", required:true, span:2})}
-            {F({label:"売上（税込）（円）", fk:"gross_sales", required:true, ph:"62000"})}
-            {F({label:"営業回数（回）", fk:"ride_count", ph:"30"})}
-            {F({label:"売上（税抜）（円）", fk:"cash_sales", ph:"37000"})}
-            {F({label:"カード売上（円）", fk:"card_sales", ph:"18000"})}
-            {F({label:"配車アプリ（円）", fk:"app_sales", ph:"7000", span:2})}
-            {F({label:"走行距離（km）", fk:"total_distance", ph:"300"})}
-            {F({label:"実車距離（km）", fk:"occupied_distance", ph:"155"})}
-            {F({label:"勤務時間（h）", fk:"work_hours", ph:"13.5"})}
-            {F({label:"休憩時間（h）", fk:"break_hours", ph:"1.0"})}
-            {F({label:"高速料金（円）", fk:"highway_fee", ph:"800", span:2})}
+            {F({label:"売上（税込）（円）", fk:"gross_sales", required:true})}
+            {F({label:"営業回数（回）", fk:"ride_count"})}
+            {F({label:"売上（税抜）（円）", fk:"cash_sales"})}
+            {F({label:"カード売上（円）", fk:"card_sales"})}
+            {F({label:"配車アプリ（円）", fk:"app_sales", span:2})}
+            {F({label:"走行距離（km）", fk:"total_distance"})}
+            {F({label:"実車距離（km）", fk:"occupied_distance"})}
+            {F({label:"勤務時間（h）", fk:"work_hours"})}
+            {F({label:"休憩時間（h）", fk:"break_hours"})}
+            {F({label:"高速料金（円）", fk:"highway_fee", span:2})}
           </div>
           <div style={{ marginTop:12 }}>
             <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>事故・トラブル備考</div>

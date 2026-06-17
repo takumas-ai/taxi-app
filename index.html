@@ -29,6 +29,10 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { background: #0A0F1E; color: #F1F5F9; }
       #root { min-height: 100vh; }
+      /* 数字入力のスピンボタン（↑↓矢印）を非表示 */
+      input[type=number]::-webkit-inner-spin-button,
+      input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+      input[type=number] { -moz-appearance: textfield; appearance: textfield; }
     </style>
   </head>
   <body>
