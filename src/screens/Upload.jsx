@@ -597,9 +597,38 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
     );
   }
 
-  // 選択画面
+  // 選択画面（画面全体をドロップゾーンにする）
+  const handlePageDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const fileArr = Array.from(e.dataTransfer?.files || []);
+    if (fileArr.length > 0) handleFileSelect({ target: { files: fileArr } });
+  };
+
   return (
-    <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
+    <div
+      onDragOver={e => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); }}
+      onDragEnter={e => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); }}
+      onDragLeave={e => { e.preventDefault(); if (!e.currentTarget.contains(e.relatedTarget)) setIsDragOver(false); }}
+      onDrop={handlePageDrop}
+      style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px", position:"relative" }}
+    >
+      {/* ドラッグ中オーバーレイ */}
+      {isDragOver && (
+        <div style={{
+          position:"fixed", inset:0, zIndex:9999,
+          backgroundColor: C.accentLight + "22",
+          border: `3px dashed ${C.accentLight}`,
+          display:"flex", alignItems:"center", justifyContent:"center",
+          pointerEvents:"none",
+        }}>
+          <div style={{ textAlign:"center" }}>
+            <div style={{ fontSize:64, marginBottom:12 }}>📥</div>
+            <div style={{ fontSize:20, fontWeight:800, color:C.accentLight }}>ここにドロップ</div>
+          </div>
+        </div>
+      )}
       <div style={{ backgroundColor:C.goldGlow, border:`1px solid ${C.gold}44`, borderRadius:12, padding:"10px 14px", marginBottom:14 }}>
         <span style={{ fontSize:13, color:C.sub }}>今月残り <strong style={{ color:C.gold }}>{remaining}件</strong> 無料</span>
       </div>
