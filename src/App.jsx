@@ -61,34 +61,45 @@ function PWAInstallBanner() {
   const deferredPrompt    = useRef(null);
 
   useEffect(() => {
-    // スタンドアロン（PWA）で実行中 or すでに非表示にした → 何もしない
     if (window.matchMedia("(display-mode: standalone)").matches) return;
-    if (localStorage.getItem("taxi_pwa_dismissed")) return;
+
+    const COOLDOWN_DAYS = 7;
+    const stored = localStorage.getItem("taxi_pwa_dismissed");
+    if (stored) {
+      // "forever" = 永久非表示、数値 = タイムスタンプ（7日クールダウン）
+      if (stored === "forever") return;
+      const shownAt = parseInt(stored, 10);
+      if (Date.now() - shownAt < COOLDOWN_DAYS * 24 * 60 * 60 * 1000) return;
+    }
 
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !("MSStream" in window);
     if (ios) {
-      // iOS Safari には beforeinstallprompt がないので手動案内
-      const t = setTimeout(() => { setIsIOS(true); setShow(true); }, 4000);
+      const t = setTimeout(() => {
+        localStorage.setItem("taxi_pwa_dismissed", String(Date.now())); // 表示時点でタイムスタンプ記録
+        setIsIOS(true);
+        setShow(true);
+      }, 4000);
       return () => clearTimeout(t);
     }
 
-    // Android Chrome: beforeinstallprompt をキャッチ
     const onPrompt = (e) => {
       e.preventDefault();
       deferredPrompt.current = e;
+      localStorage.setItem("taxi_pwa_dismissed", String(Date.now())); // 表示時点でタイムスタンプ記録
       setShow(true);
     };
     window.addEventListener("beforeinstallprompt", onPrompt);
     return () => window.removeEventListener("beforeinstallprompt", onPrompt);
   }, []);
 
-  const dismiss = () => { setShow(false); localStorage.setItem("taxi_pwa_dismissed", "1"); };
+  // × を押したら永久非表示
+  const dismiss = () => { setShow(false); localStorage.setItem("taxi_pwa_dismissed", "forever"); };
 
   const install = async () => {
     if (!deferredPrompt.current) return;
     deferredPrompt.current.prompt();
     const { outcome } = await deferredPrompt.current.userChoice;
-    if (outcome === "accepted") localStorage.setItem("taxi_pwa_dismissed", "1");
+    if (outcome === "accepted") localStorage.setItem("taxi_pwa_dismissed", "forever");
     setShow(false);
   };
 
