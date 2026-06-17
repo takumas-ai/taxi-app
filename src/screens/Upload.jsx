@@ -626,15 +626,21 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         onClick={() => setShowGuide(true)}
         onMouseEnter={e => { if (!isDragOver) e.currentTarget.style.borderColor = C.accentLight; }}
         onMouseLeave={e => { if (!isDragOver) e.currentTarget.style.borderColor = C.border; }}
-        onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
-        onDragEnter={e => { e.preventDefault(); setIsDragOver(true); }}
-        onDragLeave={e => { e.preventDefault(); setIsDragOver(false); }}
+        onDragOver={e => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); }}
+        onDragEnter={e => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); }}
+        onDragLeave={e => {
+          e.preventDefault();
+          // 子要素への移動では false にしない（真にゾーン外に出たときだけ）
+          if (!e.currentTarget.contains(e.relatedTarget)) setIsDragOver(false);
+        }}
         onDrop={e => {
           e.preventDefault();
+          e.stopPropagation();
           setIsDragOver(false);
-          const files = e.dataTransfer.files;
-          if (files && files.length > 0) {
-            handleFileSelect({ target: { files } });
+          // dataTransfer.files はイベント後に消えるので先に配列化
+          const fileArr = Array.from(e.dataTransfer.files || []);
+          if (fileArr.length > 0) {
+            handleFileSelect({ target: { files: fileArr } });
           }
         }}
         style={{
