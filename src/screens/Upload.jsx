@@ -218,22 +218,39 @@ function ShotGuideModal({ onShoot, onCancel }) {
   );
 }
 
+// OCR結果をlocalStorageに保存・復元（タブ切り替えで消えないように）
+const OCR_DRAFT_KEY = "taxi_ocr_draft";
+function saveDraft(step, form, ocrLines) {
+  if (step === "select" || step === "ocring") {
+    localStorage.removeItem(OCR_DRAFT_KEY);
+  } else {
+    try { localStorage.setItem(OCR_DRAFT_KEY, JSON.stringify({ step, form, ocrLines })); } catch {}
+  }
+}
+function loadDraft() {
+  try { return JSON.parse(localStorage.getItem(OCR_DRAFT_KEY) || "null"); } catch { return null; }
+}
+
 export default function UploadScreen({ uploadCount, onSave, reports, user }) {
-  const [step, setStep]     = useState("select");
+  const draft = loadDraft();
+  const [step, setStep]     = useState(draft?.step || "select");
   const [isManual, setIsManual] = useState(false);
   const [isClosure, setIsClosure] = useState(false);
   const [closureDate, setClosureDate] = useState(() => new Date().toISOString().slice(0,10));
   const [closureCount, setClosureCount] = useState(0);
   const [showGuide, setShowGuide] = useState(false);
-  const [form, setForm]     = useState(EMPTY);
+  const [form, setForm]     = useState(draft?.form || EMPTY);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
-  const [ocrLines, setOcrLines] = useState([]);
+  const [ocrLines, setOcrLines] = useState(draft?.ocrLines || []);
   const [editingRideIdx, setEditingRideIdx] = useState(null); // null=非表示, -1=新規追加, 0以上=編集
   const [ocrProg, setOcrProg]   = useState(0);
   const [ocrError, setOcrError] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
   const [matchData, setMatchData] = useState(null); // { ocrRides, manualRecords }
+
+  // step/form/ocrLines が変わったらlocalStorageに保存
+  useEffect(() => { saveDraft(step, form, ocrLines); }, [step, form, ocrLines]);
   const fileInputRef = useRef(null);
   const remaining = FREE_LIMIT - uploadCount;
 
@@ -437,7 +454,9 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
     // ユーザーがリクエストした場合のみAIコメント生成
     const comment = wantAiAdvice ? await generateReportComment(data, reports) : "";
     data.ai_comment = comment;
-    setSaving(false); onSave(data); setForm(EMPTY); setIsManual(false); setWantAiAdvice(false); setStep("done");
+    setSaving(false); onSave(data); setForm(EMPTY); setIsManual(false); setWantAiAdvice(false);
+    localStorage.removeItem(OCR_DRAFT_KEY); // 保存完了でdraftクリア
+    setStep("done");
   };
 
   const F = ({label,fk,type="number",ph="",required=false,span=1}) => (
