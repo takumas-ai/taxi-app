@@ -130,6 +130,7 @@ export function sanitizeReportData(form) {
     break_hours:        clampReportValue("break_hours",       parseFloat(form.break_hours)    || 0),
     trouble_note:       sanitizeText(form.trouble_note, 1000),
     work_area:          sanitizeText(form.work_area, 50),
+    dispatch_type:      sanitizeText(form.dispatch_type || "", 50),
     ai_comment:         "",
   };
 }

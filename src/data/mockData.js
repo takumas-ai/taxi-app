@@ -3,82 +3,23 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 // ─────────────────────────────────────────
-// 区・市レベルのエリアマスタ（単価統計用）
-// 親エリア（AREA_MASTER）→ 子エリア（WORK_AREA_MASTER）の2段構造
+// エリアマスタ（全国交通圏対応版）
+// trafficZones.js から生成
 // ─────────────────────────────────────────
-export const WORK_AREA_MASTER = {
-  // 東京都心 → 23区
-  "港区":    { parent:"東京都心", color:"#8B5CF6" },
-  "渋谷区":  { parent:"東京都心", color:"#8B5CF6" },
-  "新宿区":  { parent:"東京都心", color:"#8B5CF6" },
-  "千代田区":{ parent:"東京都心", color:"#8B5CF6" },
-  "中央区":  { parent:"東京都心", color:"#8B5CF6" },
-  "品川区":  { parent:"東京都心", color:"#8B5CF6" },
-  "目黒区":  { parent:"東京都心", color:"#8B5CF6" },
-  "世田谷区":{ parent:"東京都心", color:"#8B5CF6" },
-  "台東区":  { parent:"東京都心", color:"#8B5CF6" },
-  "墨田区":  { parent:"東京都心", color:"#8B5CF6" },
-  "江東区":  { parent:"東京都心", color:"#8B5CF6" },
-  "豊島区":  { parent:"東京都心", color:"#8B5CF6" },
-  "文京区":  { parent:"東京都心", color:"#8B5CF6" },
-  "荒川区":  { parent:"東京都心", color:"#8B5CF6" },
-  "北区":    { parent:"東京都心", color:"#8B5CF6" },
-  "足立区":  { parent:"東京都心", color:"#8B5CF6" },
-  "葛飾区":  { parent:"東京都心", color:"#8B5CF6" },
-  "江戸川区":{ parent:"東京都心", color:"#8B5CF6" },
-  "板橋区":  { parent:"東京都心", color:"#8B5CF6" },
-  "練馬区":  { parent:"東京都心", color:"#8B5CF6" },
-  "杉並区":  { parent:"東京都心", color:"#8B5CF6" },
-  "中野区":  { parent:"東京都心", color:"#8B5CF6" },
-  "大田区":  { parent:"東京都心", color:"#8B5CF6" },
-  // 横浜 → 市内の区
-  "西区（横浜）":  { parent:"横浜", color:"#3B82F6" },
-  "中区（横浜）":  { parent:"横浜", color:"#3B82F6" },
-  "神奈川区":      { parent:"横浜", color:"#3B82F6" },
-  "鶴見区":        { parent:"横浜", color:"#3B82F6" },
-  "港北区":        { parent:"横浜", color:"#3B82F6" },
-  "都筑区":        { parent:"横浜", color:"#3B82F6" },
-  "青葉区":        { parent:"横浜", color:"#3B82F6" },
-  "緑区（横浜）":  { parent:"横浜", color:"#3B82F6" },
-  "保土ケ谷区":    { parent:"横浜", color:"#3B82F6" },
-  "旭区":          { parent:"横浜", color:"#3B82F6" },
-  "瀬谷区":        { parent:"横浜", color:"#3B82F6" },
-  "泉区":          { parent:"横浜", color:"#3B82F6" },
-  "戸塚区":        { parent:"横浜", color:"#3B82F6" },
-  "栄区":          { parent:"横浜", color:"#3B82F6" },
-  "港南区":        { parent:"横浜", color:"#3B82F6" },
-  "磯子区":        { parent:"横浜", color:"#3B82F6" },
-  "南区（横浜）":  { parent:"横浜", color:"#3B82F6" },
-  "金沢区":        { parent:"横浜", color:"#3B82F6" },
-  // 川崎 → 市内の区
-  "川崎区":        { parent:"川崎", color:"#10B981" },
-  "幸区":          { parent:"川崎", color:"#10B981" },
-  "中原区":        { parent:"川崎", color:"#10B981" },
-  "高津区":        { parent:"川崎", color:"#10B981" },
-  "宮前区":        { parent:"川崎", color:"#10B981" },
-  "多摩区":        { parent:"川崎", color:"#10B981" },
-  "麻生区":        { parent:"川崎", color:"#10B981" },
-  // 千葉・埼玉・大阪・名古屋 → 主要市区
-  "千葉市中央区":  { parent:"千葉", color:"#F59E0B" },
-  "船橋市":        { parent:"千葉", color:"#F59E0B" },
-  "幕張・美浜区":  { parent:"千葉", color:"#F59E0B" },
-  "成田市":        { parent:"千葉", color:"#F59E0B" },
-  "さいたま市大宮区": { parent:"埼玉", color:"#EF4444" },
-  "さいたま市浦和区": { parent:"埼玉", color:"#EF4444" },
-  "川口市":        { parent:"埼玉", color:"#EF4444" },
-  "大阪市北区":    { parent:"大阪", color:"#F97316" },
-  "大阪市中央区":  { parent:"大阪", color:"#F97316" },
-  "大阪市浪速区":  { parent:"大阪", color:"#F97316" },
-  "名古屋市中区":  { parent:"名古屋", color:"#06B6D4" },
-  "名古屋市中村区":{ parent:"名古屋", color:"#06B6D4" },
-};
+import { ZONE_AREAS, ZONE_META, TRAFFIC_ZONES_BY_REGION } from "./trafficZones";
 
-// 親エリアごとのワークエリア一覧（選択UIで使用）
-export const WORK_AREAS_BY_PARENT = Object.entries(WORK_AREA_MASTER).reduce((acc, [name, meta]) => {
-  if (!acc[meta.parent]) acc[meta.parent] = [];
-  acc[meta.parent].push(name);
-  return acc;
-}, {});
+// 後方互換: work_area → { parent（交通圏名）, color } のフラットマップ
+export const WORK_AREA_MASTER = Object.fromEntries(
+  Object.entries(ZONE_AREAS).flatMap(([zone, areas]) =>
+    areas.map(area => [area, { parent: zone, color: ZONE_META[zone]?.color ?? "#8B5CF6" }])
+  )
+);
+
+// 交通圏ごとのエリア一覧（Upload.jsx の work_area 選択で使用）
+// ユーザーの所属交通圏（userAreas）でフィルタして使う
+export const WORK_AREAS_BY_PARENT = ZONE_AREAS;
+
+// 後方互換: 旧 AREA_MASTER / ALL_AREAS は AreaFilter.jsx でエクスポートされる
 
 // エリア別単価統計モックデータ（本番: Supabaseの集計クエリに差し替え）
 export const MOCK_AREA_STATS = [

@@ -4,17 +4,20 @@ import { C, FREE_LIMIT, loadS, saveS } from "../lib/constants";
 import { Card, Btn, ProgressBar, Toggle } from "../components/UI";
 import { AreaBadges } from "../components/UI";
 import { levelFromXp, getTitle, BADGES } from "../lib/xp";
-import { insertFeedback } from "../lib/supabase";
-import { downloadCSV, printAsPDF } from "../lib/export";
+import { insertFeedback, fetchReferralCount } from "../lib/supabase";
+import { downloadCSV, printAsPDF, downloadRideRecordsCSV } from "../lib/export";
+import AvatarPicker from "../components/AvatarPicker";
 
 const SUPABASE_READY = !!(
   import.meta.env.VITE_SUPABASE_URL &&
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-export default function Settings({ user, onUpdate, onLogout, onManageArea, notifSettings, onUpdateNotif, appMode="standard", onModeChange, themeMode="auto", onThemeChange, reports=[] }) {
-  const [subTab, setSubTab] = useState("");
-  const [form, setForm] = useState({ name:user.name||"", company:user.company||"", workType:user.workType||"隔日勤務", target:user.target||"380000" });
+const ADMIN_EMAIL = "white-t@hotmail.co.jp";
+
+export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, onManageArea, notifSettings, onUpdateNotif, appMode="standard", onModeChange, themeMode="auto", onThemeChange, reports=[], initialSection="", onBack, onOpenAdmin, onAccountLink }) {
+  const [subTab, setSubTab] = useState(initialSection);
+  const [form, setForm] = useState({ name:user.name||"", company:user.company||"", workType:user.workType||"隔日勤務", target:user.target||"" });
   const [saved, setSaved] = useState(false);
   const [rankPrefs, setRankPrefs] = useState({ showMyRank:false, showTopSales:false });
   const [takePay, setTakePay] = useState(loadS("taxi_takepay", { rate:55, deduction:30000 }));
@@ -22,31 +25,33 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
   const saveTakePay = (next) => { setTakePay(next); saveS("taxi_takepay", next); };
 
   const SUB = [
-    {id:"profile", icon:"👤", label:"プロフィール", sub:"名前・勤務形態"},
+    {id:"account",  icon:"🔗", label:"アカウント",   sub: user?._isGuest ? "⚠️ 未連携（データが危険）" : (user?.email || "連携済み")},
+    {id:"closing",  icon:"📅", label:"締日設定",     sub: user.closing_day ? `毎月${user.closing_day}日締め` : "月末締め"},
     {id:"mode",    icon:"🎛️", label:"モードとカラーテーマ", sub:appMode==="simple"?"かんたん":appMode==="simple_large"?"かんたん（大）":appMode==="analysis"?"分析":"かんたん"},
     {id:"area",    icon:"📍", label:"エリア",       sub:user.areas?.length>0?user.areas[0]:"未設定"},
     {id:"notif",   icon:"🔔", label:"通知",         sub:"アラート設定"},
     {id:"takepay", icon:"💴", label:"手取り設定",    sub:`歩合${takePay.rate}% / 控除${(takePay.deduction/10000).toFixed(1)}万円`},
     {id:"plan",    icon:"💳", label:"プラン",        sub:"無料プラン"},
     {id:"rank",    icon:"🏆", label:"ランク",       sub:"表示設定"},
-    {id:"roadmap", icon:"🗺️", label:"ロードマップ",  sub:"開発予定"},
     {id:"export",   icon:"📤", label:"データエクスポート", sub:"CSV / PDF 出力"},
-    {id:"coupon",   icon:"🎟️", label:"クーポンコード",    sub:"割引・特典コードを入力"},
     {id:"referral", icon:"🎁", label:"友達を招待",        sub:"紹介リンク・特典"},
+    {id:"coupon",   icon:"🎟️", label:"クーポンコード",    sub:"割引・特典コードを入力"},
+    {id:"roadmap", icon:"🗺️", label:"ロードマップ",  sub:"開発予定"},
     {id:"feedback", icon:"💬", label:"意見箱",          sub:"要望・バグ報告・ひとこと"},
     {id:"help",    icon:"❓", label:"ヘルプ・FAQ",    sub:"よくある質問"},
     {id:"terms",   icon:"📄", label:"利用規約",      sub:"タクロー利用規約"},
     {id:"privacy", icon:"🔒", label:"プライバシーポリシー", sub:"個人情報の取り扱い"},
+    ...(user?.email === ADMIN_EMAIL ? [{id:"admin", icon:"🦉", label:"管理画面", sub:"よしと専用"}] : []),
   ];
 
   return (
-    <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
+    <div style={{ maxWidth:600, margin:"0 auto", padding:"16px 16px 100px" }}>
       {!subTab ? (
         <>
           <div style={{ fontSize:16, fontWeight:800, marginBottom:16 }}>⚙️ 設定</div>
           <Card style={{ padding:0, overflow:"hidden" }}>
             {SUB.map((t, i) => (
-              <div key={t.id} onClick={()=>setSubTab(t.id)} style={{ display:"flex", alignItems:"center", gap:14, padding:"16px", borderBottom: i<SUB.length-1?`1px solid ${C.border}`:"none", cursor:"pointer" }}>
+              <div key={t.id} onClick={()=>{ if(t.id==="admin"){ onOpenAdmin?.(); return; } setSubTab(t.id); }} style={{ display:"flex", alignItems:"center", gap:14, padding:"16px", borderBottom: i<SUB.length-1?`1px solid ${C.border}`:"none", cursor:"pointer" }}>
                 <div style={{ width:36, height:36, borderRadius:10, backgroundColor:C.accentLight+"22", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{t.icon}</div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{t.label}</div>
@@ -60,12 +65,85 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
       ) : (
         <>
           <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
-            <div onClick={()=>setSubTab("")} style={{ display:"flex", alignItems:"center", gap:4, color:C.accentLight, fontSize:14, cursor:"pointer", fontWeight:600 }}>‹ 戻る</div>
+            <div onClick={()=>{ if (initialSection && subTab === initialSection && onBack) { onBack(); } else { setSubTab(""); } }} style={{ display:"flex", alignItems:"center", gap:4, color:C.accentLight, fontSize:14, cursor:"pointer", fontWeight:600 }}>‹ 戻る</div>
             <div style={{ fontSize:15, fontWeight:800, color:C.text }}>{SUB.find(t=>t.id===subTab)?.label}</div>
           </div>
 
+      {subTab==="account" && (
+        user?._isGuest ? (
+          <div>
+            {/* 警告バナー */}
+            <div style={{ backgroundColor:"#FFF3E0", border:"1px solid #FF980055", borderRadius:12, padding:"14px 16px", marginBottom:20, display:"flex", alignItems:"flex-start", gap:10 }}>
+              <span style={{ fontSize:20 }}>⚠️</span>
+              <span style={{ fontSize:13, color:"#E65100", lineHeight:1.7 }}>外部アカウント未連携のため、機種変更またはアプリを削除した場合にデータが失われます</span>
+            </div>
+
+            <div style={{ fontSize:17, fontWeight:800, color:C.text, marginBottom:8, lineHeight:1.5 }}>連携すればすべてのデータが安全に保存されます</div>
+
+            <Card style={{ marginBottom:20 }}>
+              {[
+                "端末をなくしてもデータ復旧可能",
+                "機種変更時にもデータの引き継ぎが可能",
+                "複数端末でデータの同期が可能",
+                "締日設定が可能",
+              ].map(t => (
+                <div key={t} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid ${C.border}`, fontSize:14, color:C.sub }}>
+                  <span style={{ color:C.accentLight, fontSize:16, flexShrink:0 }}>✓</span>{t}
+                </div>
+              ))}
+            </Card>
+
+            {onAccountLink && (
+              <button onClick={onAccountLink} style={{ width:"100%", padding:"14px 0", borderRadius:12, fontSize:15, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:C.surface, color:C.text, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+                <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.2 33.5 29.7 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 2.9l6-6C34.5 6.5 29.6 4.5 24 4.5 12.7 4.5 3.5 13.7 3.5 25S12.7 45.5 24 45.5c11 0 20.5-8 20.5-20.5 0-1.4-.1-2.7-.5-5z"/><path fill="#34A853" d="M6.3 14.7l7 5.1C15.1 16 19.2 13 24 13c3 0 5.7 1.1 7.8 2.9l6-6C34.5 6.5 29.6 4.5 24 4.5c-7.5 0-14 4.3-17.7 10.2z"/><path fill="#FBBC05" d="M24 45.5c5.5 0 10.5-1.8 14.3-4.9l-6.6-5.4C29.7 36.9 27 38 24 38c-5.7 0-10.5-3.7-12.2-8.8l-7 5.4C8.3 41.4 15.5 45.5 24 45.5z"/><path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.8 2.3-2.3 4.3-4.3 5.6l6.6 5.4C42 36.4 44.5 31 44.5 25c0-1.4-.1-2.7-.5-5z"/></svg>
+                Googleで連携する
+              </button>
+            )}
+          </div>
+        ) : (
+          <Card>
+            <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20 }}>
+              <div style={{ width:48, height:48, borderRadius:"50%", backgroundColor:C.accentLight+"22", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>✓</div>
+              <div>
+                <div style={{ fontSize:14, fontWeight:700, color:C.text }}>アカウント連携済み</div>
+                <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{user?.email || "Google アカウント"}</div>
+              </div>
+            </div>
+            <div style={{ fontSize:11, color:C.muted, lineHeight:1.8, backgroundColor:C.bg, borderRadius:10, padding:"10px 14px" }}>
+              データはクラウドに安全に保存されています。機種変更時もログインすれば引き継げます。
+            </div>
+          </Card>
+        )
+      )}
+
       {subTab==="profile" && (
         <Card>
+          {/* ゲストユーザー：アカウント連携バナー */}
+          {user?._isGuest && onAccountLink && (
+            <div style={{ backgroundColor:"#FFF3E0", border:"1px solid #FF980055", borderRadius:10, padding:"12px 14px", marginBottom:16 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:"#E65100", marginBottom:6 }}>⚠️ データが保護されていません</div>
+              <div style={{ fontSize:12, color:"#BF360C", lineHeight:1.6, marginBottom:10 }}>アカウント未連携のため、機種変更やアプリ削除でデータが失われます。</div>
+              <button onClick={onAccountLink} style={{ width:"100%", padding:"10px 0", borderRadius:9, fontSize:13, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:"#E65100", color:"#fff" }}>
+                アカウントを連携してデータを守る
+              </button>
+            </div>
+          )}
+          {/* アバター選択 */}
+          {!user?._isGuest && SUPABASE_READY && (
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:12 }}>プロフィール画像</div>
+              <AvatarPicker
+                userId={user?.id}
+                avatarUrl={user?.avatarUrl ?? null}
+                avatarPreset={user?.avatarPreset ?? null}
+                onSave={(vals) => onUpdate({ avatar_url: vals.avatar_url, avatar_preset: vals.avatar_preset })}
+              />
+            </div>
+          )}
+          {/* 区切り線 */}
+          {!user?._isGuest && SUPABASE_READY && (
+            <div style={{ height:1, backgroundColor:C.border, marginBottom:20 }}/>
+          )}
           {[{l:"お名前",k:"name",t:"text"}].map(({l,k,t})=>(
             <div key={k} style={{ marginBottom:14 }}><div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>{l}</div><input type={t} value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:15, outline:"none" }}/></div>
           ))}
@@ -77,10 +155,80 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
               ))}
             </div>
           </div>
-          <Btn onClick={save}>{saved?"✓ 保存しました":"設定を保存"}</Btn>
-          <Btn onClick={onLogout} variant="danger" style={{ marginTop:10 }}>ログアウト</Btn>
+          {!user?._isGuest && <Btn onClick={save}>{saved?"✓ 保存しました":"設定を保存"}</Btn>}
+          {!user?._isGuest && <Btn onClick={onLogout} variant="danger" style={{ marginTop:10 }}>ログアウト</Btn>}
+          {/* アカウント削除 */}
+          {(() => {
+            const [deleteStep, setDeleteStep] = useState(0); // 0:非表示 1:確認 2:最終確認
+            const [deleting, setDeleting] = useState(false);
+            const handleDelete = async () => {
+              setDeleting(true);
+              if (onDeleteAccount) await onDeleteAccount();
+            };
+            return (
+              <div style={{ marginTop:24 }}>
+                {deleteStep === 0 && (
+                  <div onClick={()=>setDeleteStep(1)} style={{ textAlign:"center", fontSize:12, color:C.muted, textDecoration:"underline", cursor:"pointer", padding:"8px 0" }}>
+                    アカウントを削除する
+                  </div>
+                )}
+                {deleteStep === 1 && (
+                  <div style={{ backgroundColor:C.redGlow, border:`1px solid ${C.red}44`, borderRadius:12, padding:16 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:C.red, marginBottom:8 }}>⚠️ アカウント削除</div>
+                    <div style={{ fontSize:12, color:C.sub, lineHeight:1.7, marginBottom:14 }}>
+                      日報データ・設定・XP・バッジなど、すべてのデータが削除されます。この操作は取り消せません。
+                    </div>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <Btn onClick={()=>setDeleteStep(0)} style={{ flex:1, fontSize:12 }}>キャンセル</Btn>
+                      <Btn onClick={()=>setDeleteStep(2)} variant="danger" style={{ flex:1, fontSize:12 }}>削除に進む</Btn>
+                    </div>
+                  </div>
+                )}
+                {deleteStep === 2 && (
+                  <div style={{ backgroundColor:C.redGlow, border:`2px solid ${C.red}`, borderRadius:12, padding:16 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:C.red, marginBottom:8 }}>本当に削除しますか？</div>
+                    <div style={{ fontSize:12, color:C.sub, lineHeight:1.7, marginBottom:14 }}>
+                      アカウントとすべてのデータを削除します。30日以内にサーバーからも完全削除されます。
+                    </div>
+                    <Btn onClick={handleDelete} variant="danger" disabled={deleting} style={{ width:"100%", fontSize:13 }}>
+                      {deleting ? "削除中..." : "削除する（取り消し不可）"}
+                    </Btn>
+                    <div onClick={()=>setDeleteStep(0)} style={{ textAlign:"center", fontSize:12, color:C.muted, marginTop:10, cursor:"pointer" }}>戻る</div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </Card>
       )}
+
+      {subTab==="closing" && (() => {
+        const [closingDay, setClosingDay] = useState(user.closing_day ?? 0);
+        const [saved2, setSaved2] = useState(false);
+        const options = [
+          { value: 0,  label: "月末日" },
+          ...([5,10,15,20,25].map(d => ({ value: d, label: `毎月${d}日` }))),
+        ];
+        const saveClosing = () => {
+          onUpdate({ closing_day: closingDay });
+          setSaved2(true);
+          setTimeout(() => setSaved2(false), 2000);
+        };
+        return (
+          <Card>
+            <div style={{ backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}33`, borderRadius:10, padding:"12px 14px", marginBottom:16, fontSize:12, color:C.sub, lineHeight:1.7 }}>
+              締日を設定すると、締日の翌日から翌月の締日までの間に登録されたデータが集計されます。<br/>
+              <span style={{ color:C.muted }}>例）締日: 15日 → 前月16日〜当月15日が集計期間</span>
+            </div>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:8 }}>締日</div>
+            <select value={closingDay} onChange={e => setClosingDay(Number(e.target.value))}
+              style={{ width:"100%", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"12px", color:C.text, fontSize:15, marginBottom:20, outline:"none" }}>
+              {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <Btn onClick={saveClosing}>{saved2 ? "✓ 保存しました" : "締日を更新する"}</Btn>
+          </Card>
+        );
+      })()}
 
       {subTab==="area" && (
         <Card style={{ borderColor:C.accentLight+"44", cursor:"pointer" }} onClick={onManageArea}>
@@ -412,6 +560,11 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
 
       {subTab==="takepay" && (() => {
         const preview = (sales) => Math.max(0, Math.round(sales * takePay.rate / 100 - takePay.deduction));
+        const [wantedTake, setWantedTake] = useState("");
+        const requiredSales = wantedTake
+          ? Math.round((parseInt(wantedTake.replace(/,/g,"")) + takePay.deduction) / (takePay.rate / 100))
+          : 0;
+        const fmt2 = (n) => n.toLocaleString();
         return (
           <div>
             <Card style={{ marginBottom:12 }}>
@@ -447,8 +600,35 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
               </div>
             </Card>
 
+            {/* 逆算ツール */}
+            <Card style={{ marginBottom:12 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:C.muted, marginBottom:10 }}>🔄 逆算（欲しい手取り→必要な売上）</div>
+              <div style={{ fontSize:11, color:C.muted, marginBottom:10 }}>目標手取り額を入力すると必要な売上を計算します</div>
+              <div style={{ display:"flex", gap:8, marginBottom:12, alignItems:"center" }}>
+                <input
+                  type="number"
+                  value={wantedTake}
+                  onChange={e => setWantedTake(e.target.value)}
+                  placeholder="例: 200000"
+                  style={{ flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}
+                />
+                <span style={{ fontSize:13, color:C.muted, flexShrink:0 }}>円</span>
+              </div>
+              {requiredSales > 0 && (
+                <div style={{ backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:10, padding:"14px 16px" }}>
+                  <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>必要な月間売上（税抜）</div>
+                  <div style={{ fontSize:28, fontWeight:900, color:C.accentLight }}>
+                    {fmt2(requiredSales)}<span style={{ fontSize:13, marginLeft:4 }}>円</span>
+                  </div>
+                  <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
+                    手取り目標 {fmt2(parseInt(wantedTake)||0)}円 ÷ 歩合{takePay.rate}% + 控除{fmt2(takePay.deduction)}円
+                  </div>
+                </div>
+              )}
+            </Card>
+
             <Card>
-              <div style={{ fontSize:12, fontWeight:700, color:C.muted, marginBottom:10 }}>📊 シミュレーション</div>
+              <div style={{ fontSize:12, fontWeight:700, color:C.muted, marginBottom:10 }}>📊 シミュレーション（売上→手取り）</div>
               {[200000,300000,380000,450000,500000].map(sales=>(
                 <div key={sales} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:`1px solid ${C.border}` }}>
                   <span style={{ fontSize:13, color:C.muted }}>売上 {(sales/10000).toFixed(0)}万円</span>
@@ -560,190 +740,253 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
             <div style={{ marginTop:12, fontSize:11, color:C.muted, lineHeight:1.7 }}>
               ※ PDFはブラウザの印刷ダイアログから「PDFとして保存」を選んでください。
             </div>
+
+            {/* 乗車記録CSV */}
+            <div style={{ marginTop:20, paddingTop:20, borderTop:`1px solid ${C.border}` }}>
+              <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:10 }}>乗車記録</div>
+              {(() => {
+                let allRecs = [];
+                try { allRecs = JSON.parse(localStorage.getItem("taxi_sales_records") || "[]"); } catch {}
+                const recs = exportRange === "month"
+                  ? allRecs.filter(r => (r.workDate||"").startsWith(`${exportYear}-${String(exportMonth).padStart(2,"0")}`))
+                  : allRecs.filter(r => (r.workDate||"").startsWith(String(exportYear)));
+                return (
+                  <>
+                    <div style={{ backgroundColor:C.surface, borderRadius:10, padding:"12px 16px", marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div style={{ fontSize:13, color:C.muted }}>{label} の乗車記録</div>
+                      <div style={{ fontSize:18, fontWeight:800, color: recs.length>0?C.text:C.muted }}>{recs.length}<span style={{ fontSize:12, marginLeft:3 }}>件</span></div>
+                    </div>
+                    {recs.length > 0 ? (
+                      <button onClick={()=>downloadRideRecordsCSV(recs, label)}
+                        style={{ width:"100%", padding:"14px 0", borderRadius:11, fontSize:14, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff" }}>
+                        🚕 乗車記録を CSV でダウンロード
+                      </button>
+                    ) : (
+                      <div style={{ textAlign:"center", padding:"16px", color:C.muted, fontSize:13 }}>この期間の乗車記録はありません</div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
           </div>
         );
       })()}
 
       {subTab==="coupon" && (() => {
-        const VALID_CODES = {
-          "TAKURO2026":  { label:"2026年記念コード",   benefit:"1ヶ月無料",  xp:200 },
-          "DRIVER100":   { label:"ドライバー応援コード", benefit:"2週間無料",  xp:100 },
-          "BETA-TESTER": { label:"ベータテスター特典",  benefit:"3ヶ月無料",  xp:500 },
-        };
+        const [coupons,  setCoupons]  = useState([]);
+        const [loading,  setLoading]  = useState(true);
 
-        const [code,     setCode]     = useState("");
-        const [applied,  setApplied]  = useState(() => loadS("taxi_coupon_applied", []));
-        const [result,   setResult]   = useState(null); // { ok, msg, info }
-        const [loading,  setLoading]  = useState(false);
+        useState(() => {
+          if (!SUPABASE_READY || !user?.id) { setLoading(false); return; }
+          import("../lib/supabase").then(({ fetchMyCoupons }) => {
+            fetchMyCoupons(user.id).then(data => { setCoupons(data || []); setLoading(false); });
+          });
+        });
 
-        const handleApply = async () => {
-          const upper = code.trim().toUpperCase();
-          if (!upper) return;
-          setLoading(true); setResult(null);
-          await new Promise(r => setTimeout(r, 700));
-
-          if (applied.includes(upper)) {
-            setResult({ ok:false, msg:"このコードはすでに使用済みです" });
-          } else if (VALID_CODES[upper]) {
-            const info = VALID_CODES[upper];
-            const next = [...applied, upper];
-            setApplied(next);
-            saveS("taxi_coupon_applied", next);
-            setResult({ ok:true, msg:`コード適用完了！${info.benefit}と +${info.xp} XP を獲得`, info });
-            setCode("");
-          } else {
-            setResult({ ok:false, msg:"無効なコードです。スペルを確認してください" });
-          }
-          setLoading(false);
-        };
+        const typeLabel = { invited:"招待登録特典", milestone:"招待マイルストーン特典" };
+        const typeIcon  = { invited:"🎁", milestone:"🏅" };
 
         return (
           <div>
-            {/* 入力フォーム */}
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>クーポンコードを入力</div>
-            <div style={{ display:"flex", gap:8, marginBottom:12 }}>
-              <input
-                value={code}
-                onChange={e=>setCode(e.target.value.toUpperCase())}
-                onKeyDown={e=>e.key==="Enter"&&handleApply()}
-                placeholder="例: TAKURO2026"
-                style={{ flex:1, backgroundColor:C.card, border:`1px solid ${result?.ok===false?C.red:result?.ok?C.green:C.border}`, borderRadius:10, padding:"12px 14px", color:C.text, fontSize:14, outline:"none", letterSpacing:"1px", fontWeight:700 }}
-              />
-              <button onClick={handleApply} disabled={!code.trim()||loading}
-                style={{ padding:"0 18px", borderRadius:10, border:"none", backgroundColor:code.trim()?C.accentLight:"#444", color:"#fff", fontSize:13, fontWeight:700, cursor:code.trim()?"pointer":"not-allowed", opacity:loading?0.6:1 }}>
-                {loading?"確認中":"適用"}
-              </button>
-            </div>
+            {/* 保有クーポン一覧 */}
+            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>保有クーポン</div>
 
-            {result && (
-              <div style={{ padding:"10px 14px", borderRadius:10, marginBottom:16, backgroundColor:result.ok?C.greenGlow:C.redGlow, border:`1px solid ${result.ok?C.green+"44":C.red+"44"}`, fontSize:13, color:result.ok?C.green:C.red, fontWeight:600 }}>
-                {result.ok?"✅ ":"❌ "}{result.msg}
-              </div>
-            )}
-
-            {/* 適用済みコード一覧 */}
-            {applied.length > 0 && (
-              <>
-                <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>適用済みコード</div>
-                <Card style={{ padding:0, overflow:"hidden", marginBottom:16 }}>
-                  {applied.map((c, i) => {
-                    const info = VALID_CODES[c];
-                    return (
-                      <div key={c} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: i<applied.length-1?`1px solid ${C.border}`:"none" }}>
-                        <span style={{ fontSize:20 }}>🎟️</span>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:13, fontWeight:700 }}>{c}</div>
-                          {info && <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{info.label} — {info.benefit}</div>}
-                        </div>
-                        <span style={{ fontSize:11, color:C.green, fontWeight:700 }}>適用済み</span>
+            {loading ? (
+              <Card><div style={{ textAlign:"center", padding:"20px 0", color:C.muted, fontSize:13 }}>読み込み中...</div></Card>
+            ) : coupons.length === 0 ? (
+              <Card>
+                <div style={{ textAlign:"center", padding:"24px 0" }}>
+                  <div style={{ fontSize:32, marginBottom:8 }}>🎟️</div>
+                  <div style={{ fontSize:13, color:C.muted }}>まだクーポンがありません</div>
+                  <div style={{ fontSize:11, color:C.muted, marginTop:6 }}>友達を招待すると特典クーポンが届きます</div>
+                </div>
+              </Card>
+            ) : (
+              <Card style={{ padding:0, overflow:"hidden", marginBottom:16 }}>
+                {coupons.map((cp, i) => (
+                  <div key={cp.id} style={{ padding:"14px 16px", borderBottom: i<coupons.length-1?`1px solid ${C.border}`:"none" }}>
+                    <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
+                      <div style={{ width:40, height:40, borderRadius:10, backgroundColor:cp.used_at?C.surface:C.accentLight+"22", border:`1px solid ${cp.used_at?C.border:C.accentLight+"44"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
+                        {typeIcon[cp.type] || "🎟️"}
                       </div>
-                    );
-                  })}
-                </Card>
-              </>
+                      <div style={{ flex:1 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
+                          <span style={{ fontSize:13, fontWeight:700, color:cp.used_at?C.muted:C.text }}>{typeLabel[cp.type] || "クーポン"}</span>
+                          {cp.used_at && <span style={{ fontSize:10, color:C.muted, backgroundColor:C.surface, padding:"1px 6px", borderRadius:4, fontWeight:600 }}>使用済み</span>}
+                        </div>
+                        <div style={{ fontSize:12, color:cp.used_at?C.muted:C.accentLight, fontWeight:700 }}>無料期間 +{cp.benefit_days}日</div>
+                        <div style={{ fontSize:10, color:C.muted, marginTop:3 }}>
+                          発行日: {new Date(cp.issued_at).toLocaleDateString("ja-JP")}
+                          {cp.expires_at ? ` ／ 有効期限: ${new Date(cp.expires_at).toLocaleDateString("ja-JP")}` : " ／ 有効期限: 無期限"}
+                        </div>
+                      </div>
+                      <button
+                        disabled
+                        style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${C.border}`, backgroundColor:C.surface, color:C.muted, fontSize:11, fontWeight:700, cursor:"not-allowed", flexShrink:0, opacity:cp.used_at?0.4:0.8 }}
+                      >
+                        近日公開
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </Card>
             )}
 
-            <div style={{ padding:"12px 14px", backgroundColor:C.surface, borderRadius:10, fontSize:11, color:C.muted, lineHeight:1.7 }}>
-              💡 クーポンコードはキャンペーンやSNSで配布されます。大文字・小文字は区別しません。
+            <div style={{ padding:"12px 14px", backgroundColor:C.surface, borderRadius:10, fontSize:11, color:C.muted, lineHeight:1.8 }}>
+              🎟️ クーポンは友達招待の特典として自動発行されます。<br/>
+              ⏳ クーポン適用機能は有料プランと同時に公開予定です。<br/>
+              ✅ 保有クーポンは期限なし（無期限）で保存されます。
             </div>
           </div>
         );
       })()}
 
       {subTab==="referral" && (() => {
-        const refCode = "TAKURO-" + (user?.id || "DEMO").toString().slice(-6).toUpperCase();
-        const refUrl  = `https://takuro-app.vercel.app/?ref=${refCode}`;
-        const shareText = `タクシードライバー向け業務記録アプリ「タクロー」を使ってみて！売上分析・乗り場ガイド・AIアドバイスが全部ひとつで揃ってるよ🦉\n${refUrl}`;
+        const myCode = user?.referral_code || null;
+        const appUrl = "https://taxi-app-nine-eta.vercel.app";
+        const refUrl = myCode ? `${appUrl}/?ref=${myCode}` : appUrl;
+        const shareText = `タクシードライバー向けアプリ「タクロー」を使ってみて！日報記録・売上分析・AIアドバイスが全部ひとつ🦉\n招待コード: ${myCode}\n${refUrl}`;
 
-        const [copied, setCopied] = useState(false);
+        const [copied, setCopied]         = useState(false);
+        const [copiedLink, setCopiedLink] = useState(false);
+        const [stats, setStats]           = useState(null); // { events, coupons }
+        const [loading, setLoading]       = useState(true);
 
-        const copyLink = () => {
-          navigator.clipboard.writeText(refUrl).catch(() => {});
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
+        useState(() => {
+          if (!SUPABASE_READY || !user?.id) { setLoading(false); return; }
+          import("../lib/supabase").then(({ fetchMyReferralStats }) => {
+            fetchMyReferralStats(user.id, myCode).then(s => { setStats(s); setLoading(false); });
+          });
+        });
+
+        const total = stats?.events?.length ?? 0;
+        // 次のマイルストーン
+        const MILESTONES = [1, 3, 6, 9, 12];
+        const nextMilestone = MILESTONES.find(m => m > total) ?? null;
+        const lastMilestone = [...MILESTONES].reverse().find(m => m <= total) ?? 0;
+
+        const copyCode = () => {
+          navigator.clipboard.writeText(myCode || "").catch(()=>{});
+          setCopied(true); setTimeout(()=>setCopied(false), 2000);
+        };
+        const copyLink2 = () => {
+          navigator.clipboard.writeText(refUrl).catch(()=>{});
+          setCopiedLink(true); setTimeout(()=>setCopiedLink(false), 2000);
+        };
+        const shareLine = () => {
+          window.open(`https://line.me/R/msg/text/?${encodeURIComponent(shareText)}`, "_blank");
         };
 
-        const shareVia = (channel) => {
-          if (channel === "line") {
-            window.open(`https://line.me/R/msg/text/?${encodeURIComponent(shareText)}`, "_blank");
-          } else if (channel === "x") {
-            window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`, "_blank");
-          } else if (channel === "instagram") {
-            copyLink();
-            alert("リンクをコピーしました。Instagramに貼り付けて投稿してください。");
-          }
-        };
-
-        // モック紹介実績（将来はSupabaseから取得）
-        const referralCount  = 3;
-        const rewardXp       = referralCount * 100;
-        const REWARD_TIERS   = [
-          { count:1,  reward:"🎉 +100 XP", desc:"1人招待達成" },
-          { count:3,  reward:"⭐ +300 XP + 1ヶ月無料", desc:"3人招待達成" },
-          { count:5,  reward:"👑 +500 XP + 3ヶ月無料", desc:"5人招待達成" },
-          { count:10, reward:"🏆 永久無料プラン", desc:"10人招待達成" },
+        const REWARD_TIERS = [
+          { count:1,  days:14,  label:"1人招待",   benefit:"+14日延長クーポン", xp:100 },
+          { count:3,  days:30,  label:"3人招待",   benefit:"+30日延長クーポン", xp:100 },
+          { count:6,  days:30,  label:"6人招待",   benefit:"+30日延長クーポン", xp:100 },
+          { count:9,  days:30,  label:"9人招待",   benefit:"+30日延長クーポン", xp:100 },
+          { count:12, days:30,  label:"12人招待",  benefit:"+30日延長クーポン", xp:100 },
         ];
+
+        if (!myCode && !loading) {
+          return (
+            <Card>
+              <div style={{ textAlign:"center", padding:"20px 0", color:C.muted, fontSize:13 }}>
+                招待コードの準備中です。少し待ってからもう一度開いてください。
+              </div>
+            </Card>
+          );
+        }
 
         return (
           <div>
             {/* 実績バナー */}
-            <div style={{ background:`linear-gradient(135deg, ${C.accentLight}22, ${C.purple}22)`, border:`1px solid ${C.accentLight}44`, borderRadius:14, padding:"16px", marginBottom:16, textAlign:"center" }}>
-              <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>あなたの紹介実績</div>
-              <div style={{ fontSize:36, fontWeight:900, color:C.text }}>{referralCount}<span style={{ fontSize:16, color:C.muted, marginLeft:4 }}>人</span></div>
-              <div style={{ fontSize:12, color:C.accentLight, fontWeight:700, marginTop:4 }}>累計 +{rewardXp} XP 獲得済み</div>
+            <div style={{ background:`linear-gradient(135deg, ${C.accentLight}18, ${C.accentLight}08)`, border:`1px solid ${C.accentLight}33`, borderRadius:14, padding:"16px", marginBottom:16, textAlign:"center" }}>
+              <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>累計招待人数</div>
+              <div style={{ fontSize:40, fontWeight:900, color:C.text }}>
+                {loading ? "—" : total}
+                <span style={{ fontSize:16, color:C.muted, marginLeft:4 }}>人</span>
+              </div>
+              {!loading && total > 0 && (
+                <div style={{ fontSize:12, color:C.accentLight, fontWeight:700, marginTop:4 }}>
+                  累計 +{total * 100} XP 獲得
+                </div>
+              )}
+              {!loading && nextMilestone && (
+                <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
+                  あと{nextMilestone - total}人で次の特典クーポン！
+                </div>
+              )}
+              {!loading && !nextMilestone && total > 0 && (
+                <div style={{ fontSize:12, color:C.green, fontWeight:700, marginTop:4 }}>
+                  🏆 全マイルストーン達成！
+                </div>
+              )}
             </div>
 
-            {/* 紹介コード */}
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>あなたの紹介コード</div>
-            <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+            {/* 自分の招待コード */}
+            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>あなたの招待コード</div>
+            <div style={{ display:"flex", gap:8, marginBottom:10 }}>
               <div style={{ flex:1, backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px" }}>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:3 }}>招待コード</div>
-                <div style={{ fontSize:16, fontWeight:900, color:C.accentLight, letterSpacing:"1px" }}>{refCode}</div>
+                <div style={{ fontSize:18, fontWeight:900, color:C.accentLight, letterSpacing:"2px", fontFamily:"monospace" }}>{myCode || "..."}</div>
               </div>
-              <button onClick={copyLink} style={{ padding:"0 16px", borderRadius:10, border:`1px solid ${copied?C.green:C.border}`, backgroundColor:copied?C.greenGlow:C.card, color:copied?C.green:C.sub, fontSize:13, fontWeight:700, cursor:"pointer", flexShrink:0, transition:"all 0.2s" }}>
-                {copied ? "✓ コピー済" : "📋 コピー"}
+              <button onClick={copyCode} style={{ padding:"0 16px", borderRadius:10, border:`1px solid ${copied?C.green:C.border}`, backgroundColor:copied?C.greenGlow:C.card, color:copied?C.green:C.sub, fontSize:13, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
+                {copied ? "✓ 済" : "コピー"}
               </button>
             </div>
 
             {/* シェアボタン */}
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>シェアする</div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:20 }}>
-              {[
-                { ch:"line",      icon:"💬", label:"LINE で送る",    color:"#06C755", bg:"#06C75518" },
-                { ch:"x",         icon:"✕",  label:"X (Twitter)",   color:"#000",    bg:"#00000018" },
-                { ch:"instagram", icon:"📸", label:"Instagram",     color:"#E1306C", bg:"#E1306C18" },
-                { ch:"copy",      icon:"🔗", label:"リンクをコピー", color:C.accentLight, bg:C.accentGlow },
-              ].map(({ ch, icon, label, color, bg }) => (
-                <button key={ch} onClick={() => ch === "copy" ? copyLink() : shareVia(ch)}
-                  style={{ display:"flex", alignItems:"center", gap:8, padding:"12px 14px", borderRadius:11, border:`1px solid ${color}44`, backgroundColor:bg, color, fontSize:13, fontWeight:700, cursor:"pointer", textAlign:"left" }}>
-                  <span style={{ fontSize:18 }}>{icon}</span>
-                  <span>{label}</span>
-                </button>
-              ))}
+              <button onClick={shareLine} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"13px 0", borderRadius:11, border:"1px solid #06C75544", backgroundColor:"#06C75514", color:"#06C755", fontSize:14, fontWeight:800, cursor:"pointer" }}>
+                💬 LINEで送る
+              </button>
+              <button onClick={copyLink2} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"13px 0", borderRadius:11, border:`1px solid ${copiedLink?C.green:C.border}`, backgroundColor:copiedLink?C.greenGlow:C.card, color:copiedLink?C.green:C.sub, fontSize:14, fontWeight:700, cursor:"pointer" }}>
+                {copiedLink ? "✓ コピー済" : "🔗 リンクをコピー"}
+              </button>
             </div>
 
-            {/* 特典ティア */}
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>🎁 紹介特典</div>
-            <Card style={{ padding:0, overflow:"hidden" }}>
+            {/* 特典マイルストーン */}
+            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>🎁 招待特典（累計人数で達成）</div>
+            <Card style={{ padding:0, overflow:"hidden", marginBottom:16 }}>
               {REWARD_TIERS.map((tier, i) => {
-                const achieved = referralCount >= tier.count;
+                const achieved = total >= tier.count;
+                const isCurrent = lastMilestone === tier.count && achieved;
                 return (
-                  <div key={tier.count} style={{ display:"flex", alignItems:"center", gap:12, padding:"13px 16px", borderBottom: i < REWARD_TIERS.length-1 ? `1px solid ${C.border}` : "none", opacity: achieved ? 1 : 0.5 }}>
-                    <div style={{ width:32, height:32, borderRadius:"50%", backgroundColor: achieved ? C.green+"22" : C.surface, border:`2px solid ${achieved ? C.green : C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>
+                  <div key={tier.count} style={{ display:"flex", alignItems:"center", gap:12, padding:"13px 16px", borderBottom: i < REWARD_TIERS.length-1 ? `1px solid ${C.border}` : "none", backgroundColor: isCurrent ? C.accentLight+"0c" : "transparent" }}>
+                    <div style={{ width:32, height:32, borderRadius:"50%", backgroundColor: achieved ? C.green+"22" : C.surface, border:`2px solid ${achieved ? C.green : C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, color: achieved ? C.green : C.muted, flexShrink:0 }}>
                       {achieved ? "✓" : tier.count}
                     </div>
                     <div style={{ flex:1 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color: achieved ? C.text : C.muted }}>{tier.desc}</div>
-                      <div style={{ fontSize:11, color: achieved ? C.green : C.muted, marginTop:2 }}>{tier.reward}</div>
+                      <div style={{ fontSize:13, fontWeight:700, color: achieved ? C.text : C.muted }}>{tier.label}</div>
+                      <div style={{ fontSize:11, color: achieved ? C.green : C.muted, marginTop:2 }}>{tier.benefit}</div>
                     </div>
-                    {achieved && <span style={{ fontSize:18 }}>🏅</span>}
+                    <div style={{ fontSize:11, color:C.accentLight, fontWeight:700, opacity: achieved ? 1 : 0.4 }}>+{tier.xp} XP</div>
+                    {achieved && <span style={{ fontSize:16 }}>🏅</span>}
                   </div>
                 );
               })}
             </Card>
 
-            <div style={{ marginTop:12, fontSize:11, color:C.muted, lineHeight:1.7, padding:"10px 14px", backgroundColor:C.surface, borderRadius:10 }}>
-              ※ 招待した相手がアカウント登録を完了した時点で特典が付与されます。自己紹介は対象外です。
+            {/* 招待した人の履歴 */}
+            {stats?.events?.length > 0 && (
+              <>
+                <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>招待した人</div>
+                <Card style={{ padding:0, overflow:"hidden", marginBottom:16 }}>
+                  {stats.events.map((e, i) => (
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: i < stats.events.length-1 ? `1px solid ${C.border}` : "none" }}>
+                      <div style={{ width:32, height:32, borderRadius:"50%", backgroundColor:C.accentLight+"22", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>🦉</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:13, fontWeight:600 }}>{e.referred_name || "ドライバー"}</div>
+                        <div style={{ fontSize:11, color:C.muted }}>{new Date(e.created_at).toLocaleDateString("ja-JP")}</div>
+                      </div>
+                      <span style={{ fontSize:11, color:C.green, fontWeight:700 }}>登録済み</span>
+                    </div>
+                  ))}
+                </Card>
+              </>
+            )}
+
+            <div style={{ padding:"10px 14px", backgroundColor:C.surface, borderRadius:10, fontSize:11, color:C.muted, lineHeight:1.8 }}>
+              ※ 招待した相手が登録完了した時点でカウントされます。<br/>
+              ※ クーポンはアプリ内通知でお知らせします。<br/>
+              ※ 招待された方は登録時に+30日の無料期間が付与されます。
             </div>
           </div>
         );
@@ -765,7 +1008,7 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
           if (!fbBody.trim()) return;
           setFbState("sending");
           try {
-            if (SUPABASE_READY && !user?.isDemo) {
+            if (SUPABASE_READY) {
               const { error } = await insertFeedback({ userId: user?.id, category: fbCategory, body: fbBody.trim(), anonymous: fbAnon });
               if (error) throw error;
             } else {
@@ -874,8 +1117,8 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
             { q:"レベルが上がると何がある？", a:"現在はドライバー称号（見習い→ベテラン→エースなど）が変わります。今後、上位ランクへの特典を追加予定です。" },
           ]},
           { category:"アカウント・データ", icon:"🔐", items:[
-            { q:"データはどこに保存されているの？", a:"Supabaseのクラウドに安全に保存されています。デモモードの場合はお使いの端末のローカルに保存されます。" },
-            { q:"アカウントを削除したい", a:"現在はアプリ内からの削除機能は準備中です。削除を希望する場合はお問い合わせください。" },
+            { q:"データはどこに保存されているの？", a:"Supabaseのクラウドに安全に暗号化して保存されています。アカウント登録することでデータはどの端末からもアクセスできます。" },
+            { q:"アカウントを削除したい", a:"設定 › プロフィール の一番下から削除申請ができます。申請後、30日以内にすべてのデータをサーバーから完全削除します。" },
             { q:"無料プランでできることは？", a:"月8件まで日報を登録できます。基本的な売上グラフ・分析・乗り場ガイドは全て無料で使えます。" },
           ]},
         ];
@@ -956,26 +1199,36 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
       {subTab==="terms" && (
         <div style={{ fontSize:13, color:C.sub, lineHeight:1.8 }}>
           <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:16 }}>タクロー 利用規約</div>
-          <div style={{ fontSize:11, color:C.muted, marginBottom:20 }}>最終更新日：2026年6月</div>
+          <div style={{ fontSize:11, color:C.muted, marginBottom:20 }}>最終更新日：2026年6月1日　施行日：2026年6月1日</div>
 
           {[
-            { title:"第1条（目的）", body:"本規約は、タクロー（以下「本アプリ」）の利用条件を定めるものです。ユーザーは本規約に同意のうえ、本アプリをご利用ください。" },
-            { title:"第2条（免責事項）", body:"本アプリの利用による労働環境・健康状態・収益への影響について、運営者は一切の責任を負いません。本アプリはあくまで情報管理ツールであり、営業成果を保証するものではありません。" },
-            { title:"第3条（ランキング・競争機能）", body:"ランキングは参考情報であり、無理な営業を推奨するものではありません。ランキング上位を目指すあまり、安全運転を損なう行為は禁止します。" },
-            { title:"第4条（健康・安全に関する注意）", body:"ドライバーは適切な休息を取り、疲労状態での運転を行わないでください。本アプリは連続乗務や過労を助長することを意図していません。体調に異変を感じた場合は直ちに運転を中止してください。" },
-            { title:"第5条（データの正確性）", body:"日報データの正確性はユーザー自身の責任において管理してください。虚偽・誤ったデータの入力による不利益について、運営者は責任を負いません。" },
-            { title:"第6条（不正利用の禁止）", body:"データの改ざん・虚偽入力・不正なアクセス・システムへの攻撃等の行為は禁止します。これらが確認された場合、アカウントを停止または削除することがあります。" },
-            { title:"第7条（サービスの変更・終了）", body:"運営者は予告なくサービス内容を変更・停止・終了することがあります。これによりユーザーに生じた損害について、運営者は責任を負いません。" },
-            { title:"第8条（準拠法）", body:"本規約は日本法に準拠し、本アプリに関する紛争は東京地方裁判所を専属的合意管轄裁判所とします。" },
+            { title:"第1条（目的・適用範囲）", body:"本規約は、タクロー運営者（以下「運営者」）が提供するスマートフォン・ウェブアプリケーション「タクロー」（以下「本アプリ」）の利用条件を定めるものです。ユーザーは本規約に同意のうえ、本アプリをご利用ください。本規約は本アプリを利用するすべてのユーザーに適用されます。本アプリの利用を開始した時点で、本規約に同意したものとみなします。" },
+            { title:"第2条（アカウントの作成・管理）", body:"ユーザーは正確な情報を入力してアカウントを作成しなければなりません。アカウントのID・パスワードは自己の責任において管理してください。第三者によるアカウントの不正利用が発生した場合、運営者は責任を負いません。ユーザーは一人につき一つのアカウントのみ保有できます。虚偽情報によるアカウント作成は禁止します。" },
+            { title:"第3条（免責事項）", body:"本アプリの利用による労働環境・健康状態・収益への影響について、運営者は一切の責任を負いません。本アプリはあくまで情報管理ツールであり、営業成果・収益を保証するものではありません。AIによる分析・アドバイスは参考情報であり、その正確性・有用性について運営者は保証しません。ユーザーは自己の判断と責任においてアプリを利用するものとします。" },
+            { title:"第4条（ランキング・競争機能）", body:"ランキングは参考情報であり、無理な営業を推奨するものではありません。ランキング上位を目指すあまり、安全運転を損なう行為は禁止します。ランキングデータは統計的に処理されており、一部モック（サンプル）データを含む場合があります。" },
+            { title:"第5条（健康・安全に関する注意）", body:"ドライバーは適切な休息を取り、疲労状態での運転を行わないでください。本アプリは連続乗務・過労・速度超過・ながら運転を助長することを意図していません。体調に異変を感じた場合は直ちに運転を中止し、適切な対応をとってください。運転中のアプリ操作は法令および安全上の観点から禁止します。" },
+            { title:"第6条（データの正確性・管理）", body:"日報データの正確性はユーザー自身の責任において管理してください。虚偽・誤ったデータの入力による不利益について、運営者は責任を負いません。ユーザーはデータのバックアップを自身で管理することが推奨されます。アプリのデータはユーザーの端末・クラウドサービスに保存されますが、障害・データ損失のリスクをユーザーは理解したうえでご利用ください。" },
+            { title:"第7条（禁止事項）", body:"以下の行為を禁止します。\n・システムへの不正アクセス・リバースエンジニアリング\n・データの改ざん・虚偽入力による不正なランキング操作\n・他ユーザーへの誹謗中傷・ハラスメント\n・コミュニティ機能での個人情報の無断掲載\n・営業目的でのスパム投稿\n・運営者の許可なく本アプリのコンテンツを複製・転用する行為\n・法令に違反する行為、公序良俗に反する行為\nこれらが確認された場合、アカウントを停止または削除することがあります。" },
+            { title:"第8条（コミュニティ・投稿コンテンツ）", body:"ユーザーがコミュニティ機能に投稿したコンテンツの著作権はユーザーに帰属します。ただしユーザーは運営者に対し、サービス改善・品質向上の目的で当該コンテンツを使用する非独占的ライセンスを無償で付与するものとします。運営者は、不適切と判断した投稿を予告なく削除できます。" },
+            { title:"第9条（知的財産権）", body:"本アプリのロゴ・デザイン・コード・コンテンツの著作権・商標権その他の知的財産権は運営者に帰属します。ユーザーは本規約の範囲内においてのみ本アプリを利用する権限を有します。本アプリの内容を運営者の許可なく転載・販売・再配布することを禁じます。" },
+            { title:"第10条（有料サービス・決済）", body:"有料プランの料金・内容は運営者が定め、事前に告知します。決済は第三者決済サービスを経由して行われます。支払い済みの料金は原則返金しません。ただし法令上の権利は妨げません。有料プランの内容は予告のうえ変更されることがあります。" },
+            { title:"第11条（サービスの変更・停止・終了）", body:"運営者は予告なくサービス内容を変更・停止・終了することがあります。ただし重要な変更については事前にアプリ内通知または登録メールアドレスへの連絡を行うよう努めます。これによりユーザーに生じた損害について、運営者は故意・重過失がある場合を除き責任を負いません。" },
+            { title:"第12条（損害賠償の制限）", body:"運営者がユーザーに対して損害賠償責任を負う場合、その範囲はユーザーが本アプリに対して直近1ヶ月に支払った利用料金の総額を上限とします。ただし、運営者の故意・重過失による損害はこの限りではありません。間接損害・逸失利益・機会損失については運営者は一切責任を負いません。" },
+            { title:"第13条（通知・連絡）", body:"運営者からユーザーへの通知は、アプリ内通知または登録メールアドレスへのメール送信をもって行います。ユーザーが登録した連絡先が無効の場合、当該通知は到達したものとみなします。" },
+            { title:"第14条（規約の変更）", body:"本規約は運営者の判断により改定されることがあります。重要な変更の場合は30日前までにアプリ内で告知します。改定後も本アプリを継続してご利用いただいた場合、改定後の規約に同意したものとみなします。" },
+            { title:"第15条（分離可能性）", body:"本規約の一部条項が法令により無効または執行不能と判断された場合でも、その他の条項は引き続き有効に存続します。" },
+            { title:"第16条（準拠法・管轄）", body:"本規約は日本法に準拠し、本アプリに関する紛争は東京地方裁判所を専属的合意管轄裁判所とします。" },
           ].map(({title, body}) => (
             <div key={title} style={{ marginBottom:18 }}>
               <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>{title}</div>
-              <div style={{ fontSize:12, color:C.sub, lineHeight:1.8 }}>{body}</div>
+              {body.split("\n").map((line, i) => (
+                <div key={i} style={{ fontSize:12, color:C.sub, lineHeight:1.8 }}>{line}</div>
+              ))}
             </div>
           ))}
 
           <div style={{ marginTop:24, padding:14, backgroundColor:C.card, borderRadius:10, fontSize:11, color:C.muted }}>
-            ※ 本規約は運営者の判断により改定されることがあります。改定後も本アプリを継続してご利用いただいた場合、改定後の規約に同意したものとみなします。
+            ※ 本規約はタクシードライバーの安全・健康を最優先に設計されています。不明な点はアプリ内意見箱よりお問い合わせください。
           </div>
         </div>
       )}
@@ -983,25 +1236,29 @@ export default function Settings({ user, onUpdate, onLogout, onManageArea, notif
       {subTab==="privacy" && (
         <div style={{ fontSize:13, color:C.sub, lineHeight:1.8 }}>
           <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:16 }}>プライバシーポリシー</div>
-          <div style={{ fontSize:11, color:C.muted, marginBottom:20 }}>最終更新日：2026年6月</div>
+          <div style={{ fontSize:11, color:C.muted, marginBottom:20 }}>2026年6月1日 制定　2026年6月15日 改定</div>
 
           {[
-            { title:"1. 収集する情報", body:"本アプリでは以下の情報を収集します。\n・メールアドレス（認証用）\n・お名前・勤務形態（任意入力）\n・日報データ（売上・走行距離・乗車回数等）\n・アプリの利用ログ（エラー情報・操作履歴）" },
-            { title:"2. 情報の利用目的", body:"収集した情報は以下の目的で利用します。\n・サービスの提供・改善\n・翌日発表・ランキング等の集計（匿名化処理後）\n・不正利用の検知・防止\n・ユーザーサポート" },
-            { title:"3. 日報画像の取り扱い", body:"アップロードされた日報画像はAI読み取り処理後に数値データとして保存されます。画像そのものは保存しません。日報に含まれる個人情報（氏名・所属会社等）はシステムログには記録しません。" },
-            { title:"4. 統計データの利用", body:"個人を特定できない形に匿名化・集計したデータを、エリア別売上統計・需要スコアの算出等に利用することがあります。個人が特定できる形でのデータ販売は行いません。" },
-            { title:"5. 第三者への提供", body:"法令に基づく場合を除き、ユーザーの個人情報を第三者に提供することはありません。本アプリはSupabase（データベース）およびAnthropic（AI処理）のサービスを利用しており、各社のプライバシーポリシーも適用されます。" },
-            { title:"6. データの保管・削除", body:"ユーザーがアカウントを削除した場合、個人情報および日報データは30日以内に削除されます。匿名化済みの統計データは引き続き保持されることがあります。" },
-            { title:"7. セキュリティ", body:"本アプリはデータの暗号化・アクセス制御等の適切なセキュリティ対策を講じています。ただし、インターネット上での完全なセキュリティを保証するものではありません。" },
-            { title:"8. お問い合わせ", body:"プライバシーに関するお問い合わせは、アプリ内のサポート窓口までご連絡ください。" },
+            { title:"収集する情報", body:"本アプリでは以下の情報を取得します。\n・氏名またはニックネーム\n・メールアドレス\n・日報データ（売上・走行距離・乗車回数・勤務時間等）\n・アップロードされた給与明細・日報の画像（OCR処理後に画像は保存しません）\n・勤務形態・所属エリア・月間目標売上（任意入力）\n・端末の種類・OSバージョン等の端末情報\n・Cookie等により生成された識別情報\n・アプリの操作履歴・利用ログ" },
+            { title:"情報の利用目的", body:"取得した情報は以下の目的で利用します。\n・本サービスの提供・本人確認・認証\n・日報データの記録・分析・表示\n・ランキング・エリア統計の集計（匿名化処理後）\n・AIによる走行アドバイスの生成\n・サービスの改善・新機能の開発\n・不正利用の検知・防止\n・お問い合わせへの対応\n・利用規約変更等の重要事項のご通知" },
+            { title:"外部サービスの利用", body:"本アプリは以下の外部サービスを使用しており、各社のプライバシーポリシーが適用されます。\n・Supabase（データベース・認証）：https://supabase.com/privacy\n・Anthropic（AI処理・Claude API）：https://www.anthropic.com/privacy\nこれらのサービスに送信されるデータは各社のポリシーに基づき取り扱われます。" },
+            { title:"第三者への提供", body:"取得した個人情報は、以下の場合を除き第三者に提供しません。\n・ユーザー本人の同意がある場合\n・法令に基づく開示が必要な場合\n・サービス運営に必要な業務委託先への提供（守秘義務契約のもと）\n・事業譲渡等が発生した場合\n個人が特定できる形でのデータ販売は一切行いません。" },
+            { title:"統計データの利用", body:"個人を特定できない形に匿名化・集計したデータを、エリア別売上統計・需要スコアの算出・サービス改善に利用することがあります。" },
+            { title:"安全管理措置", body:"取得した情報の漏えい・滅失・毀損を防止するため、以下の措置を講じています。\n・データの暗号化通信（HTTPS/TLS）\n・Supabaseによるアクセス制御（Row Level Security）\n・パスワードのハッシュ化\nただし、インターネット上での完全なセキュリティを保証するものではありません。" },
+            { title:"データの保管・削除", body:"アカウントを削除した場合、個人情報および日報データは30日以内にサーバーから削除されます。匿名化済みの統計データは引き続き保持されることがあります。\n\nデータの開示・訂正・削除をご希望の場合は下記お問い合わせ先までご連絡ください。ご本人確認のうえ、法令の定めに従い対応します。" },
+            { title:"プライバシーポリシーの変更", body:"本ポリシーは必要に応じて変更されることがあります。重要な変更がある場合はアプリ内通知またはメールでお知らせします。" },
+            { title:"お問い合わせ", body:"個人情報の取り扱いに関するお問い合わせ・開示請求・削除依頼は以下までご連絡ください。\nメール：support@takuro-app.jp\nアプリ内の「意見箱」からもお問い合わせいただけます。" },
           ].map(({title, body}) => (
             <div key={title} style={{ marginBottom:18 }}>
-              <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>{title}</div>
+              <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>■ {title}</div>
               {body.split("\n").map((line, i) => (
-                <div key={i} style={{ fontSize:12, color:C.sub }}>{line}</div>
+                <div key={i} style={{ fontSize:12, color:C.sub }}>{line || <br/>}</div>
               ))}
             </div>
           ))}
+          <div style={{ marginTop:16, padding:12, backgroundColor:C.card, borderRadius:10, fontSize:11, color:C.muted }}>
+            運営者：タクロー開発チーム
+          </div>
         </div>
       )}
         </>

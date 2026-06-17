@@ -2,16 +2,24 @@
 // Dashboard.jsx — ダッシュボード
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 import { useState, useEffect } from "react";
-import { C, fmt, occ, dow, hourly, THIS_YEAR, THIS_MONTH, FREE_LIMIT, loadS, saveS } from "../lib/constants";
+import { C, fmt, occ, dow, hourly, FREE_LIMIT, loadS, saveS, getClosingPeriod } from "../lib/constants";
 import { Card, Btn, ProgressBar, Badge, KpiCard } from "../components/UI";
-import { AreaFilterBanner } from "../components/AreaFilter";
 import { MOCK_YESTERDAY_SUMMARY, AREA_MASTER } from "../data/mockData";
 import { levelFromXp, getTitle, MISSIONS, getMissionState } from "../lib/xp";
 import { CURRENT_VERSION, CHANGELOG } from "../lib/changelog";
 import { getCachedWeather, weatherMeta } from "../lib/weather";
+import { SalesPointCard } from "../components/SalesPointCard";
+import BreakTimeCard from "../components/dashboard/BreakTimeCard";
+import AiAdviceCard from "../components/dashboard/AiAdviceCard";
+import { ShiftSummaryCard } from "../components/dashboard/ShiftCalendar";
+
+const SUPABASE_READY = !!(
+  import.meta.env.VITE_SUPABASE_URL &&
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 // ━━━ 更新通知バナー ━━━━━━━━━━━━━━━━━━━━━━━━
-function UpdateBanner() {
+export function UpdateBanner() {
   const seenKey = "taxi_seen_version";
   const seenVersion = loadS(seenKey, "");
   const [dismissed, setDismissed] = useState(seenVersion === CURRENT_VERSION);
@@ -136,76 +144,19 @@ function WeatherWidget() {
   );
 }
 
-// ━━━ 翌日発表カード ━━━━━━━━━━━━━━━━━━━━━━━━
-function YesterdayCard({ userAreas, rankPrefs, reports }) {
-  const [open, setOpen] = useState(false);
+// ━━━ ランキング新着バナー（通知ONのユーザーのみ） ━━
+// 集計が出た日だけホームに小さく表示。タップでランキング画面へ。
+export function RankingNoticeBanner({ onGoRanking }) {
   const s = MOCK_YESTERDAY_SUMMARY;
-  const myReport = reports.find(r => r.date === s.date);
-  const myAreaStats = s.areaStats.filter(a => userAreas.length === 0 || userAreas.includes(a.area));
-  const trendIcon = t => t === "up" ? "📈" : t === "down" ? "📉" : "➡️";
-
   return (
-    <div style={{ backgroundColor:C.accentGlow, border:`1.5px solid ${C.accentLight}44`, borderRadius:14, padding:"14px 16px", marginBottom:14 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: open ? 10 : 0 }}>
-        <div>
-          <div style={{ fontSize:11, color:C.accentLight, fontWeight:700, marginBottom:2 }}>📣 翌日発表 — {s.date}</div>
-          <div style={{ fontSize:13, fontWeight:700 }}>{s.totalDrivers}人参加の集計結果</div>
-        </div>
-        <button onClick={() => setOpen(p => !p)} style={{ backgroundColor:C.accentLight+"22", border:`1px solid ${C.accentLight}44`, borderRadius:8, padding:"5px 12px", color:C.accentLight, fontSize:12, fontWeight:700, cursor:"pointer" }}>
-          {open ? "閉じる" : "詳細 →"}
-        </button>
+    <div onClick={onGoRanking}
+      style={{ display:"flex", alignItems:"center", gap:10, backgroundColor:C.accentGlow, border:`1.5px solid ${C.accentLight}44`, borderRadius:12, padding:"10px 14px", marginBottom:14, cursor:"pointer" }}>
+      <span style={{ fontSize:20 }}>🏆</span>
+      <div style={{ flex:1 }}>
+        <div style={{ fontSize:11, color:C.accentLight, fontWeight:700 }}>集計結果が出ました</div>
+        <div style={{ fontSize:12, color:C.text }}>{s.date} 分 · {s.totalDrivers}人参加</div>
       </div>
-      {open && (
-        <>
-          {myReport && rankPrefs.showMyRank && (
-            <div style={{ backgroundColor:C.accentLight+"18", border:`1px solid ${C.accentLight}33`, borderRadius:10, padding:"10px 12px", marginBottom:10 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div>
-                  <div style={{ fontSize:10, color:C.muted, marginBottom:2 }}>あなたの昨日</div>
-                  <div style={{ fontSize:20, fontWeight:800 }}>{fmt(s.myResult.sales)}<span style={{ fontSize:11, color:C.muted, marginLeft:3 }}>円</span></div>
-                </div>
-                <div style={{ textAlign:"right" }}>
-                  <div style={{ fontSize:22, fontWeight:900, color:C.gold }}>第{s.myResult.rank}位</div>
-                  <div style={{ fontSize:10, color:C.muted }}>上位{s.myResult.percentile}%</div>
-                </div>
-              </div>
-            </div>
-          )}
-          <div style={{ marginBottom:12 }}>
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>エリア別平均売上</div>
-            {(userAreas.length > 0 ? myAreaStats : s.areaStats).map(a => {
-              const meta = AREA_MASTER[a.area];
-              return (
-                <div key={a.area} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 0", borderBottom:`1px solid ${C.border}` }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <span style={{ fontSize:15 }}>{meta?.emoji || "📍"}</span>
-                    <span style={{ fontSize:13, fontWeight:600 }}>{a.area}</span>
-                    <span style={{ fontSize:10, color:C.muted }}>{a.count}人</span>
-                  </div>
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <span style={{ fontSize:13, fontWeight:700 }}>{fmt(a.avg)}円</span>
-                    <span style={{ fontSize:16 }}>{trendIcon(a.trend)}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {rankPrefs.showTopSales && (
-            <div>
-              <div style={{ fontSize:11, color:C.gold, fontWeight:700, marginBottom:8 }}>🏆 昨日のトップ5（匿名）</div>
-              {s.topSales.map(t => (
-                <div key={t.rank} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 0", borderBottom:`1px solid ${C.border}` }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <span style={{ fontSize:14 }}>{t.badge}</span>
-                    <span style={{ fontSize:12, color:C.sub }}>{t.area}</span>
-                  </div>
-                  <span style={{ fontSize:14, fontWeight:700, color:C.gold }}>{fmt(t.sales)}円</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
+      <span style={{ fontSize:13, color:C.accentLight, fontWeight:700 }}>見る →</span>
     </div>
   );
 }
@@ -296,6 +247,8 @@ function RecentReports({ reports, onOpenReport, simple }) {
   );
 }
 
+// ━━━ シフト表カード ━━━━━━━━━━━━━━━━━━━━━━━━
+
 // ━━━ XP・ミッションカード（折りたたみ対応） ━━━
 function XpCard({ user }) {
   const [open, setOpen] = useState(false);
@@ -305,29 +258,28 @@ function XpCard({ user }) {
   const completedCount = missionState.completed.length;
 
   return (
-    <Card style={{ marginBottom:14, padding:"12px 16px" }}>
-      <div onClick={() => setOpen(p => !p)} style={{ display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}>
-        <div style={{ width:40, height:40, borderRadius:"50%", background:`conic-gradient(${title.color} ${xpData.progress}%, ${C.border} 0)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-          <div style={{ width:30, height:30, borderRadius:"50%", backgroundColor:C.card, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column" }}>
-            <span style={{ fontSize:7, color:C.muted, lineHeight:1 }}>Lv</span>
-            <span style={{ fontSize:13, fontWeight:900, color:title.color, lineHeight:1.1 }}>{xpData.level}</span>
+    <Card style={{ marginBottom:14, padding:"6px 14px" }}>
+      <div onClick={() => setOpen(p => !p)} style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }}>
+        <div style={{ width:28, height:28, borderRadius:"50%", background:`conic-gradient(${title.color} ${xpData.progress}%, ${C.border} 0)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+          <div style={{ width:20, height:20, borderRadius:"50%", backgroundColor:C.card, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column" }}>
+            <span style={{ fontSize:5, color:C.muted, lineHeight:1 }}>Lv</span>
+            <span style={{ fontSize:10, fontWeight:900, color:title.color, lineHeight:1.1 }}>{xpData.level}</span>
           </div>
         </div>
         <div style={{ flex:1 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
-            <span style={{ fontSize:12, fontWeight:700, color:title.color }}>{title.name}</span>
-            <span style={{ fontSize:10, color:C.muted }}>次まで {xpData.xpForNext - xpData.xpInLevel} XP</span>
+          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
+            <span style={{ fontSize:11, fontWeight:700, color:title.color }}>{title.name}</span>
+            <span style={{ fontSize:9, color:C.muted }}>次まで {xpData.xpForNext - xpData.xpInLevel} XP</span>
           </div>
-          <div style={{ backgroundColor:C.border, borderRadius:99, height:4, overflow:"hidden" }}>
+          <div style={{ backgroundColor:C.border, borderRadius:99, height:3, overflow:"hidden" }}>
             <div style={{ width:`${xpData.progress}%`, height:"100%", backgroundColor:title.color, borderRadius:99 }}/>
           </div>
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
           <div style={{ textAlign:"right" }}>
-            <div style={{ fontSize:14, fontWeight:800 }}>{user.xp || 0}</div>
-            <div style={{ fontSize:9, color:C.muted }}>総XP</div>
+            <div style={{ fontSize:12, fontWeight:800 }}>{user.xp || 0} XP</div>
           </div>
-          <span style={{ fontSize:11, color:C.muted }}>{open ? "▲" : "▼"}</span>
+          <span style={{ fontSize:10, color:C.muted }}>{open ? "▲" : "▼"}</span>
         </div>
       </div>
 
@@ -352,88 +304,6 @@ function XpCard({ user }) {
         </div>
       )}
     </Card>
-  );
-}
-
-// ━━━ AIアドバイスカード ━━━━━━━━━━━━━━━━━━━━━━━
-function AiAdviceCard({ reports, appMode }) {
-  const count = reports.length;
-  const needed = Math.max(0, 3 - count);
-
-  // データ不足の場合：あと何回か表示（3回未満）
-  if (count < 3) {
-    return (
-      <div style={{ backgroundColor:C.surface, border:`1px dashed ${C.border}`, borderRadius:12, padding:"14px 16px", marginBottom:14, display:"flex", alignItems:"center", gap:12 }}>
-        <span style={{ fontSize:24, opacity:0.5 }}>🤖</span>
-        <div>
-          <div style={{ fontSize:12, fontWeight:700, color:C.muted }}>AIアドバイスはまだ使えません</div>
-          <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>あと<span style={{ color:C.accentLight, fontWeight:800 }}> {needed}回 </span>記録するとAIが分析を開始します</div>
-        </div>
-      </div>
-    );
-  }
-
-  // データから簡易インサイトを計算
-  const sorted   = [...reports].sort((a,b)=>b.gross_sales-a.gross_sales);
-  const bestDay  = sorted[0];
-  const avgSales = Math.round(reports.reduce((s,r)=>s+(r.gross_sales||0),0)/reports.length);
-  const avgHourly= Math.round(reports.reduce((s,r)=>s+(r.gross_sales&&r.work_hours?(r.gross_sales/r.work_hours):0),0)/reports.length);
-  const DAYS_JA  = ["日","月","火","水","木","金","土"];
-  const bestDow  = bestDay ? DAYS_JA[new Date(bestDay.date).getDay()] : "";
-
-  // かんたんモード：シンプル一言カード
-  if (appMode === "simple") {
-    return (
-      <div style={{ backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
-        <div style={{ fontSize:10, color:C.accentLight, fontWeight:700, marginBottom:6 }}>🤖 AI からのひとこと</div>
-        <div style={{ fontSize:15, fontWeight:800, color:C.text, lineHeight:1.6 }}>
-          {bestDow ? `${bestDow}曜日が一番稼げています！` : "記録を続けると傾向が見えてきます"}
-        </div>
-        {avgSales > 0 && (
-          <div style={{ fontSize:12, color:C.sub, marginTop:6 }}>平均売上 {avgSales.toLocaleString()}円 / 1回</div>
-        )}
-      </div>
-    );
-  }
-
-  // 通常・分析モード：ボタンカード
-  const isAnalysis = appMode === "analysis";
-  return (
-    <div style={{ backgroundColor:C.card, border:`1px solid ${C.accentLight}44`, borderRadius:14, padding:"16px", marginBottom:14 }}>
-      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-        <span style={{ fontSize:22 }}>🤖</span>
-        <div>
-          <div style={{ fontSize:13, fontWeight:800 }}>{isAnalysis ? "AI戦略アドバイス" : "AIアドバイス"}</div>
-          <div style={{ fontSize:11, color:C.muted }}>{count}件のデータを分析できます</div>
-        </div>
-      </div>
-
-      {/* 簡易インサイト */}
-      <div style={{ display:"flex", gap:8, marginBottom:12 }}>
-        {bestDow && (
-          <div style={{ flex:1, backgroundColor:C.bg, borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
-            <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>ベスト曜日</div>
-            <div style={{ fontSize:16, fontWeight:800, color:C.gold }}>{bestDow}曜</div>
-          </div>
-        )}
-        {avgSales > 0 && (
-          <div style={{ flex:1, backgroundColor:C.bg, borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
-            <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>平均売上</div>
-            <div style={{ fontSize:16, fontWeight:800, color:C.accentLight }}>{Math.round(avgSales/1000)}k円</div>
-          </div>
-        )}
-        {isAnalysis && avgHourly > 0 && (
-          <div style={{ flex:1, backgroundColor:C.bg, borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
-            <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>時間効率</div>
-            <div style={{ fontSize:16, fontWeight:800, color:C.green }}>{Math.round(avgHourly/100)*100}円/h</div>
-          </div>
-        )}
-      </div>
-
-      <button style={{ width:"100%", padding:"11px 0", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff" }}>
-        {isAnalysis ? "🔍 詳細な戦略分析を見る" : "💡 アドバイスを見る"}
-      </button>
-    </div>
   );
 }
 
@@ -506,112 +376,65 @@ function AnalysisTodayCard({ reports }) {
   );
 }
 
-// ━━━ 月間カレンダー ━━━━━━━━━━━━━━━━━━━━━━━━━━
-function MonthCalendar({ reports, monthTarget }) {
-  const [open, setOpen] = useState(false);
-  const today = new Date();
-  const year  = today.getFullYear();
-  const month = today.getMonth(); // 0-indexed
-  const daysInMonth   = new Date(year, month + 1, 0).getDate();
-  const firstDayOfWeek = new Date(year, month, 1).getDay(); // 0=日
-  const DAYS = ["日","月","火","水","木","金","土"];
-
-  // reports を日付 → 売上 のマップに
-  const byDate = {};
-  reports.forEach(r => { byDate[r.date] = (byDate[r.date] || 0) + (r.gross_sales || 0); });
-
-  const targetPerDay = monthTarget / daysInMonth;
-
-  const cellColor = (sales) => {
-    if (!sales) return null;
-    if (sales >= 65000) return C.green;
-    if (sales >= targetPerDay) return C.accentLight;
-    if (sales >= 50000) return C.gold;
-    return C.orange;
-  };
-
-  const cells = [];
-  for (let i = 0; i < firstDayOfWeek; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-
+// ━━━ 月間目標クイック編集モーダル ━━━━━━━━━━━━━━
+function TargetEditModal({ current, onSave, onClose }) {
+  const [val, setVal] = useState(String(current || 380000));
   return (
-    <Card style={{ marginBottom:14, padding:"12px 14px" }}>
-      <div onClick={()=>setOpen(p=>!p)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", marginBottom: open ? 14 : 0 }}>
-        <div style={{ fontSize:13, fontWeight:700 }}>📅 {month+1}月 実績カレンダー</div>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ display:"flex", gap:6 }}>
-            {[{c:C.green,l:"65k↑"},{c:C.accentLight,l:"目標↑"},{c:C.gold,l:"50k↑"},{c:C.orange,l:"低"}].map(({c,l})=>(
-              <div key={l} style={{ display:"flex", alignItems:"center", gap:3 }}>
-                <div style={{ width:7, height:7, borderRadius:2, backgroundColor:c }}/>
-                <span style={{ fontSize:9, color:C.muted }}>{l}</span>
-              </div>
-            ))}
-          </div>
-          <span style={{ fontSize:11, color:C.muted }}>{open?"▲":"▼"}</span>
+    <div style={{ position:"fixed", inset:0, backgroundColor:"#00000099", zIndex:400, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}
+      onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()}
+        style={{ backgroundColor:C.surface, borderRadius:18, width:"100%", maxWidth:340, padding:24 }}>
+        <div style={{ fontSize:15, fontWeight:800, marginBottom:6 }}>🎯 月間目標を設定</div>
+        <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>達成率・必要売上の計算に使用されます</div>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:20 }}>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={val}
+            onChange={e=>setVal(e.target.value)}
+            autoFocus
+            style={{ flex:1, padding:"13px 14px", borderRadius:11, border:`1.5px solid ${C.accentLight}`, backgroundColor:C.bg, color:C.text, fontSize:18, fontWeight:700, outline:"none" }}
+          />
+          <span style={{ fontSize:14, color:C.muted }}>円</span>
+        </div>
+        {/* クイック選択 */}
+        <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" }}>
+          {[300000,350000,380000,400000,450000,500000].map(v => (
+            <button key={v} onClick={()=>setVal(String(v))}
+              style={{ padding:"6px 10px", borderRadius:8, fontSize:12, fontWeight:600, cursor:"pointer",
+                border:`1.5px solid ${String(v)===val ? C.accentLight : C.border}`,
+                backgroundColor: String(v)===val ? C.accentGlow : "transparent",
+                color: String(v)===val ? C.accentLight : C.muted }}>
+              {v/10000}万
+            </button>
+          ))}
+        </div>
+        <div style={{ display:"flex", gap:10 }}>
+          <button onClick={onClose}
+            style={{ flex:1, padding:"12px 0", borderRadius:10, fontSize:14, fontWeight:600, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.muted }}>
+            キャンセル
+          </button>
+          <button onClick={()=>{ onSave(parseInt(val,10)||380000); onClose(); }}
+            style={{ flex:2, padding:"12px 0", borderRadius:10, fontSize:14, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff" }}>
+            保存する
+          </button>
         </div>
       </div>
-
-      {open && (
-        <>
-          {/* 曜日ヘッダー */}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3, marginBottom:4 }}>
-            {DAYS.map((d,i)=>(
-              <div key={d} style={{ textAlign:"center", fontSize:10, color: i===0?C.red:i===6?C.accentLight:C.muted, fontWeight:700, paddingBottom:4 }}>{d}</div>
-            ))}
-          </div>
-
-          {/* 日付グリッド */}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3 }}>
-            {cells.map((d, i) => {
-              if (!d) return <div key={i}/>;
-              const dateStr  = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-              const sales    = byDate[dateStr];
-              const color    = cellColor(sales);
-              const isToday  = d === today.getDate();
-              const isFuture = d > today.getDate();
-              return (
-                <div key={i} style={{
-                  borderRadius: 6,
-                  padding: "5px 2px",
-                  textAlign: "center",
-                  backgroundColor: color ? color + "22" : isFuture ? "transparent" : C.surface,
-                  border: isToday ? `2px solid ${C.accentLight}` : `1px solid ${color ? color+"55" : C.border}`,
-                  opacity: isFuture ? 0.4 : 1,
-                }}>
-                  <div style={{ fontSize:10, color: isToday ? C.accentLight : C.muted, fontWeight: isToday ? 800 : 400 }}>{d}</div>
-                  {sales ? (
-                    <div style={{ fontSize:8, color: color, fontWeight:700, marginTop:1, lineHeight:1.1 }}>
-                      {Math.round(sales/1000)}k
-                    </div>
-                  ) : (
-                    <div style={{ fontSize:8, color:C.border, marginTop:1 }}>—</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* 月間サマリー */}
-          <div style={{ marginTop:12, padding:"10px 12px", backgroundColor:C.bg, borderRadius:8, display:"flex", justifyContent:"space-between", fontSize:11, color:C.muted }}>
-            <span>記録日数: <b style={{ color:C.text }}>{Object.keys(byDate).filter(d=>d.startsWith(`${year}-${String(month+1).padStart(2,"0")}`)).length}日</b></span>
-            <span>日平均: <b style={{ color:C.text }}>{fmt(Object.values(byDate).length ? Math.round(Object.values(byDate).reduce((a,b)=>a+b,0)/Object.values(byDate).length) : 0)}円</b></span>
-          </div>
-        </>
-      )}
-    </Card>
+    </div>
   );
 }
 
 // ━━━ Dashboard メイン ━━━━━━━━━━━━━━━━━━━━━━━━━
-export default function Dashboard({ reports, user, onOpenReport, onManageArea, rankPrefs = { showMyRank:false, showTopSales:false }, appMode = "standard" }) {
-  const monthReports = reports.filter(r => {
-    const d = new Date(r.date);
-    return d.getFullYear() === THIS_YEAR && d.getMonth() + 1 === THIS_MONTH;
-  });
+export default function Dashboard({ reports, user, onOpenReport, onManageArea, rankPrefs = { showMyRank:false, showTopSales:false }, appMode = "standard", onGoShift, onUpdateReport, onGoRanking, onUpdateUser }) {
+  const { start: periodStart, end: periodEnd } = getClosingPeriod(user?.closing_day ?? 0);
+  const monthReports = reports.filter(r => r.date >= periodStart && r.date <= periodEnd);
+
+  const [showTargetEdit, setShowTargetEdit] = useState(false);
 
   const monthTotal    = monthReports.reduce((s,r) => s + (r.gross_sales || 0), 0);
-  const monthTarget   = parseInt(user.target) || 380000;
-  const achievement   = monthTarget > 0 ? Math.round((monthTotal / monthTarget) * 100) : 0;
+  const monthTarget   = parseInt(user.target) || 0;  // 0 = 未設定
+  const hasTarget     = monthTarget > 0;
+  const achievement   = hasTarget ? Math.round((monthTotal / monthTarget) * 100) : 0;
   const avgSales      = monthReports.length ? Math.round(monthTotal / monthReports.length) : 0;
   const avgOcc        = monthReports.length ? Math.round(monthReports.reduce((s,r) => s + occ(r), 0) / monthReports.length) : 0;
   const remaining     = FREE_LIMIT - (user.uploadCount || 0);
@@ -623,10 +446,16 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   const isSimpleLarge = appMode === "simple_large";
   const isAnalysis    = appMode === "analysis";
 
-  // ── 残りシフト・今日必要な売上 ──
+  // ── 乗車記録サマリー（税込/税抜） ──
+  const totalRideCount = monthReports.reduce((s,r) => s + (r.ride_count || 0), 0);
+  const totalSalesInc  = monthTotal; // 税込
+  const totalSalesExc  = Math.round(monthTotal / 1.1); // 税抜（10%消費税）
+
+  // ── 今月の残り出番・今日必要な売上（締日ベース） ──
   const today         = new Date();
-  const daysInMonth   = new Date(THIS_YEAR, THIS_MONTH, 0).getDate();
-  const remainingDays = Math.max(0, daysInMonth - today.getDate());
+  // periodEnd は "YYYY-MM-DD" 文字列。締日の23:59:59まで残り日数を計算
+  const periodEndDate = new Date(periodEnd + "T23:59:59");
+  const remainingDays = Math.max(0, Math.ceil((periodEndDate - today) / (1000 * 60 * 60 * 24)));
   const shiftsPerDay  = (user.workType === "隔日勤務") ? 0.5 : 0.75;
   const remainingShifts = Math.round(remainingDays * shiftsPerDay);
   const remainingAmount = Math.max(0, monthTarget - monthTotal);
@@ -634,13 +463,134 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   const neededPerShift  = remainingShifts > 0 ? Math.round(remainingAmount / remainingShifts) : 0;
   const neededToday     = remainingDays > 0 ? Math.round(remainingAmount / remainingDays) : 0;
 
+  // ── 今日の売り上げカード（カレンダー直下） ──
+  // ※ toISOString()はUTCなので、ローカル日付を使用する
+  const _todayLocal = new Date();
+  const todayStr = `${_todayLocal.getFullYear()}-${String(_todayLocal.getMonth()+1).padStart(2,"0")}-${String(_todayLocal.getDate()).padStart(2,"0")}`;
+  const todayReport   = reports.find(r => r.date === todayStr);
+  const todayRides    = todayReport?.rides || [];
+  const todayHighway  = Number(todayReport?.highway_fee || 0);
+
+  // rides個票がある場合はそちらから集計、なければ日報のgross_salesを使用
+  let todayTaxInc, todayTaxExc, todayRideCount;
+  if (todayRides.length > 0) {
+    const ridesTotal  = todayRides.reduce((s, r) => s + (r.amount || 0), 0);
+    todayTaxInc       = ridesTotal + todayHighway;
+    todayTaxExc       = Math.round(ridesTotal / 1.1);
+    todayRideCount    = todayRides.length;
+  } else if (todayReport) {
+    todayTaxInc       = todayReport.gross_sales || 0;
+    todayTaxExc       = Math.round((todayTaxInc - todayHighway) / 1.1);
+    todayRideCount    = todayReport.ride_count || 0;
+  } else {
+    todayTaxInc = 0; todayTaxExc = 0; todayRideCount = 0;
+  }
+
+  // 乗車記録カード（SalesPointCard）から今日の個別記録を取得して統合
+  const todaySalesRecs = (() => {
+    try {
+      const all = JSON.parse(localStorage.getItem("taxi_sales_records") || "[]");
+      return all.filter(r => {
+        const d = r.workDate || (r.timestamp ? r.timestamp.slice(0,10) : "");
+        return d === todayStr;
+      });
+    } catch { return []; }
+  })();
+  const todaySalesCount = todaySalesRecs.length;
+  const todaySalesTotal = todaySalesRecs.reduce((s, r) => s + (r.fare || r.amount || 0), 0);
+
+  const MonthlyStatsCard = () => {
+    const [open, setOpen] = useState(false);
+    const hasReport = todayTaxInc > 0 || todayRideCount > 0;
+    const hasRecs   = todaySalesCount > 0;
+    const hasData   = hasReport || hasRecs;
+
+    // ヘッダーに表示する回数（乗車記録カードの件数を優先）
+    const displayCount = hasRecs ? todaySalesCount : todayRideCount;
+
+    return (
+      <Card style={{ marginBottom:14, padding:0, overflow:"hidden" }}>
+        <div onClick={() => setOpen(p => !p)} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px", cursor:"pointer" }}>
+          <span style={{ fontSize:13, fontWeight:700, color:C.text, flex:1 }}>🚕 今日の売り上げ</span>
+          {hasData
+            ? <span style={{ fontSize:11, color:C.accentLight, fontWeight:700 }}>{displayCount}回</span>
+            : <span style={{ fontSize:11, color:C.muted }}>記録なし</span>
+          }
+          <span style={{ fontSize:10, color:C.muted }}>{open ? "▲" : "▼"}</span>
+        </div>
+        {open && hasData && (
+          <div style={{ borderTop:`1px solid ${C.border}` }}>
+            {/* 日報ベースの売上（税抜のみ・高速代除外） */}
+            {hasReport && (
+              <>
+                <div style={{ textAlign:"center", padding:"16px 14px" }}>
+                  <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>売上（税抜 / 高速代除く）</div>
+                  <div style={{ fontSize:28, fontWeight:900, color:C.text }}>{fmt(todayTaxExc)}<span style={{ fontSize:13, color:C.muted, marginLeft:4 }}>円</span></div>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", borderTop:`1px solid ${C.border}` }}>
+                  {[
+                    { label:"乗車回数", value:todayRideCount, unit:"回", color:C.accentLight },
+                    { label:"走行距離", value:todayReport?.total_distance || 0, unit:"km", color:C.text },
+                    { label:"勤務時間", value:todayReport?.work_hours || 0, unit:"h", color:C.text },
+                  ].map(({label,value,unit,color},i) => (
+                    <div key={i} style={{ textAlign:"center", padding:"10px 4px", borderRight:i<2?`1px solid ${C.border}`:"none" }}>
+                      <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>{label}</div>
+                      <div style={{ fontSize:14, fontWeight:900, color }}>{value}<span style={{ fontSize:9, color:C.muted, marginLeft:1 }}>{unit}</span></div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            {/* 乗車記録カードの今日の記録 */}
+            {hasRecs && (
+              <div style={{ borderTop: hasReport ? `1px solid ${C.border}` : "none" }}>
+                <div style={{ display:"flex" }}>
+                  <div style={{ flex:1, textAlign:"center", padding:"12px 4px" }}>
+                    <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>乗車記録 合計</div>
+                    <div style={{ fontSize:18, fontWeight:900, color:C.gold }}>{fmt(todaySalesTotal)}<span style={{ fontSize:10, color:C.muted }}>円</span></div>
+                  </div>
+                  <div style={{ width:1, backgroundColor:C.border }}/>
+                  <div style={{ flex:1, textAlign:"center", padding:"12px 4px" }}>
+                    <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>乗車記録 件数</div>
+                    <div style={{ fontSize:18, fontWeight:900, color:C.accentLight }}>{todaySalesCount}<span style={{ fontSize:10, color:C.muted }}>件</span></div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+    );
+  };
+
+  const targetEditModal = showTargetEdit && (
+    <TargetEditModal
+      current={monthTarget}
+      onSave={v => onUpdateUser?.({ ...user, target: String(v) })}
+      onClose={() => setShowTargetEdit(false)}
+    />
+  );
+
   // ━━━ かんたんモード ━━━━━━━━━━━━━━━━━━━━━━━━━
   if (isSimple) {
     return (
-      <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px", fontSize: isSimpleLarge ? "110%" : "100%" }}>
-        <UpdateBanner />
-        <AreaFilterBanner userAreas={user.areas || []} onManage={onManageArea} />
+      <div style={{ maxWidth:600, margin:"0 auto", padding: isSimpleLarge ? "16px 10px 100px" : "16px 16px 100px", zoom: isSimpleLarge ? 1.32 : 1 }}>
+        {/* ① レベル欄 */}
+        <XpCard user={user} />
+
+        {/* ② シフト表（カレンダー） */}
+        <ShiftSummaryCard reports={monthReports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} onGoShift={onGoShift} />
+
+        {/* ③ 月次統計（カレンダー直下、折りたたみ） */}
+        <MonthlyStatsCard />
+
         <WeatherWidget />
+
+        {/* 営業ポイント記録 */}
+        <SalesPointCard user={user} />
+
+        {/* 休憩時間 */}
+        <BreakTimeCard reports={reports} onUpdateReport={onUpdateReport} />
 
         {/* 売上メインカード（大きな文字） */}
         <Card style={{ marginBottom:14, padding:"24px 20px", borderColor:C.gold+"33" }}>
@@ -648,11 +598,15 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
           <div style={{ fontSize:52, fontWeight:900, color:C.text, lineHeight:1.1 }}>
             {fmt(monthTotal)}<span style={{ fontSize:20, color:C.muted, marginLeft:6 }}>円</span>
           </div>
-          <div style={{ fontSize:15, color:C.muted, marginTop:8 }}>
-            目標 {fmt(monthTarget)}円
-            <span style={{ color:achColor, fontWeight:700, marginLeft:8 }}>達成率 {achievement}%</span>
+          <div style={{ fontSize:15, color:C.muted, marginTop:8, display:"flex", alignItems:"center", gap:10 }}>
+            <span onClick={()=>setShowTargetEdit(true)}
+              style={{ cursor:"pointer", borderBottom:`1px dashed ${C.border}`,
+                color: hasTarget ? C.muted : C.accentLight, fontWeight: hasTarget ? 400 : 700 }}>
+              {hasTarget ? `目標 ${fmt(monthTarget)}円` : "🎯 目標を設定する"}
+            </span>
+            {hasTarget && <span style={{ color:achColor, fontWeight:700 }}>達成率 {achievement}%</span>}
           </div>
-          <ProgressBar value={Math.min(achievement, 100)} max={100} color={achColor} height={10} style={{ marginTop:12 }} />
+          {hasTarget && <ProgressBar value={Math.min(achievement, 100)} max={100} color={achColor} height={10} style={{ marginTop:12 }} />}
 
           {/* 残り目標 + シフト情報 */}
           <div style={{ marginTop:16, padding:"14px 0 0", borderTop:`1px solid ${C.border}` }}>
@@ -663,10 +617,10 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
                 : <>{fmt(monthTarget - monthTotal)}<span style={{ fontSize:16, marginLeft:4 }}>円</span></>
               }
             </div>
-            {monthTotal < monthTarget && remainingShifts > 0 && (
+            {hasTarget && monthTotal < monthTarget && remainingShifts > 0 && (
               <div style={{ display:"flex", gap:12, marginTop:12 }}>
                 <div style={{ flex:1, backgroundColor:C.bg, borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
-                  <div style={{ fontSize:10, color:C.muted, marginBottom:3 }}>残りシフト</div>
+                  <div style={{ fontSize:10, color:C.muted, marginBottom:3 }}>今月の残り出番</div>
                   <div style={{ fontSize:22, fontWeight:900, color:C.text }}>{remainingShifts}<span style={{ fontSize:12, marginLeft:2 }}>回</span></div>
                 </div>
                 <div style={{ flex:1, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}33`, borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
@@ -678,35 +632,33 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
           </div>
         </Card>
 
-        {/* カレンダー */}
-        <MonthCalendar reports={monthReports} monthTarget={monthTarget} />
-
-        {/* XP（コンパクト・折りたたみ） */}
-        <XpCard user={user} />
-
         {/* AIアドバイス */}
         <AiAdviceCard reports={monthReports} appMode={appMode} />
 
-        {/* 直近日報（大きめ表示） */}
-        {reports.length > 0 ? (
-          <RecentReports reports={reports} onOpenReport={onOpenReport} simple={true} />
-        ) : (
-          <Card style={{ textAlign:"center", padding:32 }}>
-            <div style={{ fontSize:36, marginBottom:10 }}>📄</div>
-            <div style={{ fontSize:18, fontWeight:700, marginBottom:8 }}>日報をアップロードしよう</div>
-            <div style={{ fontSize:14, color:C.muted }}>日報を登録すると売上が表示されます</div>
-          </Card>
-        )}
+        {targetEditModal}
       </div>
     );
   }
 
   // ━━━ 通常・分析モード ━━━━━━━━━━━━━━━━━━━━━━
   return (
-    <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
-      <UpdateBanner />
-      <AreaFilterBanner userAreas={user.areas || []} onManage={onManageArea} />
+    <div style={{ maxWidth:600, margin:"0 auto", padding:"16px 16px 100px" }}>
+      {/* ① レベル欄 */}
+      <XpCard user={user} />
+
+      {/* ② シフト表（カレンダー） */}
+      <ShiftSummaryCard reports={reports} monthTarget={monthTarget} user={user} onOpenReport={onOpenReport} onGoShift={onGoShift} />
+
+      {/* ③ 月次統計（カレンダー直下、折りたたみ） */}
+      <MonthlyStatsCard />
+
       <WeatherWidget />
+
+      {/* 営業ポイント記録 */}
+      <SalesPointCard />
+
+      {/* 休憩時間 */}
+      <BreakTimeCard reports={reports} onUpdateReport={onUpdateReport} />
 
       {/* ① 売上サマリー（最上位） */}
       <Card style={{ marginBottom:14, borderColor:C.gold+"33" }}>
@@ -716,9 +668,13 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
             <div style={{ fontSize:32, fontWeight:900, color:C.text }}>
               {fmt(monthTotal)}<span style={{ fontSize:13, color:C.muted, marginLeft:4 }}>円</span>
             </div>
-            <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
-              目標 {fmt(monthTarget)}円
-              <span style={{ color:achColor, fontWeight:700, marginLeft:6 }}>達成率 {achievement}%</span>
+            <div style={{ fontSize:11, color:C.muted, marginTop:4, display:"flex", alignItems:"center", gap:8 }}>
+              <span onClick={()=>setShowTargetEdit(true)}
+                style={{ cursor:"pointer", borderBottom:`1px dashed ${C.border}`,
+                  color: hasTarget ? C.muted : C.accentLight, fontWeight: hasTarget ? 400 : 700 }}>
+                {hasTarget ? `目標 ${fmt(monthTarget)}円` : "🎯 目標を設定する"}
+              </span>
+              {hasTarget && <span style={{ color:achColor, fontWeight:700 }}>達成率 {achievement}%</span>}
             </div>
           </div>
           <div style={{ textAlign:"right" }}>
@@ -730,17 +686,19 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
             </div>
           </div>
         </div>
-        <ProgressBar value={Math.min(achievement, 100)} max={100} color={achColor} height={8} />
-        <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:C.muted, marginTop:5 }}>
-          <span>{THIS_MONTH}月 {monthReports.length}件入力済み</span>
-          <span>{achievement}%</span>
-        </div>
+        {hasTarget && <>
+          <ProgressBar value={Math.min(achievement, 100)} max={100} color={achColor} height={8} />
+          <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:C.muted, marginTop:5 }}>
+            <span>{THIS_MONTH}月 {monthReports.length}件入力済み</span>
+            <span>{achievement}%</span>
+          </div>
+        </>}
 
         {/* 残りシフト・1本必要額 */}
-        {monthTotal < monthTarget && remainingShifts > 0 && (
+        {hasTarget && monthTotal < monthTarget && remainingShifts > 0 && (
           <div style={{ display:"flex", gap:8, marginTop:12, paddingTop:12, borderTop:`1px solid ${C.border}` }}>
             <div style={{ flex:1, backgroundColor:C.bg, borderRadius:9, padding:"8px 10px", textAlign:"center" }}>
-              <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>残りシフト(推定)</div>
+              <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>今月の残り出番</div>
               <div style={{ fontSize:18, fontWeight:900, color:C.text }}>{remainingShifts}<span style={{ fontSize:10, marginLeft:2 }}>回</span></div>
             </div>
             <div style={{ flex:1, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}33`, borderRadius:9, padding:"8px 10px", textAlign:"center" }}>
@@ -753,7 +711,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
             </div>
           </div>
         )}
-        {monthTotal >= monthTarget && (
+        {hasTarget && monthTotal >= monthTarget && (
           <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${C.border}`, textAlign:"center", fontSize:16, fontWeight:800, color:C.green }}>
             🎉 今月の目標達成！
           </div>
@@ -773,9 +731,6 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         )}
       </Card>
 
-      {/* カレンダー */}
-      <MonthCalendar reports={monthReports} monthTarget={monthTarget} />
-
       {/* ② KPI グリッド */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:14 }}>
         <KpiCard label="平均売上"   value={fmt(avgSales)} unit="円" accent={C.accentLight} />
@@ -783,11 +738,8 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         <KpiCard label="無料残り"   value={remaining}      unit="件" accent={remaining <= 1 ? C.red : C.gold} />
       </div>
 
-      {/* ③ XP・ミッション（折りたたみ） */}
-      <XpCard user={user} />
-
-      {/* ④ 翌日発表（分析モードのみ常に展開、通常は折りたたみ） */}
-      <YesterdayCard userAreas={user.areas || []} rankPrefs={rankPrefs} reports={reports} />
+      {/* ④ ランキング新着バナー（通知ON時のみ App.jsx から onGoRanking が渡される） */}
+      {onGoRanking && <RankingNoticeBanner onGoRanking={onGoRanking} />}
 
       {/* ⑤ 今日の売上＆着地予想（分析モードのみ） */}
       {isAnalysis && <AnalysisTodayCard reports={reports} />}
@@ -798,16 +750,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
       {/* ⑥ AIアドバイス（3件以上でモード別表示） */}
       <AiAdviceCard reports={monthReports} appMode={appMode} />
 
-      {/* ⑦ 直近日報 */}
-      <RecentReports reports={reports} onOpenReport={onOpenReport} simple={false} />
-
-      {reports.length === 0 && (
-        <Card style={{ textAlign:"center", padding:28, marginTop:8 }}>
-          <div style={{ fontSize:32, marginBottom:10 }}>📄</div>
-          <div style={{ fontSize:15, fontWeight:700, marginBottom:8 }}>日報をアップロードしよう</div>
-          <div style={{ fontSize:12, color:C.muted, marginBottom:14 }}>日報を登録すると、売上グラフや<br/>AI分析コメントが表示されます</div>
-        </Card>
-      )}
+      {targetEditModal}
     </div>
   );
 }
