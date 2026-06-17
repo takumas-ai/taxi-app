@@ -25,7 +25,6 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
 
   const SUB = [
     {id:"account",  icon:"🔗", label:"アカウント",   sub: user?._isGuest ? "⚠️ 未連携（データが危険）" : (user?.email || "連携済み")},
-    {id:"profile",  icon:"👤", label:"プロフィール", sub:"名前・勤務形態"},
     {id:"closing",  icon:"📅", label:"締日設定",     sub: user.closing_day ? `毎月${user.closing_day}日締め` : "月末締め"},
     {id:"mode",    icon:"🎛️", label:"モードとカラーテーマ", sub:appMode==="simple"?"かんたん":appMode==="simple_large"?"かんたん（大）":appMode==="analysis"?"分析":"かんたん"},
     {id:"area",    icon:"📍", label:"エリア",       sub:user.areas?.length>0?user.areas[0]:"未設定"},
@@ -33,10 +32,9 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
     {id:"takepay", icon:"💴", label:"手取り設定",    sub:`歩合${takePay.rate}% / 控除${(takePay.deduction/10000).toFixed(1)}万円`},
     {id:"plan",    icon:"💳", label:"プラン",        sub:"無料プラン"},
     {id:"rank",    icon:"🏆", label:"ランク",       sub:"表示設定"},
-    {id:"roadmap", icon:"🗺️", label:"ロードマップ",  sub:"開発予定"},
     {id:"export",   icon:"📤", label:"データエクスポート", sub:"CSV / PDF 出力"},
     {id:"coupon",   icon:"🎟️", label:"クーポンコード",    sub:"割引・特典コードを入力"},
-    {id:"referral", icon:"🎁", label:"友達を招待",        sub:"紹介リンク・特典"},
+    {id:"roadmap", icon:"🗺️", label:"ロードマップ",  sub:"開発予定"},
     {id:"feedback", icon:"💬", label:"意見箱",          sub:"要望・バグ報告・ひとこと"},
     {id:"help",    icon:"❓", label:"ヘルプ・FAQ",    sub:"よくある質問"},
     {id:"terms",   icon:"📄", label:"利用規約",      sub:"タクロー利用規約"},

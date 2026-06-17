@@ -243,10 +243,8 @@ function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSet
   const items = [
     { icon:"📈", label:"統計",             action:()=>{ setTab("stats"); onClose(); } },
     { icon:"🏆", label:"ランキング",       action:()=>{ setTab("ranking"); onClose(); }, badge: hasNewRanking },
-    { icon:"🎁", label:"友達を招待",       action:()=>{ onNavigateSettings("referral"); onClose(); } },
     { icon:"🗺️", label:"エリア設定",       action:()=>{ onManageArea?.(); onClose(); } },
     { icon:"📍", label:"マイポイント",       action:()=>{ onOpenBizPoints(); onClose(); } },
-    { icon:"👤", label:"プロフィール",     action:()=>{ onNavigateSettings("profile"); onClose(); } },
     { icon:"💴", label:"手取り設定",       action:()=>{ onNavigateSettings("takepay"); onClose(); } },
   ];
 
@@ -264,6 +262,7 @@ function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSet
           <div style={{ fontSize:15, fontWeight:800, color:C.text }}>{user?.name || "ゲスト"}</div>
           <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{user?.company || ""}</div>
           {user?.workType && <div style={{ display:"inline-block", marginTop:6, fontSize:10, backgroundColor:C.accentGlow, color:C.accentLight, border:`1px solid ${C.accentLight}44`, borderRadius:99, padding:"2px 10px", fontWeight:700 }}>{user.workType}</div>}
+          <div onClick={()=>{ onNavigateSettings("profile"); onClose(); }} style={{ marginTop:10, display:"inline-block", fontSize:12, color:C.accentLight, cursor:"pointer", padding:"5px 12px", borderRadius:8, border:`1px solid ${C.accentLight}44`, backgroundColor:C.accentLight+"11" }}>✏️ プロフィールを編集</div>
         </div>
 
         {/* メニュー項目 */}
