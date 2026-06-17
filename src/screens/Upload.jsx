@@ -8,7 +8,7 @@ import { supabase } from "../lib/supabase";
 import { validateImageFile, validateReportForm, sanitizeReportData } from "../lib/validate";
 
 const OCR_SEQ = ["画像を解析中...","日付・勤務時間を読み取り中...","売上データを抽出中...","営業回数・走行距離を確認中...","フォーマット差異を吸収中...","読み取り完了 ✓"];
-const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"1.0", highway_fee:"0", trouble_note:"", work_area:"", rides:[], break_times:[] };
+const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"", highway_fee:"", trouble_note:"", work_area:"", rides:[], break_times:[] };
 
 // HEIC/HEIFをJPEG Blobに変換（heic2any CDN経由）
 async function convertHeicToJpeg(file) {
@@ -360,10 +360,10 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
       let hasMatch = false;
 
       const today = new Date().toISOString().slice(0, 10);
-      // break_hoursはbreak_timesから計算、なければOCR値かデフォルト
+      // break_hoursはbreak_timesから計算、なければOCR値、なければ空欄
       const computedBreakHours = breakTimes.length > 0
         ? calcBreakHours(breakTimes)
-        : (f.break_hours != null ? String(f.break_hours) : "1.0");
+        : (f.break_hours != null ? String(f.break_hours) : "");
 
       const reportDate = f.report_date ?? f.date ?? today;
 
