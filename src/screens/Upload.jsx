@@ -307,6 +307,10 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
       addLine("日付・売上データを抽出中...", 40);
 
       const result1 = await runReportOCR(base64_1, "image/jpeg");
+      if (result1?.error === "monthly_limit_exceeded") {
+        setStep("select"); // 選択画面に戻す（remaining<=0 の表示を出すため）
+        return;
+      }
       if (!result1) throw new Error("1枚目のOCRに失敗しました");
 
       const f = result1?.fields ?? {};

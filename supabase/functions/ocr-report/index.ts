@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+const FREE_OCR_LIMIT = 8; // 無料ユーザーの月次上限
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,12 +65,35 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    // anonキーまたはBearerトークンがあればOK（デモユーザーも利用可）
-    const apiKey = req.headers.get("apikey") || req.headers.get("Authorization");
+    const authHeader = req.headers.get("Authorization");
+    const apiKey     = req.headers.get("apikey") || authHeader;
     if (!apiKey) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
 
+    // ─── サーバーサイド月次制限チェック ───
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const db = createClient(supabaseUrl, supabaseKey);
+
+    // Bearer トークンからユーザーIDを取得
+    let userId: string | null = null;
+    if (authHeader?.startsWith("Bearer ")) {
+      const { data: { user } } = await db.auth.getUser(authHeader.replace("Bearer ", ""));
+      userId = user?.id ?? null;
+    }
+
+    if (userId) {
+      const { data: profile } = await db.from("users").select("plan, monthly_upload_count, upload_reset_month").eq("id", userId).single();
+      if (profile && profile.plan !== "paid") {
+        const currentMonth = new Date().toISOString().slice(0, 7);
+        const count = profile.upload_reset_month === currentMonth ? (profile.monthly_upload_count || 0) : 0;
+        if (count >= FREE_OCR_LIMIT) {
+          return new Response(JSON.stringify({ error: "monthly_limit_exceeded", limit: FREE_OCR_LIMIT }), { status: 429, headers: corsHeaders });
+        }
+      }
+    }
+
     const body = await req.json();
-    const { image_base64, media_type = "image/jpeg" } = body;
+    const { image_base64, media_type = "image/jpeg", prompt } = body;
 
     // 入力バリデーション
     if (!image_base64 || typeof image_base64 !== "string") {
@@ -99,7 +124,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 1024,
+        max_tokens: 2048,
         messages: [{
           role: "user",
           content: [
@@ -107,7 +132,7 @@ serve(async (req) => {
               type: "image",
               source: { type: "base64", media_type: normalizedType, data: image_base64 },
             },
-            { type: "text", text: REPORT_OCR_PROMPT },
+            { type: "text", text: prompt || REPORT_OCR_PROMPT },
           ],
         }],
       }),
