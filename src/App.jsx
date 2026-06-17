@@ -228,10 +228,11 @@ function LoginScreen({ onLogin, onGuestLogin }) {
         <div style={{ width:"100%", maxWidth:360 }}>
 
           {/* Google（新規・既存どちらでも機能する） */}
-          <button onClick={()=>doOAuth("google")} disabled={loading} style={{ ...btnOAuth, marginBottom:16 }}>
+          <button onClick={()=>doOAuth("google")} disabled={loading} style={{ ...btnOAuth, marginBottom:4 }}>
             <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.2 33.5 29.7 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 2.9l6-6C34.5 6.5 29.6 4.5 24 4.5 12.7 4.5 3.5 13.7 3.5 25S12.7 45.5 24 45.5c11 0 20.5-8 20.5-20.5 0-1.4-.1-2.7-.5-5z"/><path fill="#34A853" d="M6.3 14.7l7 5.1C15.1 16 19.2 13 24 13c3 0 5.7 1.1 7.8 2.9l6-6C34.5 6.5 29.6 4.5 24 4.5c-7.5 0-14 4.3-17.7 10.2z"/><path fill="#FBBC05" d="M24 45.5c5.5 0 10.5-1.8 14.3-4.9l-6.6-5.4C29.7 36.9 27 38 24 38c-5.7 0-10.5-3.7-12.2-8.8l-7 5.4C8.3 41.4 15.5 45.5 24 45.5z"/><path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.8 2.3-2.3 4.3-4.3 5.6l6.6 5.4C42 36.4 44.5 31 44.5 25c0-1.4-.1-2.7-.5-5z"/></svg>
             Googleで続ける
           </button>
+          <div style={{ textAlign:"center", fontSize:11, color:C.muted, marginBottom:16 }}>はじめての方も・ログインも、これひとつでOK</div>
 
           {/* 区切り */}
           <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
