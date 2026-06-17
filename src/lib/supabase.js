@@ -167,8 +167,86 @@ export async function uploadAvatar(file, userId) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 紹介コード（referral）
+// 招待・紹介システム
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** 自分の招待コードを生成・取得（未生成なら発行、生成済みならそのまま返す） */
+export async function ensureReferralCode(userId) {
+  // まず既存コードを確認
+  const { data: profile } = await supabase
+    .from("users").select("referral_code").eq("id", userId).single();
+  if (profile?.referral_code) return { code: profile.referral_code, error: null };
+  // なければRPCで生成
+  const { data, error } = await supabase.rpc("generate_referral_code", { user_id: userId });
+  return { code: data, error };
+}
+
+/**
+ * 招待コードを使った登録を記録し、関連クーポンを発行する
+ * 招待された側：invitedクーポン発行 / 招待した側：マイルストーン確認
+ */
+export async function registerWithReferral({ referredId, referredName, referralCode }) {
+  // 1. 招待コードからreferrerを特定
+  const { data: referrer } = await supabase
+    .from("users").select("id, name").eq("referral_code", referralCode).single();
+  if (!referrer) return { error: "無効な招待コードです", valid: false };
+
+  // 2. referred_byを保存
+  await supabase.from("users").update({ referred_by: referralCode }).eq("id", referredId);
+
+  // 3. referral_eventsに記録（重複はUNIQUE制約で弾かれる）
+  const { error: evErr } = await supabase.from("referral_events").insert({
+    referrer_id:   referrer.id,
+    referred_id:   referredId,
+    referral_code: referralCode,
+    referrer_name: referrer.name,
+    referred_name: referredName,
+  });
+  if (evErr) {
+    // referred_idのUNIQUE違反 = すでに招待済みの人
+    if (evErr.code === "23505") return { error: "このコードはすでに使用済みです", valid: false };
+    return { error: evErr.message, valid: false };
+  }
+
+  // 4. 招待された人にinvitedクーポンを発行（14日→44日分のため+30日）
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const invCode = "INV-" + Array.from({length:6}, () => chars[Math.floor(Math.random()*chars.length)]).join("");
+  await supabase.from("coupons").insert({
+    user_id:       referredId,
+    code:          invCode,
+    type:          "invited",
+    benefit_days:  30,
+    issued_reason: "招待コード登録ボーナス（+30日）",
+  });
+
+  // 5. 招待した人のマイルストーンをチェック・クーポン発行（RPC）
+  const { data: milestone } = await supabase
+    .rpc("check_referral_milestone", { referrer_id_input: referrer.id });
+
+  return { error: null, valid: true, milestone };
+}
+
+/** 自分の招待実績（招待した人数 + 発行済みクーポン）を取得 */
+export async function fetchMyReferralStats(userId, referralCode) {
+  const [eventsRes, couponsRes] = await Promise.all([
+    supabase.from("referral_events").select("referred_name, created_at")
+      .eq("referrer_id", userId).order("created_at", { ascending: false }),
+    supabase.from("coupons").select("*")
+      .eq("user_id", userId).order("issued_at", { ascending: false }),
+  ]);
+  return {
+    events:  eventsRes.data  ?? [],
+    coupons: couponsRes.data ?? [],
+  };
+}
+
+/** 自分のクーポン一覧を取得 */
+export async function fetchMyCoupons(userId) {
+  const { data, error } = await supabase
+    .from("coupons").select("*").eq("user_id", userId)
+    .order("issued_at", { ascending: false });
+  return { data: data ?? [], error };
+}
 
 /** 紹介コードを使った登録者数を取得（RPCで RLS バイパス） */
 export async function fetchReferralCount(refCode) {
@@ -385,10 +463,17 @@ export async function adminMarkFeedbackRead(id) {
 /** 紹介一覧（referred_by がある全ユーザー） */
 export async function adminFetchReferrals() {
   const { data, error } = await supabase
-    .from("users")
-    .select("id, name, referred_by, created_at, xp")
-    .not("referred_by", "is", null)
+    .from("referral_events")
+    .select("id, referrer_id, referred_id, referral_code, referrer_name, referred_name, created_at")
     .order("created_at", { ascending: false });
+  return { data: data ?? [], error };
+}
+
+export async function adminFetchCoupons() {
+  const { data, error } = await supabase
+    .from("coupons")
+    .select("id, user_id, code, type, benefit_days, milestone_at, issued_at, used_at, expires_at")
+    .order("issued_at", { ascending: false });
   return { data: data ?? [], error };
 }
 

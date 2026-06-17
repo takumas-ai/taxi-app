@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { C, fmt } from "../lib/constants";
 import {
   adminFetchUsers, adminFetchFeedback, adminMarkFeedbackRead,
-  adminFetchReferrals, adminGrantXP, adminResolveDeleteRequest,
+  adminFetchReferrals, adminFetchCoupons, adminGrantXP, adminResolveDeleteRequest,
   adminCreateNotification, adminFetchNotifications, adminFetchMetrics,
 } from "../lib/supabase";
 
@@ -241,58 +241,135 @@ function FeedbackTab() {
 
 // ── 紹介管理 ────────────────────────────────────────
 function ReferralsTab() {
-  const [referrals, setReferrals] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [events,   setEvents]   = useState([]);
+  const [coupons,  setCoupons]  = useState([]);
+  const [view,     setView]     = useState("events"); // "events" | "coupons"
+  const [loading,  setLoading]  = useState(true);
+  const [filter,   setFilter]   = useState("");
 
   useEffect(() => {
-    Promise.all([adminFetchReferrals(), adminFetchUsers()]).then(([r, u]) => {
-      setReferrals(r.data);
-      setUsers(u.data);
+    Promise.all([adminFetchReferrals(), adminFetchCoupons()]).then(([r, c]) => {
+      setEvents(r.data);
+      setCoupons(c.data);
       setLoading(false);
     });
   }, []);
 
-  // 紹介コードからユーザーを特定
-  const refCodeToUser = (code) => {
-    if (!code) return null;
-    return users.find(u => ("TAKURO-" + u.id.slice(-6).toUpperCase()) === code);
-  };
-
-  // 紹介者ごとにグループ化
+  // 紹介者ごとにグループ化（表示用）
   const grouped = {};
-  referrals.forEach(r => {
-    const code = r.referred_by;
-    if (!grouped[code]) grouped[code] = [];
-    grouped[code].push(r);
+  events.forEach(e => {
+    const key = e.referral_code || e.referrer_id || "unknown";
+    if (!grouped[key]) grouped[key] = { name: e.referrer_name || "不明", code: e.referral_code, list: [] };
+    grouped[key].list.push(e);
   });
+
+  const filteredEvents = filter
+    ? events.filter(e => (e.referrer_name||"").includes(filter) || (e.referred_name||"").includes(filter) || (e.referral_code||"").includes(filter.toUpperCase()))
+    : events;
+
+  const typeLabel = { invited:"招待登録特典", milestone:"マイルストーン特典" };
 
   return (
     <div>
-      <div style={{ fontSize:16, fontWeight:800, marginBottom:12 }}>🎁 紹介管理（{referrals.length}件）</div>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+        <div style={{ fontSize:16, fontWeight:800 }}>🎁 紹介管理</div>
+        <div style={{ display:"flex", gap:6 }}>
+          <button onClick={()=>setView("events")}  style={{ ...btn(view==="events"?"#4f8ef7":"#1a1a2e"), border:"1px solid #2a2a4a" }}>イベントログ ({events.length})</button>
+          <button onClick={()=>setView("coupons")} style={{ ...btn(view==="coupons"?"#4f8ef7":"#1a1a2e"), border:"1px solid #2a2a4a" }}>クーポン ({coupons.length})</button>
+        </div>
+      </div>
+
       {loading ? <div style={{ color:"#666", textAlign:"center", padding:40 }}>読み込み中...</div> : (
-        Object.keys(grouped).length === 0
-          ? <div style={{ color:"#666", textAlign:"center", padding:40 }}>紹介経由の登録なし</div>
-          : Object.entries(grouped).map(([code, referred]) => {
-            const recruiter = refCodeToUser(code);
-            return (
-              <div key={code} style={card}>
-                <div style={{ marginBottom:10 }}>
-                  <div style={{ fontSize:14, fontWeight:700 }}>招待者: {recruiter?.name || "不明"}</div>
-                  <div style={{ fontSize:11, color:"#888" }}>コード: {code} · {referred.length}人を招待</div>
+        view === "events" ? (
+          <>
+            {/* サマリー */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:16 }}>
+              {[
+                { label:"総招待数", value: events.length },
+                { label:"招待者数", value: Object.keys(grouped).length },
+                { label:"クーポン発行数", value: coupons.length },
+              ].map(s => (
+                <div key={s.label} style={{ ...card, textAlign:"center", marginBottom:0 }}>
+                  <div style={{ fontSize:22, fontWeight:900, color:"#4f8ef7" }}>{s.value}</div>
+                  <div style={{ fontSize:10, color:"#666", marginTop:3 }}>{s.label}</div>
                 </div>
-                {referred.map(r => (
-                  <div key={r.id} style={{ padding:"8px 12px", backgroundColor:"#0d0d1a", borderRadius:8, marginBottom:6, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                    <div>
-                      <div style={{ fontSize:13, fontWeight:600 }}>{r.name}</div>
-                      <div style={{ fontSize:11, color:"#666" }}>{new Date(r.created_at).toLocaleDateString("ja-JP")} 登録</div>
+              ))}
+            </div>
+
+            {/* 検索 */}
+            <input
+              value={filter}
+              onChange={e=>setFilter(e.target.value)}
+              placeholder="名前・コードで検索..."
+              style={{ ...input, marginBottom:12 }}
+            />
+
+            {/* 招待者グループ or 絞り込み結果 */}
+            {filter ? (
+              filteredEvents.length === 0
+                ? <div style={{ color:"#666", textAlign:"center", padding:40 }}>該当なし</div>
+                : filteredEvents.map(e => (
+                  <div key={e.id} style={{ ...card, padding:"12px 16px" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div>
+                        <span style={{ fontWeight:700, color:"#e0e0ff" }}>{e.referred_name || "不明"}</span>
+                        <span style={{ color:"#666", fontSize:12 }}> が登録</span>
+                      </div>
+                      <span style={badge("#4f8ef7")}>{e.referral_code}</span>
                     </div>
-                    <span style={badge("#22c55e")}>XP {r.xp ?? 0}</span>
+                    <div style={{ fontSize:11, color:"#666", marginTop:5 }}>
+                      招待者: {e.referrer_name || "不明"} ／ {new Date(e.created_at).toLocaleString("ja-JP")}
+                    </div>
                   </div>
-                ))}
+                ))
+            ) : (
+              Object.keys(grouped).length === 0
+                ? <div style={{ color:"#666", textAlign:"center", padding:40 }}>紹介イベントなし</div>
+                : Object.entries(grouped).map(([key, g]) => (
+                  <div key={key} style={card}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                      <div>
+                        <div style={{ fontSize:14, fontWeight:700 }}>{g.name}</div>
+                        <div style={{ fontSize:11, color:"#888" }}>コード: {g.code} ／ {g.list.length}人招待</div>
+                      </div>
+                      <span style={badge("#22c55e")}>{g.list.length}人</span>
+                    </div>
+                    {g.list.map(e => (
+                      <div key={e.id} style={{ padding:"7px 12px", backgroundColor:"#0d0d1a", borderRadius:8, marginBottom:6, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                        <div>
+                          <div style={{ fontSize:13, fontWeight:600 }}>{e.referred_name || "不明"}</div>
+                          <div style={{ fontSize:11, color:"#666" }}>{new Date(e.created_at).toLocaleDateString("ja-JP")} 登録</div>
+                        </div>
+                        <span style={badge("#888")}>ID末尾: {(e.referred_id||"").slice(-6)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))
+            )}
+          </>
+        ) : (
+          // クーポン一覧
+          coupons.length === 0
+            ? <div style={{ color:"#666", textAlign:"center", padding:40 }}>クーポンなし</div>
+            : coupons.map(cp => (
+              <div key={cp.id} style={{ ...card, padding:"12px 16px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <div>
+                    <span style={{ fontWeight:700, color:"#e0e0ff" }}>{typeLabel[cp.type] || cp.type}</span>
+                    <span style={{ fontSize:11, color:"#888", marginLeft:8 }}>+{cp.benefit_days}日</span>
+                  </div>
+                  <div style={{ display:"flex", gap:6 }}>
+                    {cp.milestone_at && <span style={badge("#a855f7")}>{cp.milestone_at}人目達成</span>}
+                    {cp.used_at ? <span style={badge("#666")}>使用済み</span> : <span style={badge("#22c55e")}>未使用</span>}
+                  </div>
+                </div>
+                <div style={{ fontSize:11, color:"#666", marginTop:6 }}>
+                  コード: {cp.code} ／ UID末尾: {(cp.user_id||"").slice(-8)} ／ 発行: {new Date(cp.issued_at).toLocaleDateString("ja-JP")}
+                  {cp.used_at ? ` ／ 使用: ${new Date(cp.used_at).toLocaleDateString("ja-JP")}` : ""}
+                </div>
               </div>
-            );
-          })
+            ))
+        )
       )}
     </div>
   );

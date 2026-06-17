@@ -773,195 +773,214 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
       })()}
 
       {subTab==="coupon" && (() => {
-        const VALID_CODES = {
-          "TAKURO2026":  { label:"2026年記念コード",   benefit:"1ヶ月無料",  xp:200 },
-          "DRIVER100":   { label:"ドライバー応援コード", benefit:"2週間無料",  xp:100 },
-          "BETA-TESTER": { label:"ベータテスター特典",  benefit:"3ヶ月無料",  xp:500 },
-        };
+        const [coupons,  setCoupons]  = useState([]);
+        const [loading,  setLoading]  = useState(true);
 
-        const [code,     setCode]     = useState("");
-        const [applied,  setApplied]  = useState(() => loadS("taxi_coupon_applied", []));
-        const [result,   setResult]   = useState(null); // { ok, msg, info }
-        const [loading,  setLoading]  = useState(false);
+        useState(() => {
+          if (!SUPABASE_READY || !user?.id) { setLoading(false); return; }
+          import("../lib/supabase").then(({ fetchMyCoupons }) => {
+            fetchMyCoupons(user.id).then(data => { setCoupons(data || []); setLoading(false); });
+          });
+        });
 
-        const handleApply = async () => {
-          const upper = code.trim().toUpperCase();
-          if (!upper) return;
-          setLoading(true); setResult(null);
-          await new Promise(r => setTimeout(r, 700));
-
-          if (applied.includes(upper)) {
-            setResult({ ok:false, msg:"このコードはすでに使用済みです" });
-          } else if (VALID_CODES[upper]) {
-            const info = VALID_CODES[upper];
-            const next = [...applied, upper];
-            setApplied(next);
-            saveS("taxi_coupon_applied", next);
-            setResult({ ok:true, msg:`コード適用完了！${info.benefit}と +${info.xp} XP を獲得`, info });
-            setCode("");
-          } else {
-            setResult({ ok:false, msg:"無効なコードです。スペルを確認してください" });
-          }
-          setLoading(false);
-        };
+        const typeLabel = { invited:"招待登録特典", milestone:"招待マイルストーン特典" };
+        const typeIcon  = { invited:"🎁", milestone:"🏅" };
 
         return (
           <div>
-            {/* 入力フォーム */}
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>クーポンコードを入力</div>
-            <div style={{ display:"flex", gap:8, marginBottom:12 }}>
-              <input
-                value={code}
-                onChange={e=>setCode(e.target.value.toUpperCase())}
-                onKeyDown={e=>e.key==="Enter"&&handleApply()}
-                placeholder="例: TAKURO2026"
-                style={{ flex:1, backgroundColor:C.card, border:`1px solid ${result?.ok===false?C.red:result?.ok?C.green:C.border}`, borderRadius:10, padding:"12px 14px", color:C.text, fontSize:14, outline:"none", letterSpacing:"1px", fontWeight:700 }}
-              />
-              <button onClick={handleApply} disabled={!code.trim()||loading}
-                style={{ padding:"0 18px", borderRadius:10, border:"none", backgroundColor:code.trim()?C.accentLight:"#444", color:"#fff", fontSize:13, fontWeight:700, cursor:code.trim()?"pointer":"not-allowed", opacity:loading?0.6:1 }}>
-                {loading?"確認中":"適用"}
-              </button>
-            </div>
+            {/* 保有クーポン一覧 */}
+            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>保有クーポン</div>
 
-            {result && (
-              <div style={{ padding:"10px 14px", borderRadius:10, marginBottom:16, backgroundColor:result.ok?C.greenGlow:C.redGlow, border:`1px solid ${result.ok?C.green+"44":C.red+"44"}`, fontSize:13, color:result.ok?C.green:C.red, fontWeight:600 }}>
-                {result.ok?"✅ ":"❌ "}{result.msg}
-              </div>
-            )}
-
-            {/* 適用済みコード一覧 */}
-            {applied.length > 0 && (
-              <>
-                <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>適用済みコード</div>
-                <Card style={{ padding:0, overflow:"hidden", marginBottom:16 }}>
-                  {applied.map((c, i) => {
-                    const info = VALID_CODES[c];
-                    return (
-                      <div key={c} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: i<applied.length-1?`1px solid ${C.border}`:"none" }}>
-                        <span style={{ fontSize:20 }}>🎟️</span>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:13, fontWeight:700 }}>{c}</div>
-                          {info && <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{info.label} — {info.benefit}</div>}
-                        </div>
-                        <span style={{ fontSize:11, color:C.green, fontWeight:700 }}>適用済み</span>
+            {loading ? (
+              <Card><div style={{ textAlign:"center", padding:"20px 0", color:C.muted, fontSize:13 }}>読み込み中...</div></Card>
+            ) : coupons.length === 0 ? (
+              <Card>
+                <div style={{ textAlign:"center", padding:"24px 0" }}>
+                  <div style={{ fontSize:32, marginBottom:8 }}>🎟️</div>
+                  <div style={{ fontSize:13, color:C.muted }}>まだクーポンがありません</div>
+                  <div style={{ fontSize:11, color:C.muted, marginTop:6 }}>友達を招待すると特典クーポンが届きます</div>
+                </div>
+              </Card>
+            ) : (
+              <Card style={{ padding:0, overflow:"hidden", marginBottom:16 }}>
+                {coupons.map((cp, i) => (
+                  <div key={cp.id} style={{ padding:"14px 16px", borderBottom: i<coupons.length-1?`1px solid ${C.border}`:"none" }}>
+                    <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
+                      <div style={{ width:40, height:40, borderRadius:10, backgroundColor:cp.used_at?C.surface:C.accentLight+"22", border:`1px solid ${cp.used_at?C.border:C.accentLight+"44"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
+                        {typeIcon[cp.type] || "🎟️"}
                       </div>
-                    );
-                  })}
-                </Card>
-              </>
+                      <div style={{ flex:1 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
+                          <span style={{ fontSize:13, fontWeight:700, color:cp.used_at?C.muted:C.text }}>{typeLabel[cp.type] || "クーポン"}</span>
+                          {cp.used_at && <span style={{ fontSize:10, color:C.muted, backgroundColor:C.surface, padding:"1px 6px", borderRadius:4, fontWeight:600 }}>使用済み</span>}
+                        </div>
+                        <div style={{ fontSize:12, color:cp.used_at?C.muted:C.accentLight, fontWeight:700 }}>無料期間 +{cp.benefit_days}日</div>
+                        <div style={{ fontSize:10, color:C.muted, marginTop:3 }}>
+                          発行日: {new Date(cp.issued_at).toLocaleDateString("ja-JP")}
+                          {cp.expires_at ? ` ／ 有効期限: ${new Date(cp.expires_at).toLocaleDateString("ja-JP")}` : " ／ 有効期限: 無期限"}
+                        </div>
+                      </div>
+                      <button
+                        disabled
+                        style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${C.border}`, backgroundColor:C.surface, color:C.muted, fontSize:11, fontWeight:700, cursor:"not-allowed", flexShrink:0, opacity:cp.used_at?0.4:0.8 }}
+                      >
+                        近日公開
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </Card>
             )}
 
-            <div style={{ padding:"12px 14px", backgroundColor:C.surface, borderRadius:10, fontSize:11, color:C.muted, lineHeight:1.7 }}>
-              💡 クーポンコードはキャンペーンやSNSで配布されます。大文字・小文字は区別しません。
+            <div style={{ padding:"12px 14px", backgroundColor:C.surface, borderRadius:10, fontSize:11, color:C.muted, lineHeight:1.8 }}>
+              🎟️ クーポンは友達招待の特典として自動発行されます。<br/>
+              ⏳ クーポン適用機能は有料プランと同時に公開予定です。<br/>
+              ✅ 保有クーポンは期限なし（無期限）で保存されます。
             </div>
           </div>
         );
       })()}
 
       {subTab==="referral" && (() => {
-        const refCode = "TAKURO-" + (user?.id || "").toString().slice(-6).toUpperCase();
-        const refUrl  = `https://takuro-app.vercel.app/?ref=${refCode}`;
-        const shareText = `タクシードライバー向け業務記録アプリ「タクロー」を使ってみて！売上分析・乗り場ガイド・AIアドバイスが全部ひとつで揃ってるよ🦉\n${refUrl}`;
+        const myCode = user?.referral_code || null;
+        const appUrl = "https://taxi-app-nine-eta.vercel.app";
+        const refUrl = myCode ? `${appUrl}/?ref=${myCode}` : appUrl;
+        const shareText = `タクシードライバー向けアプリ「タクロー」を使ってみて！日報記録・売上分析・AIアドバイスが全部ひとつ🦉\n招待コード: ${myCode}\n${refUrl}`;
 
-        const [copied, setCopied] = useState(false);
-        const [referralCount, setReferralCount] = useState(null); // null = 読み込み中
+        const [copied, setCopied]         = useState(false);
+        const [copiedLink, setCopiedLink] = useState(false);
+        const [stats, setStats]           = useState(null); // { events, coupons }
+        const [loading, setLoading]       = useState(true);
 
-        // Supabaseから紹介数を取得
         useState(() => {
-          if (!SUPABASE_READY || !refCode) { setReferralCount(0); return; }
-          fetchReferralCount(refCode).then(({ count }) => setReferralCount(count ?? 0));
+          if (!SUPABASE_READY || !user?.id) { setLoading(false); return; }
+          import("../lib/supabase").then(({ fetchMyReferralStats }) => {
+            fetchMyReferralStats(user.id, myCode).then(s => { setStats(s); setLoading(false); });
+          });
         });
 
-        const rewardXp = (referralCount ?? 0) * 100;
+        const total = stats?.events?.length ?? 0;
+        // 次のマイルストーン
+        const MILESTONES = [1, 3, 6, 9, 12];
+        const nextMilestone = MILESTONES.find(m => m > total) ?? null;
+        const lastMilestone = [...MILESTONES].reverse().find(m => m <= total) ?? 0;
 
-        const copyLink = () => {
-          navigator.clipboard.writeText(refUrl).catch(() => {});
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
+        const copyCode = () => {
+          navigator.clipboard.writeText(myCode || "").catch(()=>{});
+          setCopied(true); setTimeout(()=>setCopied(false), 2000);
+        };
+        const copyLink2 = () => {
+          navigator.clipboard.writeText(refUrl).catch(()=>{});
+          setCopiedLink(true); setTimeout(()=>setCopiedLink(false), 2000);
+        };
+        const shareLine = () => {
+          window.open(`https://line.me/R/msg/text/?${encodeURIComponent(shareText)}`, "_blank");
         };
 
-        const shareVia = (channel) => {
-          if (channel === "line") {
-            window.open(`https://line.me/R/msg/text/?${encodeURIComponent(shareText)}`, "_blank");
-          } else if (channel === "x") {
-            window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`, "_blank");
-          } else if (channel === "instagram") {
-            copyLink();
-            alert("リンクをコピーしました。Instagramに貼り付けて投稿してください。");
-          }
-        };
-        const REWARD_TIERS   = [
-          { count:1,  reward:"🎉 +100 XP", desc:"1人招待達成" },
-          { count:3,  reward:"⭐ +300 XP + 1ヶ月無料", desc:"3人招待達成" },
-          { count:5,  reward:"👑 +500 XP + 3ヶ月無料", desc:"5人招待達成" },
-          { count:10, reward:"🏆 永久無料プラン", desc:"10人招待達成" },
+        const REWARD_TIERS = [
+          { count:1,  days:14,  label:"1人招待",       benefit:"+14日延長クーポン" },
+          { count:3,  days:30,  label:"3人招待",        benefit:"+30日延長クーポン" },
+          { count:6,  days:30,  label:"6人招待",        benefit:"+30日延長クーポン" },
+          { count:9,  days:30,  label:"9人招待",        benefit:"+30日延長クーポン" },
+          { count:12, days:30,  label:"12人招待",       benefit:"+30日延長クーポン" },
         ];
+
+        if (!myCode && !loading) {
+          return (
+            <Card>
+              <div style={{ textAlign:"center", padding:"20px 0", color:C.muted, fontSize:13 }}>
+                招待コードの準備中です。少し待ってからもう一度開いてください。
+              </div>
+            </Card>
+          );
+        }
 
         return (
           <div>
             {/* 実績バナー */}
-            <div style={{ background:`linear-gradient(135deg, ${C.accentLight}22, ${C.purple}22)`, border:`1px solid ${C.accentLight}44`, borderRadius:14, padding:"16px", marginBottom:16, textAlign:"center" }}>
-              <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>あなたの紹介実績</div>
-              <div style={{ fontSize:36, fontWeight:900, color:C.text }}>
-                {referralCount === null ? "—" : referralCount}
+            <div style={{ background:`linear-gradient(135deg, ${C.accentLight}18, ${C.accentLight}08)`, border:`1px solid ${C.accentLight}33`, borderRadius:14, padding:"16px", marginBottom:16, textAlign:"center" }}>
+              <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>累計招待人数</div>
+              <div style={{ fontSize:40, fontWeight:900, color:C.text }}>
+                {loading ? "—" : total}
                 <span style={{ fontSize:16, color:C.muted, marginLeft:4 }}>人</span>
               </div>
-              <div style={{ fontSize:12, color:C.accentLight, fontWeight:700, marginTop:4 }}>
-                {referralCount === null ? "集計中..." : `累計 +${rewardXp} XP 獲得済み`}
-              </div>
+              {!loading && nextMilestone && (
+                <div style={{ fontSize:12, color:C.accentLight, fontWeight:700, marginTop:6 }}>
+                  あと{nextMilestone - total}人で次の特典！
+                </div>
+              )}
+              {!loading && !nextMilestone && total > 0 && (
+                <div style={{ fontSize:12, color:C.green, fontWeight:700, marginTop:6 }}>
+                  🏆 全マイルストーン達成！
+                </div>
+              )}
             </div>
 
-            {/* 紹介コード */}
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>あなたの紹介コード</div>
-            <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+            {/* 自分の招待コード */}
+            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>あなたの招待コード</div>
+            <div style={{ display:"flex", gap:8, marginBottom:10 }}>
               <div style={{ flex:1, backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px" }}>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:3 }}>招待コード</div>
-                <div style={{ fontSize:16, fontWeight:900, color:C.accentLight, letterSpacing:"1px" }}>{refCode}</div>
+                <div style={{ fontSize:18, fontWeight:900, color:C.accentLight, letterSpacing:"2px", fontFamily:"monospace" }}>{myCode || "..."}</div>
               </div>
-              <button onClick={copyLink} style={{ padding:"0 16px", borderRadius:10, border:`1px solid ${copied?C.green:C.border}`, backgroundColor:copied?C.greenGlow:C.card, color:copied?C.green:C.sub, fontSize:13, fontWeight:700, cursor:"pointer", flexShrink:0, transition:"all 0.2s" }}>
-                {copied ? "✓ コピー済" : "📋 コピー"}
+              <button onClick={copyCode} style={{ padding:"0 16px", borderRadius:10, border:`1px solid ${copied?C.green:C.border}`, backgroundColor:copied?C.greenGlow:C.card, color:copied?C.green:C.sub, fontSize:13, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
+                {copied ? "✓ 済" : "コピー"}
               </button>
             </div>
 
             {/* シェアボタン */}
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>シェアする</div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:20 }}>
-              {[
-                { ch:"line",      icon:"💬", label:"LINE で送る",    color:"#06C755", bg:"#06C75518" },
-                { ch:"x",         icon:"✕",  label:"X (Twitter)",   color:"#000",    bg:"#00000018" },
-                { ch:"instagram", icon:"📸", label:"Instagram",     color:"#E1306C", bg:"#E1306C18" },
-                { ch:"copy",      icon:"🔗", label:"リンクをコピー", color:C.accentLight, bg:C.accentGlow },
-              ].map(({ ch, icon, label, color, bg }) => (
-                <button key={ch} onClick={() => ch === "copy" ? copyLink() : shareVia(ch)}
-                  style={{ display:"flex", alignItems:"center", gap:8, padding:"12px 14px", borderRadius:11, border:`1px solid ${color}44`, backgroundColor:bg, color, fontSize:13, fontWeight:700, cursor:"pointer", textAlign:"left" }}>
-                  <span style={{ fontSize:18 }}>{icon}</span>
-                  <span>{label}</span>
-                </button>
-              ))}
+              <button onClick={shareLine} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"13px 0", borderRadius:11, border:"1px solid #06C75544", backgroundColor:"#06C75514", color:"#06C755", fontSize:14, fontWeight:800, cursor:"pointer" }}>
+                💬 LINEで送る
+              </button>
+              <button onClick={copyLink2} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"13px 0", borderRadius:11, border:`1px solid ${copiedLink?C.green:C.border}`, backgroundColor:copiedLink?C.greenGlow:C.card, color:copiedLink?C.green:C.sub, fontSize:14, fontWeight:700, cursor:"pointer" }}>
+                {copiedLink ? "✓ コピー済" : "🔗 リンクをコピー"}
+              </button>
             </div>
 
-            {/* 特典ティア */}
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>🎁 紹介特典</div>
-            <Card style={{ padding:0, overflow:"hidden" }}>
+            {/* 特典マイルストーン */}
+            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>🎁 招待特典（累計人数で達成）</div>
+            <Card style={{ padding:0, overflow:"hidden", marginBottom:16 }}>
               {REWARD_TIERS.map((tier, i) => {
-                const achieved = referralCount >= tier.count;
+                const achieved = total >= tier.count;
+                const isCurrent = lastMilestone === tier.count && achieved;
                 return (
-                  <div key={tier.count} style={{ display:"flex", alignItems:"center", gap:12, padding:"13px 16px", borderBottom: i < REWARD_TIERS.length-1 ? `1px solid ${C.border}` : "none", opacity: achieved ? 1 : 0.5 }}>
-                    <div style={{ width:32, height:32, borderRadius:"50%", backgroundColor: achieved ? C.green+"22" : C.surface, border:`2px solid ${achieved ? C.green : C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>
+                  <div key={tier.count} style={{ display:"flex", alignItems:"center", gap:12, padding:"13px 16px", borderBottom: i < REWARD_TIERS.length-1 ? `1px solid ${C.border}` : "none", backgroundColor: isCurrent ? C.accentLight+"0c" : "transparent" }}>
+                    <div style={{ width:32, height:32, borderRadius:"50%", backgroundColor: achieved ? C.green+"22" : C.surface, border:`2px solid ${achieved ? C.green : C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, color: achieved ? C.green : C.muted, flexShrink:0 }}>
                       {achieved ? "✓" : tier.count}
                     </div>
                     <div style={{ flex:1 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color: achieved ? C.text : C.muted }}>{tier.desc}</div>
-                      <div style={{ fontSize:11, color: achieved ? C.green : C.muted, marginTop:2 }}>{tier.reward}</div>
+                      <div style={{ fontSize:13, fontWeight:700, color: achieved ? C.text : C.muted }}>{tier.label}</div>
+                      <div style={{ fontSize:11, color: achieved ? C.green : C.muted, marginTop:2 }}>{tier.benefit}</div>
                     </div>
-                    {achieved && <span style={{ fontSize:18 }}>🏅</span>}
+                    {achieved && <span style={{ fontSize:16 }}>🏅</span>}
                   </div>
                 );
               })}
             </Card>
 
-            <div style={{ marginTop:12, fontSize:11, color:C.muted, lineHeight:1.7, padding:"10px 14px", backgroundColor:C.surface, borderRadius:10 }}>
-              ※ 招待した相手がアカウント登録を完了した時点で特典が付与されます。自己紹介は対象外です。
+            {/* 招待した人の履歴 */}
+            {stats?.events?.length > 0 && (
+              <>
+                <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>招待した人</div>
+                <Card style={{ padding:0, overflow:"hidden", marginBottom:16 }}>
+                  {stats.events.map((e, i) => (
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: i < stats.events.length-1 ? `1px solid ${C.border}` : "none" }}>
+                      <div style={{ width:32, height:32, borderRadius:"50%", backgroundColor:C.accentLight+"22", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>🦉</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:13, fontWeight:600 }}>{e.referred_name || "ドライバー"}</div>
+                        <div style={{ fontSize:11, color:C.muted }}>{new Date(e.created_at).toLocaleDateString("ja-JP")}</div>
+                      </div>
+                      <span style={{ fontSize:11, color:C.green, fontWeight:700 }}>登録済み</span>
+                    </div>
+                  ))}
+                </Card>
+              </>
+            )}
+
+            <div style={{ padding:"10px 14px", backgroundColor:C.surface, borderRadius:10, fontSize:11, color:C.muted, lineHeight:1.8 }}>
+              ※ 招待した相手が登録完了した時点でカウントされます。<br/>
+              ※ クーポンはアプリ内通知でお知らせします。<br/>
+              ※ 招待された方は登録時に+30日の無料期間が付与されます。
             </div>
           </div>
         );
