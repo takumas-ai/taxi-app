@@ -35,7 +35,7 @@ function buildForm(report) {
     total_distance:     report.total_distance     != null ? String(report.total_distance)     : "",
     occupied_distance:  report.occupied_distance  != null ? String(report.occupied_distance)  : "",
     work_hours:         report.work_hours         != null ? String(report.work_hours)         : "",
-    break_hours:        report.break_hours        != null ? String(report.break_hours)        : "1.0",
+    break_hours:        report.break_hours        != null ? String(report.break_hours)        : "",
     trouble_note:       report.trouble_note || "",
     work_area:          report.work_area   || "",
     dispatch_type:      report.dispatch_type || "",
@@ -78,7 +78,7 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
     if (!isValid) { setErrors(ve); return; }
     setSaving(true);
     const sanitized = sanitizeReportData(form);
-    const updated = { ...report, ...sanitized };
+    const updated = { ...report, ...sanitized, rides };
     await onUpdate?.(updated);
     setSaving(false);
     setMode("view");
@@ -334,6 +334,38 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
             style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:13, outline:"none", resize:"none" }}
           />
         </div>
+
+        {/* 乗車記録（読み取り専用表示） */}
+        {rides.length > 0 && (
+          <div style={{ marginTop:14 }}>
+            <div onClick={() => setShowRides(p => !p)}
+              style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", padding:"10px 0", borderTop:`1px solid ${C.border}` }}>
+              <span style={{ fontSize:13, fontWeight:700, color:C.text }}>🚕 乗車記録（{rides.length}件）</span>
+              <span style={{ fontSize:11, color:C.muted }}>{showRides ? "▲ 閉じる" : "▼ 開く"}</span>
+            </div>
+            {showRides && (
+              <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:6 }}>
+                {rides.map((r, i) => (
+                  <div key={i} style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:11, color:C.muted, marginBottom:2 }}>
+                          {r.pickup_time}{r.dropoff_time ? ` → ${r.dropoff_time}` : ""}
+                        </div>
+                        <div style={{ fontSize:12, color:C.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                          {r.pickup_area || "—"} → {r.dropoff_area || "—"}
+                        </div>
+                      </div>
+                      <div style={{ fontSize:14, fontWeight:800, color:C.text, whiteSpace:"nowrap" }}>
+                        {(r.amount||0).toLocaleString()}円
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{ marginTop:16, display:"flex", gap:10 }}>
           <Btn onClick={()=>setMode("view")} variant="ghost" style={{ flex:1 }}>キャンセル</Btn>
