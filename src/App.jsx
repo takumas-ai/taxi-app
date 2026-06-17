@@ -41,6 +41,7 @@ import StatsScreen      from "./screens/Stats";
 // Components
 import { BottomNav, Header, TakuroFAB } from "./components/Navigation";
 import { AreaSettingModal }  from "./components/AreaFilter";
+import Tutorial from "./components/Tutorial";
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Supabase が未設定かどうかを判定
@@ -414,6 +415,7 @@ export default function App() {
   const [themeVer, setThemeVer] = useState(0); // テーマ変更時に全体を再描画させるカウンター
   const [consentDone, setConsentDone]       = useState(() => !!loadS("taxi_consent_done", false));
   const [onboardingDone, setOnboardingDone] = useState(() => !!loadS("taxi_onboarding_done", false));
+  const [showTutorial,  setShowTutorial]  = useState(false);
   const [reports, setReports]   = useState(() => {
     const savedUser = loadS("taxi_user", null);
     // ゲストユーザーまたはSupabase未設定ならlocalStorageから読む
@@ -646,6 +648,10 @@ export default function App() {
         setOnboardingDone(true);
         // XPボーナス +50
         setUser(u => ({ ...u, xp: (u.xp || 0) + 50 }));
+        // チュートリアル未完了なら自動スタート
+        if (!loadS("taxi_tutorial_done", false)) {
+          setShowTutorial(true);
+        }
       }}/>
     );
   }
@@ -799,6 +805,12 @@ export default function App() {
         if (SUPABASE_READY && user?.id) upsertProfile({ id: user.id, areas });
       }} onClose={()=>setShowAreaModal(false)}/>}
       {showAccountLink && <GuestAccountModal onClose={()=>setShowAccountLink(false)} />}
+      {showTutorial && (
+        <Tutorial
+          onComplete={() => setShowTutorial(false)}
+          onSetTarget={() => setShowTutorial(false)}
+        />
+      )}
       <PWAInstallBanner />
     </div>
   );

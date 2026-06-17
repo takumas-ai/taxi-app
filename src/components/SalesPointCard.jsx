@@ -538,6 +538,7 @@ export function SalesPointCard({ user }) {
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
           <div style={{ fontSize:14, fontWeight:800, color:C.text }}>🚕 乗車記録</div>
           <button
+            data-tutorial="ride-record-btn"
             onClick={()=>{ setEditTarget(null); setShowRecord(true); }}
             style={{ backgroundColor:C.accentLight, color:"#fff", border:"none", borderRadius:10, padding:"8px 16px", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
             ＋ 記録する
