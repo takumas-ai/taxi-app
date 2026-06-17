@@ -570,6 +570,14 @@ export default function App() {
           if (!loginResult.alreadyLogged) {
             upsertProfile({ id: session.user.id, xp: nextXp, streak_days: loginResult.newStreak, last_active_date: today, badges: nextBadges });
           }
+          // 月次リセット（新しい月になったら monthly_upload_count を0に戻す）
+          const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+          let uploadCount = profile.monthly_upload_count || 0;
+          if (profile.upload_reset_month !== currentMonth) {
+            uploadCount = 0;
+            upsertProfile({ id: session.user.id, monthly_upload_count: 0, upload_reset_month: currentMonth });
+          }
+
           localStorage.setItem("taxi_onboarding_done", "true");
           setOnboardingDone(true);
           setUser({
@@ -580,7 +588,7 @@ export default function App() {
             workType: profile.work_type || "隔日勤務",
             target: profile.monthly_target != null ? String(profile.monthly_target) : "",
             plan: profile.plan || "free",
-            uploadCount: profile.monthly_upload_count || 0,
+            uploadCount,
             areas: profile.areas || [],
             xp: nextXp,
             streakDays: loginResult.newStreak,
@@ -843,7 +851,13 @@ export default function App() {
     const missionState = getMissionState();
     const { xpGained: missionXp, newCompleted } = checkMissions(savedReport, user, missionState);
     if (newCompleted.length) saveMissionState({ ...missionState, completed: [...missionState.completed, ...newCompleted] });
-    setUser(u => ({ ...u, uploadCount: (u.uploadCount || 0) + 1 }));
+    const newUploadCount = (user.uploadCount || 0) + 1;
+    setUser(u => ({ ...u, uploadCount: newUploadCount }));
+    // DBのカウントも更新（月次制限を確実に機能させる）
+    if (SUPABASE_READY && user?.id && !user?._isGuest) {
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      upsertProfile({ id: user.id, monthly_upload_count: newUploadCount, upload_reset_month: currentMonth });
+    }
     await awardXP(reportXp + missionXp, newBadges);
     setTab("list");
   };
