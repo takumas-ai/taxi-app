@@ -248,6 +248,9 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   const [ocrError, setOcrError] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
   const [matchData, setMatchData] = useState(null); // { ocrRides, manualRecords }
+  const [ocrImageUrl, setOcrImageUrl] = useState(null); // OCR後の画像プレビュー用URL
+  const [ocrConfidence, setOcrConfidence] = useState(null); // OCR全体の信頼度(0-100)
+  const [imgExpanded, setImgExpanded] = useState(false); // 画像拡大表示
 
   // step/form/ocrLines が変わったらlocalStorageに保存
   useEffect(() => { saveDraft(step, form, ocrLines); }, [step, form, ocrLines]);
@@ -323,6 +326,9 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
       await new Promise(r => setTimeout(r, 200));
       addLine("日付・売上データを抽出中...", 40);
 
+      // 画像プレビュー用URLを生成（確認画面で日報を見ながら修正できるように）
+      setOcrImageUrl(URL.createObjectURL(files[0]));
+
       const result1 = await runReportOCR(base64_1, "image/jpeg");
       if (result1?.error === "monthly_limit_exceeded") {
         setStep("select"); // 選択画面に戻す（remaining<=0 の表示を出すため）
@@ -331,6 +337,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
       if (!result1) throw new Error("1枚目のOCRに失敗しました");
 
       const f = result1?.fields ?? {};
+      setOcrConfidence(f.confidence ?? null);
       let rides = Array.isArray(f.rides) ? f.rides : [];
       let breakTimes = Array.isArray(f.break_times) ? f.break_times : [];
 
@@ -459,12 +466,23 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
     setStep("done");
   };
 
-  const F = ({label,fk,type="number",ph="",required=false,span=1}) => (
-    <div style={{ gridColumn:`span ${span}` }}>
-      <div style={{ fontSize:11, color:errors[fk]?C.red:C.muted, marginBottom:5 }}>{label}{required&&<span style={{color:C.red}}> *</span>}{errors[fk]&&<span style={{marginLeft:4}}>{errors[fk]}</span>}</div>
-      <input type={type} value={form[fk]} placeholder={ph} onChange={e=>{setForm(p=>({...p,[fk]:e.target.value}));setErrors(p=>({...p,[fk]:""}));}} style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${errors[fk]?C.red:C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:15, outline:"none" }}/>
-    </div>
-  );
+  const isOcrMode = !isManual && !isClosure && ocrImageUrl !== null;
+  const F = ({label,fk,type="number",ph="",required=false,span=1}) => {
+    const uncertain = isOcrMode && form[fk] === "";
+    const borderColor = errors[fk] ? C.red : uncertain ? "#f5a623" : C.border;
+    const bgColor = uncertain ? "#f5a62318" : C.bg;
+    const labelColor = errors[fk] ? C.red : uncertain ? "#f5a623" : C.muted;
+    return (
+      <div style={{ gridColumn:`span ${span}` }}>
+        <div style={{ fontSize:11, color:labelColor, marginBottom:5 }}>
+          {label}{required&&<span style={{color:C.red}}> *</span>}
+          {errors[fk]&&<span style={{marginLeft:4}}>{errors[fk]}</span>}
+          {uncertain&&<span style={{marginLeft:4}}>要確認</span>}
+        </div>
+        <input type={type} value={form[fk]} placeholder={ph} onChange={e=>{setForm(p=>({...p,[fk]:e.target.value}));setErrors(p=>({...p,[fk]:""}));}} style={{ width:"100%", boxSizing:"border-box", backgroundColor:bgColor, border:`1px solid ${borderColor}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:15, outline:"none" }}/>
+      </div>
+    );
+  };
 
   if (remaining <= 0) {
     return (
@@ -526,6 +544,40 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         <div style={{ fontSize:13, color:C.muted, marginBottom:12 }}>
           {isClosure ? `🚕 乗車記録 ${closureCount}件から自動集計 — 勤務時間を入力して保存` : isManual ? "📝 日報を入力してください" : "📋 読み取り結果を確認・修正してください"}
         </div>
+
+        {/* OCR画像プレビュー（OCRモード時のみ） */}
+        {ocrImageUrl && !isManual && !isClosure && (
+          <div style={{ marginBottom:12 }}>
+            <div
+              onClick={() => setImgExpanded(p => !p)}
+              style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", backgroundColor:C.surface, borderRadius:12, border:`1px solid ${C.border}`, cursor:"pointer", marginBottom: imgExpanded ? 8 : 0 }}
+            >
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:14 }}>🖼</span>
+                <span style={{ fontSize:13, fontWeight:600, color:C.text }}>日報画像を確認</span>
+                {ocrConfidence !== null && (
+                  <span style={{
+                    fontSize:11, fontWeight:700, padding:"2px 8px", borderRadius:99,
+                    color:    ocrConfidence >= 80 ? C.green : ocrConfidence >= 60 ? "#f5a623" : C.red,
+                    backgroundColor: ocrConfidence >= 80 ? C.green+"22" : ocrConfidence >= 60 ? "#f5a62322" : C.red+"22",
+                  }}>信頼度 {ocrConfidence}%</span>
+                )}
+              </div>
+              <span style={{ fontSize:13, color:C.muted }}>{imgExpanded ? "▲" : "▼"}</span>
+            </div>
+            {imgExpanded && (
+              <div style={{ borderRadius:12, overflow:"hidden", border:`1px solid ${C.border}` }}>
+                <img src={ocrImageUrl} alt="日報" style={{ width:"100%", display:"block" }}/>
+              </div>
+            )}
+            {!imgExpanded && (
+              <div style={{ fontSize:11, color:"#f5a623", marginTop:6 }}>
+                ⚠ 空欄（オレンジ枠）の項目は画像と見比べて入力してください
+              </div>
+            )}
+          </div>
+        )}
+
         <Card>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
             {F({label:"日付", fk:"date", type:"date", required:true, span:2})}
