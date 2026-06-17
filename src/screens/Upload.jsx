@@ -237,6 +237,37 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   const fileInputRef = useRef(null);
   const remaining = FREE_LIMIT - uploadCount;
 
+  // ━━ ドラッグ＆ドロップ: window レベルで直接拾う（React合成イベントを迂回）━━
+  const stepRef = useRef(step);
+  useEffect(() => { stepRef.current = step; }, [step]);
+
+  useEffect(() => {
+    const onDragOver = (e) => {
+      e.preventDefault();
+      if (stepRef.current === "select") setIsDragOver(true);
+    };
+    const onDragLeave = (e) => {
+      // ウィンドウ外に出たときだけ解除
+      if (e.clientX === 0 && e.clientY === 0) setIsDragOver(false);
+    };
+    const onDrop = (e) => {
+      e.preventDefault();
+      setIsDragOver(false);
+      if (stepRef.current !== "select") return;
+      const fileArr = Array.from(e.dataTransfer?.files || []);
+      if (fileArr.length > 0) handleFileSelect({ target: { files: fileArr } });
+    };
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ガイドモーダルの「進む」→ファイルピッカーを開く
   const handleOCR = () => {
     setShowGuide(false);
