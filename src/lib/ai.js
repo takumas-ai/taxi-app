@@ -16,7 +16,8 @@ const EDGE_BASE = import.meta.env.VITE_EDGE_FUNCTIONS_URL ?? "";
  * Edge Function "claude-proxy" を経由して Claude を呼び出す
  * Edge Function のコードは supabase/functions/claude-proxy/index.ts に配置
  */
-async function callClaude(prompt, maxTokens = 1000) {
+// Haiku: OCR等の速度優先タスク
+async function callClaude(prompt, maxTokens = 1000, model = "claude-haiku-4-5-20251001") {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
 
@@ -29,6 +30,7 @@ async function callClaude(prompt, maxTokens = 1000) {
     body: JSON.stringify({
       messages: [{ role: "user", content: prompt }],
       max_tokens: maxTokens,
+      model,
     }),
   });
 
@@ -37,23 +39,55 @@ async function callClaude(prompt, maxTokens = 1000) {
     return "";
   }
   const data = await res.json();
-  // claude-proxy は Anthropic レスポンスをそのまま返す
   return data.content?.[0]?.text ?? data.text ?? "";
 }
+
+// Sonnet: アドバイス・分析系（品質優先）
+const callSonnet = (prompt, maxTokens = 1200) =>
+  callClaude(prompt, maxTokens, "claude-sonnet-4-6");
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 日報のAIコメント生成
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export async function generateReportComment(report, allReports) {
-  const avg = allReports.length
-    ? Math.round(allReports.reduce((s, r) => s + r.gross_sales, 0) / allReports.length)
+  const recent = [...allReports].sort((a,b) => b.date?.localeCompare(a.date)).slice(0, 30);
+  const avg = recent.length
+    ? Math.round(recent.reduce((s, r) => s + (r.gross_sales||0), 0) / recent.length)
     : 0;
-  return callClaude(`タクシー運転手の営業コーチとして3文以内でアドバイス。数字を引用し丁寧語で。
 
-${report.date}(${dow(report.date)}) 売上${fmt(report.gross_sales)}円 回数${report.ride_count}回
-実車率${occ(report)}% 時間単価${fmt(hourly(report))}円/h
-過去平均${fmt(avg)}円（差異${report.gross_sales >= avg ? "+" : ""}${fmt(report.gross_sales - avg)}円）
-${report.trouble_note ? "備考:" + report.trouble_note : ""}`);
+  // 曜日別平均
+  const dowMap = {};
+  recent.forEach(r => {
+    const d = dow(r.date);
+    if (!dowMap[d]) dowMap[d] = { sum:0, cnt:0 };
+    dowMap[d].sum += r.gross_sales||0;
+    dowMap[d].cnt++;
+  });
+  const dowStats = Object.entries(dowMap)
+    .map(([d, {sum, cnt}]) => `${d}曜:${fmt(Math.round(sum/cnt))}円(${cnt}回)`)
+    .join(" / ");
+
+  // 実車率・時間単価の平均
+  const avgOcc = recent.filter(r=>r.work_hours&&r.total_distance&&r.occupied_distance)
+    .reduce((s,r,_,a) => s + occ(r)/a.length, 0);
+  const avgHr = recent.filter(r=>r.work_hours&&r.gross_sales)
+    .reduce((s,r,_,a) => s + hourly(r)/a.length, 0);
+
+  return callSonnet(`あなたは経験豊富なタクシー営業コーチです。以下のデータを分析し、具体的で実践的なアドバイスを日本語・丁寧語で3〜4文でください。
+データに根拠のない推測や精神論は避け、数字を引用して具体的に指摘してください。データが少ない項目については断言せず「傾向として」と添えてください。
+
+【今日の記録】
+日付: ${report.date}(${dow(report.date)}曜)
+売上: ${fmt(report.gross_sales)}円（過去平均比 ${report.gross_sales >= avg ? "+" : ""}${fmt(report.gross_sales - avg)}円）
+営業回数: ${report.ride_count}回 / 実車率: ${occ(report)}%（平均${Math.round(avgOcc)}%）
+時間単価: ${fmt(hourly(report))}円/h（平均${fmt(Math.round(avgHr))}円/h）
+${report.work_area ? `エリア: ${report.work_area}` : ""}
+${report.dispatch_type ? `配車: ${report.dispatch_type}` : ""}
+${report.trouble_note ? `備考: ${report.trouble_note}` : ""}
+
+【過去${recent.length}回の傾向】
+全体平均売上: ${fmt(avg)}円
+曜日別平均: ${dowStats || "データ不足"}`, 1200);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -74,10 +108,39 @@ export async function generateDayStrategy(events, delays, traffic, userAreas) {
 // 週次インサイト生成
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export async function generateWeeklyInsight(reports) {
-  const recent = [...reports].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7);
-  return callClaude(`タクシー運転手の直近${recent.length}回分のデータを分析して、傾向と今後の戦略を3〜4文でアドバイス。具体的な数字と曜日を引用。丁寧語で。
+  const recent = [...reports].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30);
 
-${recent.map(r => `${r.date}(${dow(r.date)}) 売上${fmt(r.gross_sales)}円 実車率${occ(r)}% 時間単価${fmt(hourly(r))}円`).join("\n")}`);
+  // 曜日別集計
+  const dowMap = {};
+  recent.forEach(r => {
+    const d = dow(r.date);
+    if (!dowMap[d]) dowMap[d] = { sum:0, cnt:0, occ:0, hr:0 };
+    dowMap[d].sum += r.gross_sales||0;
+    dowMap[d].cnt++;
+    if (r.total_distance&&r.occupied_distance) dowMap[d].occ += occ(r);
+    if (r.work_hours&&r.gross_sales) dowMap[d].hr += hourly(r);
+  });
+  const dowLines = Object.entries(dowMap).map(([d,v]) =>
+    `${d}曜 平均${fmt(Math.round(v.sum/v.cnt))}円 実車率${Math.round(v.occ/v.cnt)}% (${v.cnt}回)`
+  ).join("\n");
+
+  const avgSales = Math.round(recent.reduce((s,r)=>s+(r.gross_sales||0),0)/recent.length);
+  const best = [...recent].sort((a,b)=>(b.gross_sales||0)-(a.gross_sales||0))[0];
+  const worst = [...recent].sort((a,b)=>(a.gross_sales||0)-(b.gross_sales||0))[0];
+
+  return callSonnet(`あなたは経験豊富なタクシー営業コーチです。以下の直近データを分析し、改善ポイントと来週の戦略を日本語・丁寧語で4〜5文でアドバイスしてください。
+具体的な曜日・数字を引用し、実践的な行動提案を含めてください。データが少ない場合は「まだ傾向が見えにくいですが」と添えてください。
+
+【直近${recent.length}回の集計】
+全体平均売上: ${fmt(avgSales)}円
+最高: ${best?.date}(${dow(best?.date)}) ${fmt(best?.gross_sales)}円
+最低: ${worst?.date}(${dow(worst?.date)}) ${fmt(worst?.gross_sales)}円
+
+【曜日別平均】
+${dowLines || "データ不足"}
+
+【直近記録（新しい順）】
+${recent.slice(0,10).map(r => `${r.date}(${dow(r.date)}) ${fmt(r.gross_sales)}円 実車率${occ(r)}% ${fmt(hourly(r))}円/h`).join("\n")}`, 1500);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

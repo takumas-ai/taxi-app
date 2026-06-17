@@ -366,6 +366,8 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
     setStep("confirm");
   };
 
+  const [wantAiAdvice, setWantAiAdvice] = useState(false);
+
   const handleSave = async () => {
     // バリデーション（強化版）
     const { errors: validationErrors, isValid } = validateReportForm(form);
@@ -374,10 +376,10 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
     setSaving(true);
     // サニタイズ（XSS対策・値のクランプ）
     const data = { id: Date.now(), ...sanitizeReportData(form), rides: form.rides ?? [], break_times: form.break_times ?? [] };
-    // 3回以上記録が溜まってからAIコメント生成（データ不足での的外れコメントを防ぐ）
-    const comment = reports.length >= 2 ? await generateReportComment(data, reports) : "";
+    // ユーザーがリクエストした場合のみAIコメント生成
+    const comment = wantAiAdvice ? await generateReportComment(data, reports) : "";
     data.ai_comment = comment;
-    setSaving(false); onSave(data); setForm(EMPTY); setIsManual(false); setStep("done");
+    setSaving(false); onSave(data); setForm(EMPTY); setIsManual(false); setWantAiAdvice(false); setStep("done");
   };
 
   const F = ({label,fk,type="number",ph="",required=false,span=1}) => (
@@ -553,7 +555,20 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         {form.total_distance && form.occupied_distance && parseInt(form.total_distance)>0 && (
           <Card style={{ padding:12, textAlign:"center" }}><span style={{ fontSize:12, color:C.muted }}>実車率（自動計算）: </span><span style={{ fontSize:16, fontWeight:700, color:C.green }}>{Math.round(parseInt(form.occupied_distance)/parseInt(form.total_distance)*100)}%</span></Card>
         )}
-        <Btn onClick={handleSave} disabled={saving}>{saving?"保存中...":"保存する"}</Btn>
+        {/* AIアドバイス オプトイン */}
+        <div
+          onClick={() => setWantAiAdvice(p => !p)}
+          style={{ display:"flex", alignItems:"center", gap:12, padding:"13px 16px", borderRadius:12, border:`1.5px solid ${wantAiAdvice ? C.accentLight : C.border}`, backgroundColor: wantAiAdvice ? C.accentLight+"11" : C.surface, cursor:"pointer", marginBottom:10 }}
+        >
+          <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${wantAiAdvice ? C.accentLight : C.border}`, backgroundColor: wantAiAdvice ? C.accentLight : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+            {wantAiAdvice && <span style={{ color:"#fff", fontSize:13, fontWeight:900, lineHeight:1 }}>✓</span>}
+          </div>
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, color: wantAiAdvice ? C.accentLight : C.text }}>🤖 AIアドバイスをもらう</div>
+            <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>データを分析して今後のヒントをお届け（任意）</div>
+          </div>
+        </div>
+        <Btn onClick={handleSave} disabled={saving}>{saving ? (wantAiAdvice ? "AI分析中..." : "保存中...") : "保存する"}</Btn>
         <Btn onClick={()=>{ setIsManual(false); setIsClosure(false); setStep("select"); }} variant="ghost" style={{ marginTop:10 }}>戻る</Btn>
       </div>
     );

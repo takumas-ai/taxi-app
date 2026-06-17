@@ -1,76 +1,55 @@
+import { useState } from "react";
 import { C } from "../../lib/constants";
 
-const DAYS_JA = ["日","月","火","水","木","金","土"];
+function loadCollapsed() {
+  try { return JSON.parse(localStorage.getItem("taxi_ai_card_collapsed") || "false"); } catch { return false; }
+}
 
-export default function AiAdviceCard({ reports, appMode }) {
-  const count = reports.length;
-  const needed = Math.max(0, 3 - count);
+export default function AiAdviceCard({ reports }) {
+  const [collapsed, setCollapsed] = useState(loadCollapsed);
 
-  if (count < 3) {
-    return (
-      <div style={{ backgroundColor:C.surface, border:`1px dashed ${C.border}`, borderRadius:12, padding:"14px 16px", marginBottom:14, display:"flex", alignItems:"center", gap:12 }}>
-        <span style={{ fontSize:24, opacity:0.5 }}>🤖</span>
-        <div>
-          <div style={{ fontSize:12, fontWeight:700, color:C.muted }}>AIアドバイスはまだ使えません</div>
-          <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>あと<span style={{ color:C.accentLight, fontWeight:800 }}> {needed}回 </span>記録するとAIが分析を開始します</div>
-        </div>
-      </div>
-    );
-  }
+  const toggle = () => {
+    setCollapsed(p => {
+      localStorage.setItem("taxi_ai_card_collapsed", JSON.stringify(!p));
+      return !p;
+    });
+  };
 
-  const sorted    = [...reports].sort((a,b) => b.gross_sales - a.gross_sales);
-  const bestDay   = sorted[0];
-  const avgSales  = Math.round(reports.reduce((s,r) => s + (r.gross_sales||0), 0) / reports.length);
-  const avgHourly = Math.round(reports.reduce((s,r) => s + (r.gross_sales&&r.work_hours ? r.gross_sales/r.work_hours : 0), 0) / reports.length);
-  const bestDow   = bestDay ? DAYS_JA[new Date(bestDay.date).getDay()] : "";
+  // 最新日報のAIコメントを取得
+  const sorted  = [...reports].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const latest  = sorted.find(r => r.ai_comment);
+  const comment = latest?.ai_comment || null;
 
-  if (appMode === "simple") {
-    return (
-      <div style={{ backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
-        <div style={{ fontSize:10, color:C.accentLight, fontWeight:700, marginBottom:6 }}>🤖 AI からのひとこと</div>
-        <div style={{ fontSize:15, fontWeight:800, color:C.text, lineHeight:1.6 }}>
-          {bestDow ? `${bestDow}曜日が一番稼げています！` : "記録を続けると傾向が見えてきます"}
-        </div>
-        {avgSales > 0 && (
-          <div style={{ fontSize:12, color:C.sub, marginTop:6 }}>平均売上 {avgSales.toLocaleString()}円 / 1回</div>
-        )}
-      </div>
-    );
-  }
+  // コメントなし → カード非表示
+  if (!comment) return null;
 
-  const isAnalysis = appMode === "analysis";
+  const dateLabel = latest?.date
+    ? new Date(latest.date).toLocaleDateString("ja-JP", { month:"numeric", day:"numeric", weekday:"short" })
+    : "";
+
   return (
-    <div style={{ backgroundColor:C.card, border:`1px solid ${C.accentLight}44`, borderRadius:14, padding:"16px", marginBottom:14 }}>
-      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-        <span style={{ fontSize:22 }}>🤖</span>
-        <div>
-          <div style={{ fontSize:13, fontWeight:800 }}>{isAnalysis ? "AI戦略アドバイス" : "AIアドバイス"}</div>
-          <div style={{ fontSize:11, color:C.muted }}>{count}件のデータを分析できます</div>
+    <div style={{ backgroundColor:C.card, border:`1px solid ${C.accentLight}33`, borderRadius:14, marginBottom:14, overflow:"hidden" }}>
+      {/* ヘッダー（タップで折りたたみ） */}
+      <div
+        onClick={toggle}
+        style={{ display:"flex", alignItems:"center", gap:10, padding:"13px 16px", cursor:"pointer", userSelect:"none" }}
+      >
+        <span style={{ fontSize:20 }}>🤖</span>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:13, fontWeight:800, color:C.text }}>AIアドバイス</div>
+          <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>{dateLabel}の記録をもとに分析</div>
         </div>
+        <span style={{ fontSize:18, color:C.muted, lineHeight:1 }}>{collapsed ? "›" : "⌄"}</span>
       </div>
-      <div style={{ display:"flex", gap:8, marginBottom:12 }}>
-        {bestDow && (
-          <div style={{ flex:1, backgroundColor:C.bg, borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
-            <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>ベスト曜日</div>
-            <div style={{ fontSize:16, fontWeight:800, color:C.gold }}>{bestDow}曜</div>
+
+      {/* 本文 */}
+      {!collapsed && (
+        <div style={{ padding:"0 16px 16px" }}>
+          <div style={{ fontSize:14, color:C.text, lineHeight:1.8, whiteSpace:"pre-wrap" }}>
+            {comment}
           </div>
-        )}
-        {avgSales > 0 && (
-          <div style={{ flex:1, backgroundColor:C.bg, borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
-            <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>平均売上</div>
-            <div style={{ fontSize:16, fontWeight:800, color:C.accentLight }}>{Math.round(avgSales/1000)}k円</div>
-          </div>
-        )}
-        {isAnalysis && avgHourly > 0 && (
-          <div style={{ flex:1, backgroundColor:C.bg, borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
-            <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>時間効率</div>
-            <div style={{ fontSize:16, fontWeight:800, color:C.green }}>{Math.round(avgHourly/100)*100}円/h</div>
-          </div>
-        )}
-      </div>
-      <button style={{ width:"100%", padding:"11px 0", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff" }}>
-        {isAnalysis ? "🔍 詳細な戦略分析を見る" : "💡 アドバイスを見る"}
-      </button>
+        </div>
+      )}
     </div>
   );
 }
