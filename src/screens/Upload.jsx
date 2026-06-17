@@ -480,7 +480,11 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
           {errors[fk]&&<span style={{marginLeft:4}}>{errors[fk]}</span>}
           {uncertain&&<span style={{marginLeft:4}}>要確認</span>}
         </div>
-        <input type={type} value={form[fk]} placeholder={ph} onChange={e=>{setForm(p=>({...p,[fk]:e.target.value}));setErrors(p=>({...p,[fk]:""}));}} style={{ width:"100%", boxSizing:"border-box", backgroundColor:bgColor, border:`1px solid ${borderColor}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:15, outline:"none" }}/>
+        <input type={type} value={form[fk]} placeholder={ph} onChange={e=>{
+          // コンマ（全角・半角）をドットに正規化
+          const v = type === "number" ? e.target.value.replace(/[,，、]/g, ".") : e.target.value;
+          setForm(p=>({...p,[fk]:v}));setErrors(p=>({...p,[fk]:""}));
+        }} style={{ width:"100%", boxSizing:"border-box", backgroundColor:bgColor, border:`1px solid ${borderColor}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:15, outline:"none" }}/>
       </div>
     );
   };
