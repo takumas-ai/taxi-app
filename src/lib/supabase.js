@@ -149,6 +149,23 @@ export async function uploadReportImage(file, userId) {
   return { url: data.publicUrl, error: null };
 }
 
+/**
+ * アバター画像をStorageにアップロードし、公開URLを返す
+ * 既存ファイルは上書き（upsert: true）
+ * path: `{userId}/avatar.{ext}`
+ */
+export async function uploadAvatar(file, userId) {
+  const ext  = file.name.split(".").pop().toLowerCase() || "jpg";
+  const path = `${userId}/avatar.${ext}`;
+  const { error } = await supabase.storage
+    .from("avatars")
+    .upload(path, file, { contentType: file.type, upsert: true });
+  if (error) return { url: null, error };
+  const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+  // キャッシュ破棄のためタイムスタンプを付与
+  return { url: `${data.publicUrl}?t=${Date.now()}`, error: null };
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 紹介コード（referral）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

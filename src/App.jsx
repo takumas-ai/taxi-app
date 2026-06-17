@@ -551,6 +551,9 @@ export default function App() {
             xp: nextXp,
             streakDays: loginResult.newStreak,
             badges: nextBadges,
+            avatarUrl: profile.avatar_url || null,
+            avatarPreset: profile.avatar_preset || null,
+            closing_day: profile.closing_day ?? null,
           });
           const { data: reps } = await fetchReports(session.user.id);
           if (reps?.length) setReports(reps.map(r => ({ ...r, date: r.report_date })));
@@ -884,7 +887,7 @@ export default function App() {
       case "info":      return <InfoCenter notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} userAreas={userAreas} onManageArea={()=>setShowAreaModal(true)}/>;
       case "guide":     return <GuideScreen userAreas={userAreas} user={user}/>;
       case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")} user={user} onBack={()=>handleSetTab("dashboard")}/>;
-      case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={async u=>{ setUser(prev=>({...prev,...u})); if(SUPABASE_READY&&user?.id&&!user?._isGuest){const p={id:user.id};if(u.name!==undefined)p.name=u.name;if(u.workType!==undefined)p.work_type=u.workType;if(u.company!==undefined)p.company_name=u.company;if(u.target!==undefined)p.monthly_target=Number(u.target);if(u.closing_day!==undefined)p.closing_day=u.closing_day;if(Object.keys(p).length>1)await upsertProfile(p);}}} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined} onOpenAdmin={()=>handleSetTab("admin")} onAccountLink={user?._isGuest ? ()=>setShowAccountLink(true) : undefined}/>;
+      case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={async u=>{ setUser(prev=>({...prev,...u})); if(SUPABASE_READY&&user?.id&&!user?._isGuest){const p={id:user.id};if(u.name!==undefined)p.name=u.name;if(u.workType!==undefined)p.work_type=u.workType;if(u.company!==undefined)p.company_name=u.company;if(u.target!==undefined)p.monthly_target=Number(u.target);if(u.closing_day!==undefined)p.closing_day=u.closing_day;if("avatar_url"in u)p.avatar_url=u.avatar_url;if("avatar_preset"in u)p.avatar_preset=u.avatar_preset;if(Object.keys(p).length>1)await upsertProfile(p);}}} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined} onOpenAdmin={()=>handleSetTab("admin")} onAccountLink={user?._isGuest ? ()=>setShowAccountLink(true) : undefined}/>;
       case "community": return <CommunityScreen />;
       case "ranking":   return <RankingScreen user={user} rankPrefs={rankPrefs} />;
       case "stats":     return <StatsScreen reports={reports} />;

@@ -24,9 +24,15 @@ create table if not exists public.users (
   monthly_upload_count  integer   default 0,
   rank_show_my_rank     boolean   default false,
   rank_show_top_sales   boolean   default false,
+  avatar_preset         text,       -- プリセットアバターID (例: "owl", "lion" など)
+  avatar_url            text,       -- カスタム写真URL (Supabase Storage)
   created_at            timestamptz default now(),
   updated_at            timestamptz default now()
 );
+
+-- 既存テーブルへのカラム追加（初回実行後に追加する場合）
+alter table public.users add column if not exists avatar_preset text;
+alter table public.users add column if not exists avatar_url    text;
 
 -- 月初にupload_countをリセットするトリガー用関数
 create or replace function reset_monthly_upload_count()
@@ -191,6 +197,11 @@ insert into storage.buckets (id, name, public)
   values ('report-images', 'report-images', false)
   on conflict (id) do nothing;
 
+-- アバター画像バケット（公開：imgタグで直接表示するため）
+insert into storage.buckets (id, name, public)
+  values ('avatars', 'avatars', true)
+  on conflict (id) do nothing;
+
 -- Storage RLS: 自分のフォルダのみ読み書き可
 create policy "report-images: 自分のフォルダのみ挿入"
   on storage.objects for insert
@@ -205,6 +216,25 @@ create policy "report-images: 自分のフォルダのみ参照"
     bucket_id = 'report-images'
     and auth.uid()::text = (storage.foldername(name))[2]
   );
+
+-- avatarsバケットRLS（公開バケットだが書き込みは本人のみ）
+create policy "avatars: 自分のファイルのみ挿入"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'avatars'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+create policy "avatars: 自分のファイルのみ更新"
+  on storage.objects for update
+  using (
+    bucket_id = 'avatars'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+create policy "avatars: 全員が参照可（公開）"
+  on storage.objects for select
+  using ( bucket_id = 'avatars' );
 
 -- ─────────────────────────────────────────
 -- 8. 新規ユーザー登録時に users レコードを自動作成

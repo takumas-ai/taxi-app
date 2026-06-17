@@ -6,6 +6,7 @@ import { AreaBadges } from "../components/UI";
 import { levelFromXp, getTitle, BADGES } from "../lib/xp";
 import { insertFeedback, fetchReferralCount } from "../lib/supabase";
 import { downloadCSV, printAsPDF, downloadRideRecordsCSV } from "../lib/export";
+import AvatarPicker from "../components/AvatarPicker";
 
 const SUPABASE_READY = !!(
   import.meta.env.VITE_SUPABASE_URL &&
@@ -125,6 +126,22 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
                 アカウントを連携してデータを守る
               </button>
             </div>
+          )}
+          {/* アバター選択 */}
+          {!user?._isGuest && SUPABASE_READY && (
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:12 }}>プロフィール画像</div>
+              <AvatarPicker
+                userId={user?.id}
+                avatarUrl={user?.avatarUrl ?? null}
+                avatarPreset={user?.avatarPreset ?? null}
+                onSave={(vals) => onUpdate({ avatar_url: vals.avatar_url, avatar_preset: vals.avatar_preset })}
+              />
+            </div>
+          )}
+          {/* 区切り線 */}
+          {!user?._isGuest && SUPABASE_READY && (
+            <div style={{ height:1, backgroundColor:C.border, marginBottom:20 }}/>
           )}
           {[{l:"お名前",k:"name",t:"text"}].map(({l,k,t})=>(
             <div key={k} style={{ marginBottom:14 }}><div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>{l}</div><input type={t} value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:15, outline:"none" }}/></div>

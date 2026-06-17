@@ -5,6 +5,7 @@ import { useState } from "react";
 import { C, loadS, saveS } from "../lib/constants";
 import { MOCK_DELAYS } from "../data/mockData";
 import { ZONE_META } from "../data/trafficZones";
+import { UserAvatar } from "./AvatarPicker";
 
 // ボトムナビ（5タブ）
 export function BottomNav({ tab, setTab, userAreas=[], alertsSeen=false }) {
@@ -258,7 +259,9 @@ function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSet
 
         {/* ユーザープロフィール */}
         <div style={{ padding:"52px 20px 20px", backgroundColor:C.card, borderBottom:`1px solid ${C.border}` }}>
-          <div style={{ width:48, height:48, borderRadius:"50%", backgroundColor:C.accentLight+"33", border:`2px solid ${C.accentLight}55`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, marginBottom:10 }}>🦉</div>
+          <div style={{ marginBottom:10 }}>
+            <UserAvatar avatarUrl={user?.avatarUrl} avatarPreset={user?.avatarPreset} size={48} />
+          </div>
           <div style={{ fontSize:15, fontWeight:800, color:C.text }}>{user?.name || "ゲスト"}</div>
           <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{user?.company || ""}</div>
           {user?.workType && <div style={{ display:"inline-block", marginTop:6, fontSize:10, backgroundColor:C.accentGlow, color:C.accentLight, border:`1px solid ${C.accentLight}44`, borderRadius:99, padding:"2px 10px", fontWeight:700 }}>{user.workType}</div>}
