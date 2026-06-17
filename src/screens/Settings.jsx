@@ -878,11 +878,11 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
         };
 
         const REWARD_TIERS = [
-          { count:1,  days:14,  label:"1人招待",       benefit:"+14日延長クーポン" },
-          { count:3,  days:30,  label:"3人招待",        benefit:"+30日延長クーポン" },
-          { count:6,  days:30,  label:"6人招待",        benefit:"+30日延長クーポン" },
-          { count:9,  days:30,  label:"9人招待",        benefit:"+30日延長クーポン" },
-          { count:12, days:30,  label:"12人招待",       benefit:"+30日延長クーポン" },
+          { count:1,  days:14,  label:"1人招待",   benefit:"+14日延長クーポン", xp:100 },
+          { count:3,  days:30,  label:"3人招待",   benefit:"+30日延長クーポン", xp:100 },
+          { count:6,  days:30,  label:"6人招待",   benefit:"+30日延長クーポン", xp:100 },
+          { count:9,  days:30,  label:"9人招待",   benefit:"+30日延長クーポン", xp:100 },
+          { count:12, days:30,  label:"12人招待",  benefit:"+30日延長クーポン", xp:100 },
         ];
 
         if (!myCode && !loading) {
@@ -904,13 +904,18 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
                 {loading ? "—" : total}
                 <span style={{ fontSize:16, color:C.muted, marginLeft:4 }}>人</span>
               </div>
+              {!loading && total > 0 && (
+                <div style={{ fontSize:12, color:C.accentLight, fontWeight:700, marginTop:4 }}>
+                  累計 +{total * 100} XP 獲得
+                </div>
+              )}
               {!loading && nextMilestone && (
-                <div style={{ fontSize:12, color:C.accentLight, fontWeight:700, marginTop:6 }}>
-                  あと{nextMilestone - total}人で次の特典！
+                <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
+                  あと{nextMilestone - total}人で次の特典クーポン！
                 </div>
               )}
               {!loading && !nextMilestone && total > 0 && (
-                <div style={{ fontSize:12, color:C.green, fontWeight:700, marginTop:6 }}>
+                <div style={{ fontSize:12, color:C.green, fontWeight:700, marginTop:4 }}>
                   🏆 全マイルストーン達成！
                 </div>
               )}
@@ -952,6 +957,7 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
                       <div style={{ fontSize:13, fontWeight:700, color: achieved ? C.text : C.muted }}>{tier.label}</div>
                       <div style={{ fontSize:11, color: achieved ? C.green : C.muted, marginTop:2 }}>{tier.benefit}</div>
                     </div>
+                    <div style={{ fontSize:11, color:C.accentLight, fontWeight:700, opacity: achieved ? 1 : 0.4 }}>+{tier.xp} XP</div>
                     {achieved && <span style={{ fontSize:16 }}>🏅</span>}
                   </div>
                 );

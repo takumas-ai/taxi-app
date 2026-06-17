@@ -219,11 +219,15 @@ export async function registerWithReferral({ referredId, referredName, referralC
     issued_reason: "招待コード登録ボーナス（+30日）",
   });
 
-  // 5. 招待した人のマイルストーンをチェック・クーポン発行（RPC）
+  // 5. 招待した人に +100 XP を付与
+  const { data: cur } = await supabase.from("users").select("xp").eq("id", referrer.id).single();
+  await supabase.from("users").update({ xp: (cur?.xp ?? 0) + 100 }).eq("id", referrer.id);
+
+  // 6. 招待した人のマイルストーンをチェック・クーポン発行（RPC）
   const { data: milestone } = await supabase
     .rpc("check_referral_milestone", { referrer_id_input: referrer.id });
 
-  return { error: null, valid: true, milestone };
+  return { error: null, valid: true, milestone, xpGranted: 100 };
 }
 
 /** 自分の招待実績（招待した人数 + 発行済みクーポン）を取得 */
