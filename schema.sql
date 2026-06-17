@@ -69,6 +69,7 @@ create table if not exists public.daily_reports (
   ai_comment        text,
   trouble_note      text,
   work_area         text,                      -- 営業メインエリア（例: 港区, 中区（横浜））
+  dispatch_type     text,                      -- 配車アプリ・無線の種類（例: GO, S.RIDE, 東京無線）
   created_at        timestamptz default now(),
   updated_at        timestamptz default now(),
   unique (user_id, report_date)             -- 同日の重複登録を防止
@@ -339,15 +340,138 @@ create policy "users: 管理者は全件更新"
 -- ─────────────────────────────────────────
 -- 12. 追加カラム（マイグレーション）
 -- ─────────────────────────────────────────
-alter table public.users add column if not exists referred_by      text;          -- 紹介コード（招待した人のコード）
-alter table public.users add column if not exists xp               integer default 0;
-alter table public.users add column if not exists badges           text[]  default '{}';
-alter table public.users add column if not exists deletion_requested boolean default false;
+alter table public.users add column if not exists referred_by         text;             -- 登録時に使った招待コード（誰に招待されたか）
+alter table public.users add column if not exists referral_code       text unique;      -- 自分の招待コード（TK-XXXXXX）
+alter table public.users add column if not exists free_period_ends_at timestamptz;      -- 無料期間終了日
+alter table public.users add column if not exists xp                  integer default 0;
+alter table public.users add column if not exists badges              text[]  default '{}';
+alter table public.users add column if not exists deletion_requested  boolean default false;
+alter table public.users add column if not exists closing_day         integer;          -- 締日（0=月末、5/10/15/20/25）
+alter table public.users add column if not exists last_active_date    text;
+alter table public.users add column if not exists streak_days         integer default 0;
+
+-- ─────────────────────────────────────────
+-- 12b. referral_events テーブル（紹介イベント不変ログ）
+-- ─────────────────────────────────────────
+create table if not exists public.referral_events (
+  id             uuid primary key default uuid_generate_v4(),
+  referrer_id    uuid references public.users(id) on delete set null, -- 招待した人（削除されても記録は残す）
+  referred_id    uuid unique references public.users(id) on delete set null, -- 招待された人（1人1回のみ）
+  referral_code  text not null,    -- 使われたコード（非正規化、削除後も参照可）
+  referrer_name  text,             -- 招待した人の名前（非正規化）
+  referred_name  text,             -- 招待された人の名前（非正規化）
+  created_at     timestamptz default now()
+);
+
+-- RLS
+alter table public.referral_events enable row level security;
+create policy "referral_events: 本人は参照可"
+  on public.referral_events for select
+  using (auth.uid() = referrer_id or auth.uid() = referred_id);
+create policy "referral_events: サービス挿入のみ"
+  on public.referral_events for insert
+  with check (auth.uid() = referred_id); -- 登録者本人が挿入
+
+-- ─────────────────────────────────────────
+-- 12c. coupons テーブル（クーポン台帳）
+-- ─────────────────────────────────────────
+create table if not exists public.coupons (
+  id             uuid primary key default uuid_generate_v4(),
+  user_id        uuid not null references public.users(id) on delete cascade,
+  code           text unique not null,  -- EXT-XXXXXX形式
+  type           text not null check (type in ('invited', 'milestone')),
+  benefit_days   integer not null,      -- 延長日数（14 or 30）
+  milestone_at   integer,               -- 何人目で発行か（1, 3, 6, 9...）NULL=invited
+  issued_reason  text,                  -- 説明文（ログ・通知用）
+  issued_at      timestamptz default now(),
+  used_at        timestamptz,           -- NULL = 未使用
+  expires_at     timestamptz            -- NULL = 無期限
+);
+
+-- RLS
+alter table public.coupons enable row level security;
+create policy "coupons: 本人のみ参照"
+  on public.coupons for select using (auth.uid() = user_id);
+create policy "coupons: サービス挿入"
+  on public.coupons for insert with check (auth.uid() = user_id);
+create policy "coupons: 本人のみ更新（使用時）"
+  on public.coupons for update using (auth.uid() = user_id);
 
 -- 紹介数カウント用RPC（RLSをバイパスしてcountのみ返す）
 create or replace function count_referrals(ref_code text)
 returns integer language sql security definer as $$
-  select count(*)::integer from public.users where referred_by = ref_code;
+  select count(*)::integer from public.referral_events where referral_code = ref_code;
+$$;
+
+-- 招待コード生成用RPC（重複チェック付き）
+create or replace function generate_referral_code(user_id uuid)
+returns text language plpgsql security definer as $$
+declare
+  chars text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; -- 紛らわしい文字除外
+  code text;
+  exists bool;
+begin
+  loop
+    code := 'TK-';
+    for i in 1..6 loop
+      code := code || substr(chars, floor(random() * length(chars) + 1)::int, 1);
+    end loop;
+    select exists(select 1 from public.users where referral_code = code) into exists;
+    exit when not exists;
+  end loop;
+  update public.users set referral_code = code where id = user_id;
+  return code;
+end;
+$$;
+
+-- マイルストーン確認・クーポン自動発行RPC
+create or replace function check_referral_milestone(referrer_id_input uuid)
+returns json language plpgsql security definer as $$
+declare
+  total_count integer;
+  already_issued integer;
+  new_milestone integer;
+  benefit integer;
+  coupon_code text;
+  chars text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  result json;
+begin
+  -- 累計紹介数
+  select count(*)::integer into total_count
+    from public.referral_events where referrer_id = referrer_id_input;
+
+  -- 発行済みマイルストーンの最大値
+  select coalesce(max(milestone_at), 0) into already_issued
+    from public.coupons where user_id = referrer_id_input and type = 'milestone';
+
+  -- 次のマイルストーン判定（1, 3, 6, 9, 12...）
+  if total_count >= 1 and already_issued < 1 then
+    new_milestone := 1; benefit := 14;
+  elsif total_count >= 3 and already_issued < 3 then
+    new_milestone := 3; benefit := 30;
+  elsif total_count >= 6 and already_issued < 6 then
+    new_milestone := 6; benefit := 30;
+  elsif total_count >= 9 and already_issued < 9 then
+    new_milestone := 9; benefit := 30;
+  elsif total_count >= 12 and already_issued < 12 then
+    new_milestone := 12; benefit := 30;
+  else
+    return json_build_object('issued', false, 'total', total_count);
+  end if;
+
+  -- クーポンコード生成（EXT-XXXXXX）
+  coupon_code := 'EXT-';
+  for i in 1..6 loop
+    coupon_code := coupon_code || substr(chars, floor(random() * length(chars) + 1)::int, 1);
+  end loop;
+
+  -- クーポン発行
+  insert into public.coupons (user_id, code, type, benefit_days, milestone_at, issued_reason)
+    values (referrer_id_input, coupon_code, 'milestone', benefit, new_milestone,
+      new_milestone || '人招待達成！' || benefit || '日延長クーポン');
+
+  return json_build_object('issued', true, 'milestone', new_milestone, 'benefit_days', benefit, 'coupon_code', coupon_code, 'total', total_count);
+end;
 $$;
 
 -- ─────────────────────────────────────────

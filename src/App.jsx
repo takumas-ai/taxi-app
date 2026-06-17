@@ -23,6 +23,8 @@ import {
   saveReferredBy,
   signInWithOAuth,
   resetPasswordForEmail,
+  ensureReferralCode,
+  registerWithReferral,
 } from "./lib/supabase";
 
 // Screens
@@ -135,8 +137,9 @@ function LoginScreen({ onLogin, onGuestLogin }) {
 
   const toggleArea = a => setAreas(prev => prev.includes(a) ? prev.filter(x=>x!==a) : [...prev,a]);
 
-  // URLの ?ref= パラメータを取得（招待リンク経由の場合）
-  const refFromUrl = new URLSearchParams(window.location.search).get("ref") || "";
+  // URLの ?ref= パラメータを取得（招待リンク経由は自動入力、口頭は手入力）
+  const refFromUrl = new URLSearchParams(window.location.search).get("ref")?.toUpperCase() || "";
+  const [refCode, setRefCode] = useState(refFromUrl);
 
   // Supabase メール登録
   const doRegister = async () => {
@@ -156,8 +159,17 @@ function LoginScreen({ onLogin, onGuestLogin }) {
             monthly_target: parseInt(form.target) || 380000,
           }),
         };
-        if (refFromUrl) profileData.referred_by = refFromUrl.toUpperCase();
         await insertProfile(profileData);
+        // 招待コードがあれば紹介イベントを記録・クーポン発行
+        if (refCode.trim()) {
+          await registerWithReferral({
+            referredId:   data.user.id,
+            referredName: form.name,
+            referralCode: refCode.trim().toUpperCase(),
+          });
+        }
+        // 自分の招待コードを生成
+        if (SUPABASE_READY) await ensureReferralCode(data.user.id);
         // メール認証が必要な場合（session===null）は確認待ち画面へ
         if (!data.session) { setStep("verify_email"); setLoading(false); return; }
         onLogin({ id: data.user.id, name: form.name, company: form.company, workType: form.workType, target: form.target, plan:"free", uploadCount:0, areas, _migrationUserId: data.user.id });
@@ -369,6 +381,26 @@ function LoginScreen({ onLogin, onGuestLogin }) {
               })}
             </div>
           </div>
+          {/* 招待コード（任意） */}
+          <div style={{ marginBottom:16 }}>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>
+              招待コード
+              <span style={{ color:C.accentLight, marginLeft:6, fontSize:10 }}>任意</span>
+              {refFromUrl && <span style={{ color:C.green, marginLeft:6, fontSize:10 }}>✓ 自動入力済み</span>}
+            </div>
+            <input
+              type="text"
+              value={refCode}
+              onChange={e=>setRefCode(e.target.value.toUpperCase())}
+              placeholder="例: TK-A3K7PX"
+              style={{ ...inputStyle, letterSpacing:"1px", fontWeight:refCode?700:400 }}
+            />
+            {refCode && (
+              <div style={{ fontSize:11, color:C.accentLight, marginTop:4 }}>
+                🎁 招待コードで登録すると無料期間が+30日になります
+              </div>
+            )}
+          </div>
           <button onClick={doRegister} disabled={!form.name||loading} style={{ ...btnPrimary, opacity:!form.name||loading?0.5:1, marginBottom:10 }}>
             {loading ? "登録中..." : "登録して始める"}
           </button>
@@ -524,7 +556,9 @@ export default function App() {
       if (session?.user) {
         const { data: profile } = await fetchProfile(session.user.id);
         if (profile) {
-          // 既存ユーザー
+          // 既存ユーザー — 再ログイン時に利用規約・締日モーダルをスキップ
+          localStorage.setItem("taxi_consent_done", "true");
+          if (profile.closing_day != null) saveS("taxi_closing_prompted", true);
           const loginResult = processLogin(
             profile.last_active_date,
             profile.streak_days || 0,
@@ -544,7 +578,7 @@ export default function App() {
             name: profile.name,
             company: profile.company_name || "",
             workType: profile.work_type || "隔日勤務",
-            target: String(profile.monthly_target || 380000),
+            target: profile.monthly_target != null ? String(profile.monthly_target) : "",
             plan: profile.plan || "free",
             uploadCount: profile.monthly_upload_count || 0,
             areas: profile.areas || [],

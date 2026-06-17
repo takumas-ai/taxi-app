@@ -635,13 +635,6 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         {/* AIアドバイス */}
         <AiAdviceCard reports={monthReports} appMode={appMode} />
 
-        {reports.length === 0 && (
-          <Card style={{ textAlign:"center", padding:32 }}>
-            <div style={{ fontSize:36, marginBottom:10 }}>📄</div>
-            <div style={{ fontSize:18, fontWeight:700, marginBottom:8 }}>日報をアップロードしよう</div>
-            <div style={{ fontSize:14, color:C.muted }}>日報を登録すると売上が表示されます</div>
-          </Card>
-        )}
         {targetEditModal}
       </div>
     );

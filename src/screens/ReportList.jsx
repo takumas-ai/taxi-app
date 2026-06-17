@@ -38,6 +38,7 @@ function buildForm(report) {
     break_hours:        report.break_hours        != null ? String(report.break_hours)        : "1.0",
     trouble_note:       report.trouble_note || "",
     work_area:          report.work_area   || "",
+    dispatch_type:      report.dispatch_type || "",
   };
 }
 
@@ -281,6 +282,23 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
           <Field label="現金売上（円）" fk="cash_sales" form={form} setForm={setForm} errors={errors} ph="37000"/>
           <Field label="カード売上（円）" fk="card_sales" form={form} setForm={setForm} errors={errors} ph="18000"/>
           <Field label="配車アプリ（円）" fk="app_sales" form={form} setForm={setForm} errors={errors} ph="7000" span={2}/>
+        </div>
+
+        {/* 配車アプリ・無線の種類 */}
+        <div style={{ marginTop:12 }}>
+          <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>配車アプリ・無線の種類 <span style={{ fontSize:10, backgroundColor:"#2a2a4a", color:C.muted, borderRadius:4, padding:"1px 5px", marginLeft:4 }}>任意</span></div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+            {["GO（ゴー）","S.RIDE（エスライド）","DiDi（ディディ）","Uber Taxi","NearMe","全日本無線","東京無線","その他"].map(opt => (
+              <button key={opt} type="button"
+                onClick={() => setForm(p => ({ ...p, dispatch_type: p.dispatch_type === opt ? "" : opt }))}
+                style={{ padding:"7px 14px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer", border:`1.5px solid ${form.dispatch_type === opt ? C.accentLight : C.border}`, backgroundColor: form.dispatch_type === opt ? C.accentLight+"22" : "transparent", color: form.dispatch_type === opt ? C.accentLight : C.muted }}>
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:12 }}>
           <Field label="走行距離（km）" fk="total_distance" form={form} setForm={setForm} errors={errors} ph="300"/>
           <Field label="実車距離（km）" fk="occupied_distance" form={form} setForm={setForm} errors={errors} ph="155"/>
           <Field label="勤務時間（h）" fk="work_hours" form={form} setForm={setForm} errors={errors} ph="13.5"/>
