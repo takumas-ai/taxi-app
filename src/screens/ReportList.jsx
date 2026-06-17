@@ -47,11 +47,19 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
   const [form, setForm] = useState(() => startInEdit && report ? buildForm(report) : {});
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
-  // 乗車記録のポイント名編集
+  // OCR抽出の乗車記録（report.rides）
   const [rides, setRides] = useState(() => Array.isArray(report?.rides) ? report.rides : []);
   const [editingRideIdx, setEditingRideIdx] = useState(null);
   const [ridePointInput, setRidePointInput] = useState("");
   const [showRides, setShowRides] = useState(false);
+  // SalesPointCard の手動乗車記録（localStorageから日付でフィルタ）
+  const salesRecs = (() => {
+    try {
+      const all = JSON.parse(localStorage.getItem("taxi_sales_records") || "[]");
+      return all.filter(r => (r.workDate || (r.timestamp ? r.timestamp.slice(0,10) : "")) === report?.date);
+    } catch { return []; }
+  })();
+  const [showSalesRecs, setShowSalesRecs] = useState(false);
 
   if (!report || !report.gross_sales) return null;
 
@@ -199,6 +207,50 @@ export function ReportModal({ report, onClose, onUpdate, startInEdit = false }) 
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SalesPointCard 手動乗車記録 */}
+          {salesRecs.length > 0 && (
+            <div style={{ marginTop:14 }}>
+              <div onClick={() => setShowSalesRecs(p => !p)}
+                style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", padding:"10px 0", borderTop:`1px solid ${C.border}` }}>
+                <span style={{ fontSize:13, fontWeight:700, color:C.text }}>📝 手動乗車記録（{salesRecs.length}件）</span>
+                <span style={{ fontSize:11, color:C.muted }}>{showSalesRecs ? "▲ 閉じる" : "▼ 開く"}</span>
+              </div>
+              {showSalesRecs && (
+                <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:6 }}>
+                  {[...salesRecs].sort((a,b) => (a.boardingTime||a.timestamp||"").localeCompare(b.boardingTime||b.timestamp||"")).map((r, i) => (
+                    <div key={r.id || i} style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px" }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:11, color:C.muted, marginBottom:2 }}>
+                            {r.boardingTime ? new Date(r.boardingTime).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}) : "—"}
+                            {r.dropoffTime  ? ` → ${new Date(r.dropoffTime).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})}` : ""}
+                          </div>
+                          <div style={{ fontSize:13, color:C.text, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            {r.pickupLocation || "—"}
+                            {r.dropoffLocation ? <span style={{ color:C.muted, fontWeight:400 }}> → {r.dropoffLocation}</span> : ""}
+                          </div>
+                          <div style={{ display:"flex", gap:8, flexWrap:"wrap", fontSize:11, color:C.muted, marginTop:3 }}>
+                            {r.boardingMethod && <span>{r.boardingMethod}</span>}
+                            {r.paymentMethod  && <span>· {r.paymentMethod}</span>}
+                            {r.passengers     && <span>· {r.passengers}人</span>}
+                            {r.highwayFee > 0 && <span>· 高速 {fmt(r.highwayFee)}円</span>}
+                          </div>
+                          {r.memo && <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>📝 {r.memo}</div>}
+                        </div>
+                        <div style={{ fontSize:15, fontWeight:900, color:C.gold, whiteSpace:"nowrap" }}>
+                          {(r.fare || r.amount) ? `${fmt(r.fare || r.amount)}円` : "—"}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ fontSize:11, color:C.muted, textAlign:"right", marginTop:4 }}>
+                    合計: {fmt(salesRecs.reduce((s,r) => s + (r.fare || r.amount || 0), 0))}円
+                  </div>
                 </div>
               )}
             </div>
