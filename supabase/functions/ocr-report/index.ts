@@ -18,18 +18,34 @@ const REPORT_OCR_PROMPT = `あなたはタクシー日報OCRの専門AIです。
 
 | 出力フィールド | よく使われる欄名・手がかり |
 |---|---|
-| gross_sales | 税込運収 / 総営収 / 合計金額 / 総売上 / 運収合計 / 売上合計 |
+| gross_sales | 運収 / 総営収 / 合計金額 / 総売上 / 運収合計 / 売上合計（「税込運収」より「運収」を優先） |
 | cash_sales | 現金 / 現収 / 現金売上 / 現金運収 |
 | card_sales | カード / クレジット / カード売上 / カード運収 |
 | app_sales | アプリ / GO / S.RIDE / 配車アプリ / Uber |
 | highway_fee | 高速納金 / 高速料金 / 高速代 / 高速 |
 | ride_count | 回数 / 乗車回数 / 営業回数 / 件数 |
-| total_distance | 走行粁 / 走行距離 / 総走行 / 走行km |
-| occupied_distance | 実車距離 / 実車粁 / 営業距離（記載なければnull） |
+| total_distance | 走行粁 / 走行距離 / 総走行 / 走行km ※必ず「差引」行の値を使う。帰庫・出庫の指数（累積メーター値）は絶対に使わない |
+| occupied_distance | 実車距離 / 実車粁 / 営業距離 / 営業粁の差引値（記載なければnull） |
 | clock_in | 出庫時刻 / 出庫 / 出発 |
 | clock_out | 帰庫時刻 / 帰庫 / 到着 |
 | clock_in_date | 出庫日（日付欄や出庫日時から読む） |
 | clock_out_date | 帰庫日（帰庫日時から読む。翌日になることが多い） |
+
+## 距離フィールドの重要注意事項（必ず守ること）
+
+多くのタクシー日報に「帰庫・出庫・差引」の3行集計表があります。
+
+例:
+  列名:  指数   走行粁  営業粁  回数
+  帰庫:  5793   4995   9442   1498   ← 累積メーター値。絶対に使わない
+  出庫:  2783   3323   9407    801   ← 累積メーター値。絶対に使わない
+  差引:   301    167     35    697   ← この行の値だけを使う
+
+- total_distance = 差引行の「指数」列 → 上例では 301
+- occupied_distance = 差引行の「走行粁」列 → 上例では 167
+- 帰庫行・出庫行の数値（5793、4995など）は累積値なので絶対に使わない
+- 1シフトの走行距離は必ず500km以下。500超の値を出力してはいけない
+- 差引行が見当たらない場合のみ「帰庫値 - 出庫値」を計算して使う
 
 ## ステップ2: 勤務時間を計算する
 
@@ -155,6 +171,16 @@ serve(async (req) => {
     } catch {
       console.error("[ocr-report] JSON parse error:", cleaned.slice(0, 200));
       return new Response(JSON.stringify({ error: "AIの返答をパースできませんでした" }), { status: 422, headers: corsHeaders });
+    }
+
+    // 距離の後処理: 1シフトで500km超は累積メーター誤読なので無効化
+    if (typeof json.total_distance === "number" && json.total_distance > 500) {
+      console.warn("[ocr-report] total_distance suspicious:", json.total_distance, "→ nullに変換");
+      json.total_distance = null;
+    }
+    if (typeof json.occupied_distance === "number" && json.occupied_distance > 500) {
+      console.warn("[ocr-report] occupied_distance suspicious:", json.occupied_distance, "→ nullに変換");
+      json.occupied_distance = null;
     }
 
     return new Response(JSON.stringify({ fields: json }), {
