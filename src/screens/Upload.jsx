@@ -10,8 +10,30 @@ import { validateImageFile, validateReportForm, sanitizeReportData } from "../li
 const OCR_SEQ = ["画像を解析中...","日付・勤務時間を読み取り中...","売上データを抽出中...","営業回数・走行距離を確認中...","フォーマット差異を吸収中...","読み取り完了 ✓"];
 const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"1.0", highway_fee:"0", trouble_note:"", work_area:"", rides:[], break_times:[] };
 
+// HEIC/HEIFをJPEG Blobに変換（heic2any CDN経由）
+async function convertHeicToJpeg(file) {
+  // heic2anyをCDNから動的ロード（初回のみ）
+  if (!window._heic2any) {
+    await new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js";
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+    window._heic2any = window.heic2any;
+  }
+  const blob = await window._heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+  return Array.isArray(blob) ? blob[0] : blob;
+}
+
 // 画像をリサイズしてbase64変換
 async function imageToBase64(file) {
+  // HEIC/HEIFはブラウザがデコードできないので先にJPEGへ変換
+  const isHeic = file.type === "image/heic" || file.type === "image/heif"
+    || file.name?.toLowerCase().endsWith(".heic")
+    || file.name?.toLowerCase().endsWith(".heif");
+  const src = isHeic ? await convertHeicToJpeg(file) : file;
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = reject;
@@ -32,7 +54,7 @@ async function imageToBase64(file) {
       };
       img.src = ev.target.result;
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(src);
   });
 }
 
