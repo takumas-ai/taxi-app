@@ -5,7 +5,7 @@ import { Card, Btn, ProgressBar, Toggle } from "../components/UI";
 import { AreaBadges } from "../components/UI";
 import { levelFromXp, getTitle, BADGES } from "../lib/xp";
 import { insertFeedback, fetchReferralCount } from "../lib/supabase";
-import { downloadCSV, printAsPDF } from "../lib/export";
+import { downloadCSV, printAsPDF, downloadRideRecordsCSV } from "../lib/export";
 
 const SUPABASE_READY = !!(
   import.meta.env.VITE_SUPABASE_URL &&
@@ -675,6 +675,34 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
             )}
             <div style={{ marginTop:12, fontSize:11, color:C.muted, lineHeight:1.7 }}>
               ※ PDFはブラウザの印刷ダイアログから「PDFとして保存」を選んでください。
+            </div>
+
+            {/* 乗車記録CSV */}
+            <div style={{ marginTop:20, paddingTop:20, borderTop:`1px solid ${C.border}` }}>
+              <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:10 }}>乗車記録</div>
+              {(() => {
+                let allRecs = [];
+                try { allRecs = JSON.parse(localStorage.getItem("taxi_sales_records") || "[]"); } catch {}
+                const recs = exportRange === "month"
+                  ? allRecs.filter(r => (r.workDate||"").startsWith(`${exportYear}-${String(exportMonth).padStart(2,"0")}`))
+                  : allRecs.filter(r => (r.workDate||"").startsWith(String(exportYear)));
+                return (
+                  <>
+                    <div style={{ backgroundColor:C.surface, borderRadius:10, padding:"12px 16px", marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div style={{ fontSize:13, color:C.muted }}>{label} の乗車記録</div>
+                      <div style={{ fontSize:18, fontWeight:800, color: recs.length>0?C.text:C.muted }}>{recs.length}<span style={{ fontSize:12, marginLeft:3 }}>件</span></div>
+                    </div>
+                    {recs.length > 0 ? (
+                      <button onClick={()=>downloadRideRecordsCSV(recs, label)}
+                        style={{ width:"100%", padding:"14px 0", borderRadius:11, fontSize:14, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff" }}>
+                        🚕 乗車記録を CSV でダウンロード
+                      </button>
+                    ) : (
+                      <div style={{ textAlign:"center", padding:"16px", color:C.muted, fontSize:13 }}>この期間の乗車記録はありません</div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         );
