@@ -16,7 +16,7 @@ const ADMIN_EMAIL = "white-t@hotmail.co.jp";
 
 export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, onManageArea, notifSettings, onUpdateNotif, appMode="standard", onModeChange, themeMode="auto", onThemeChange, reports=[], initialSection="", onBack, onOpenAdmin, onAccountLink }) {
   const [subTab, setSubTab] = useState(initialSection);
-  const [form, setForm] = useState({ name:user.name||"", company:user.company||"", workType:user.workType||"隔日勤務", target:user.target||"380000" });
+  const [form, setForm] = useState({ name:user.name||"", company:user.company||"", workType:user.workType||"隔日勤務", target:user.target||"" });
   const [saved, setSaved] = useState(false);
   const [rankPrefs, setRankPrefs] = useState({ showMyRank:false, showTopSales:false });
   const [takePay, setTakePay] = useState(loadS("taxi_takepay", { rate:55, deduction:30000 }));

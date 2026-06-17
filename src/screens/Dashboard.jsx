@@ -979,8 +979,9 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   const [showTargetEdit, setShowTargetEdit] = useState(false);
 
   const monthTotal    = monthReports.reduce((s,r) => s + (r.gross_sales || 0), 0);
-  const monthTarget   = parseInt(user.target) || 380000;
-  const achievement   = monthTarget > 0 ? Math.round((monthTotal / monthTarget) * 100) : 0;
+  const monthTarget   = parseInt(user.target) || 0;  // 0 = 未設定
+  const hasTarget     = monthTarget > 0;
+  const achievement   = hasTarget ? Math.round((monthTotal / monthTarget) * 100) : 0;
   const avgSales      = monthReports.length ? Math.round(monthTotal / monthReports.length) : 0;
   const avgOcc        = monthReports.length ? Math.round(monthReports.reduce((s,r) => s + occ(r), 0) / monthReports.length) : 0;
   const remaining     = FREE_LIMIT - (user.uploadCount || 0);
@@ -1144,12 +1145,14 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
             {fmt(monthTotal)}<span style={{ fontSize:20, color:C.muted, marginLeft:6 }}>円</span>
           </div>
           <div style={{ fontSize:15, color:C.muted, marginTop:8, display:"flex", alignItems:"center", gap:10 }}>
-            <span onClick={()=>setShowTargetEdit(true)} style={{ cursor:"pointer", borderBottom:`1px dashed ${C.border}` }}>
-              目標 {fmt(monthTarget)}円
+            <span onClick={()=>setShowTargetEdit(true)}
+              style={{ cursor:"pointer", borderBottom:`1px dashed ${C.border}`,
+                color: hasTarget ? C.muted : C.accentLight, fontWeight: hasTarget ? 400 : 700 }}>
+              {hasTarget ? `目標 ${fmt(monthTarget)}円` : "🎯 目標を設定する"}
             </span>
-            <span style={{ color:achColor, fontWeight:700 }}>達成率 {achievement}%</span>
+            {hasTarget && <span style={{ color:achColor, fontWeight:700 }}>達成率 {achievement}%</span>}
           </div>
-          <ProgressBar value={Math.min(achievement, 100)} max={100} color={achColor} height={10} style={{ marginTop:12 }} />
+          {hasTarget && <ProgressBar value={Math.min(achievement, 100)} max={100} color={achColor} height={10} style={{ marginTop:12 }} />}
 
           {/* 残り目標 + シフト情報 */}
           <div style={{ marginTop:16, padding:"14px 0 0", borderTop:`1px solid ${C.border}` }}>
@@ -1160,7 +1163,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
                 : <>{fmt(monthTarget - monthTotal)}<span style={{ fontSize:16, marginLeft:4 }}>円</span></>
               }
             </div>
-            {monthTotal < monthTarget && remainingShifts > 0 && (
+            {hasTarget && monthTotal < monthTarget && remainingShifts > 0 && (
               <div style={{ display:"flex", gap:12, marginTop:12 }}>
                 <div style={{ flex:1, backgroundColor:C.bg, borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
                   <div style={{ fontSize:10, color:C.muted, marginBottom:3 }}>残りシフト</div>
@@ -1219,12 +1222,12 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
               {fmt(monthTotal)}<span style={{ fontSize:13, color:C.muted, marginLeft:4 }}>円</span>
             </div>
             <div style={{ fontSize:11, color:C.muted, marginTop:4, display:"flex", alignItems:"center", gap:8 }}>
-              <span
-                onClick={()=>setShowTargetEdit(true)}
-                style={{ cursor:"pointer", borderBottom:`1px dashed ${C.border}` }}>
-                目標 {fmt(monthTarget)}円
+              <span onClick={()=>setShowTargetEdit(true)}
+                style={{ cursor:"pointer", borderBottom:`1px dashed ${C.border}`,
+                  color: hasTarget ? C.muted : C.accentLight, fontWeight: hasTarget ? 400 : 700 }}>
+                {hasTarget ? `目標 ${fmt(monthTarget)}円` : "🎯 目標を設定する"}
               </span>
-              <span style={{ color:achColor, fontWeight:700 }}>達成率 {achievement}%</span>
+              {hasTarget && <span style={{ color:achColor, fontWeight:700 }}>達成率 {achievement}%</span>}
             </div>
           </div>
           <div style={{ textAlign:"right" }}>
@@ -1236,14 +1239,16 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
             </div>
           </div>
         </div>
-        <ProgressBar value={Math.min(achievement, 100)} max={100} color={achColor} height={8} />
-        <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:C.muted, marginTop:5 }}>
-          <span>{THIS_MONTH}月 {monthReports.length}件入力済み</span>
-          <span>{achievement}%</span>
-        </div>
+        {hasTarget && <>
+          <ProgressBar value={Math.min(achievement, 100)} max={100} color={achColor} height={8} />
+          <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:C.muted, marginTop:5 }}>
+            <span>{THIS_MONTH}月 {monthReports.length}件入力済み</span>
+            <span>{achievement}%</span>
+          </div>
+        </>}
 
         {/* 残りシフト・1本必要額 */}
-        {monthTotal < monthTarget && remainingShifts > 0 && (
+        {hasTarget && monthTotal < monthTarget && remainingShifts > 0 && (
           <div style={{ display:"flex", gap:8, marginTop:12, paddingTop:12, borderTop:`1px solid ${C.border}` }}>
             <div style={{ flex:1, backgroundColor:C.bg, borderRadius:9, padding:"8px 10px", textAlign:"center" }}>
               <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>残りシフト(推定)</div>
@@ -1259,7 +1264,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
             </div>
           </div>
         )}
-        {monthTotal >= monthTarget && (
+        {hasTarget && monthTotal >= monthTarget && (
           <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${C.border}`, textAlign:"center", fontSize:16, fontWeight:800, color:C.green }}>
             🎉 今月の目標達成！
           </div>
