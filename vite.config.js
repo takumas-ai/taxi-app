@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { writeFileSync } from 'fs'
+import { writeFileSync, mkdirSync } from 'fs'
 
 export default defineConfig({
   define: {
@@ -59,7 +59,9 @@ self.addEventListener('fetch', e => {
   e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
 });
 `;
-        writeFileSync('dist/sw.js', sw.trim());
+        const distDir = process.cwd() + '/dist';
+        mkdirSync(distDir, { recursive: true });
+        writeFileSync(distDir + '/sw.js', sw.trim());
       }
     }
   ],
