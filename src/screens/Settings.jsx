@@ -34,6 +34,7 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
     {id:"plan",    icon:"💳", label:"プラン",        sub:"無料プラン"},
     {id:"rank",    icon:"🏆", label:"ランク",       sub:"表示設定"},
     {id:"export",   icon:"📤", label:"データエクスポート", sub:"CSV / PDF 出力"},
+    {id:"referral", icon:"🎁", label:"友達を招待",        sub:"紹介リンク・特典"},
     {id:"coupon",   icon:"🎟️", label:"クーポンコード",    sub:"割引・特典コードを入力"},
     {id:"roadmap", icon:"🗺️", label:"ロードマップ",  sub:"開発予定"},
     {id:"feedback", icon:"💬", label:"意見箱",          sub:"要望・バグ報告・ひとこと"},
