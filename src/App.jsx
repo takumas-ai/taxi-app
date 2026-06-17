@@ -508,6 +508,8 @@ export default function App() {
   const [showAreaModal, setShowAreaModal] = useState(false);
   const [showAccountLink, setShowAccountLink] = useState(false);
   const [showClosingPrompt, setShowClosingPrompt] = useState(false);
+  const [closingDayPick, setClosingDayPick] = useState(15);
+  const [closingDaySaving, setClosingDaySaving] = useState(false);
   const [toast, setToast] = useState(null); // { msg, type: "success"|"error"|"info" }
   const areaModalShownRef = useRef(false); // セッション中1回だけ表示
   // SUPABASE_READYでもキャッシュユーザーがあればすぐ表示（リフレッシュ対策）
@@ -916,27 +918,25 @@ export default function App() {
               <span style={{ color:C.accentLight, fontWeight:700 }}>例）15日締めなら「前月16日〜当月15日」が1ヶ月</span>
             </div>
             {(() => {
-              const [closingDay, setClosingDay] = useState(15);
-              const [saving, setSaving] = useState(false);
               const options = [{ value:0, label:"月末日" }, ...[5,10,15,20,25].map(d=>({ value:d, label:`毎月${d}日` }))];
               return (
                 <>
                   <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:20 }}>
                     {options.map(o => (
-                      <div key={o.value} onClick={()=>setClosingDay(o.value)} style={{ padding:"10px 16px", borderRadius:10, border:`2px solid ${closingDay===o.value?C.accentLight:C.border}`, color:closingDay===o.value?C.accentLight:C.muted, fontSize:14, fontWeight:closingDay===o.value?700:400, cursor:"pointer" }}>
+                      <div key={o.value} onClick={()=>setClosingDayPick(o.value)} style={{ padding:"10px 16px", borderRadius:10, border:`2px solid ${closingDayPick===o.value?C.accentLight:C.border}`, color:closingDayPick===o.value?C.accentLight:C.muted, fontSize:14, fontWeight:closingDayPick===o.value?700:400, cursor:"pointer" }}>
                         {o.label}
                       </div>
                     ))}
                   </div>
                   <button onClick={async()=>{
-                    setSaving(true);
-                    if (SUPABASE_READY && user?.id) await upsertProfile({ id:user.id, closing_day:closingDay });
-                    setUser(u=>({...u, closing_day:closingDay}));
-                    setSaving(false);
+                    setClosingDaySaving(true);
+                    if (SUPABASE_READY && user?.id) await upsertProfile({ id:user.id, closing_day:closingDayPick });
+                    setUser(u=>({...u, closing_day:closingDayPick}));
+                    setClosingDaySaving(false);
                     setShowClosingPrompt(false);
                     setToast({ msg:"締日を設定しました ✓", type:"success" });
-                  }} disabled={saving} style={{ width:"100%", padding:"14px 0", borderRadius:12, fontSize:15, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff", marginBottom:10 }}>
-                    {saving ? "保存中..." : "この締日で設定する"}
+                  }} disabled={closingDaySaving} style={{ width:"100%", padding:"14px 0", borderRadius:12, fontSize:15, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff", marginBottom:10 }}>
+                    {closingDaySaving ? "保存中..." : "この締日で設定する"}
                   </button>
                   <button onClick={()=>setShowClosingPrompt(false)} style={{ width:"100%", padding:"12px 0", borderRadius:12, fontSize:13, fontWeight:600, cursor:"pointer", backgroundColor:"transparent", border:"none", color:C.muted }}>
                     あとで設定する
