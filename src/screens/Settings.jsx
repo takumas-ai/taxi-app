@@ -24,6 +24,7 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
   const saveTakePay = (next) => { setTakePay(next); saveS("taxi_takepay", next); };
 
   const SUB = [
+    {id:"account",  icon:"🔗", label:"アカウント",   sub: user?._isGuest ? "⚠️ 未連携（データが危険）" : (user?.email || "連携済み")},
     {id:"profile",  icon:"👤", label:"プロフィール", sub:"名前・勤務形態"},
     {id:"closing",  icon:"📅", label:"締日設定",     sub: user.closing_day ? `毎月${user.closing_day}日締め` : "月末締め"},
     {id:"mode",    icon:"🎛️", label:"モードとカラーテーマ", sub:appMode==="simple"?"かんたん":appMode==="simple_large"?"かんたん（大）":appMode==="analysis"?"分析":"かんたん"},
@@ -67,6 +68,53 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
             <div onClick={()=>{ if (initialSection && subTab === initialSection && onBack) { onBack(); } else { setSubTab(""); } }} style={{ display:"flex", alignItems:"center", gap:4, color:C.accentLight, fontSize:14, cursor:"pointer", fontWeight:600 }}>‹ 戻る</div>
             <div style={{ fontSize:15, fontWeight:800, color:C.text }}>{SUB.find(t=>t.id===subTab)?.label}</div>
           </div>
+
+      {subTab==="account" && (
+        user?._isGuest ? (
+          <div>
+            {/* 警告バナー */}
+            <div style={{ backgroundColor:"#FFF3E0", border:"1px solid #FF980055", borderRadius:12, padding:"14px 16px", marginBottom:20, display:"flex", alignItems:"flex-start", gap:10 }}>
+              <span style={{ fontSize:20 }}>⚠️</span>
+              <span style={{ fontSize:13, color:"#E65100", lineHeight:1.7 }}>外部アカウント未連携のため、機種変更またはアプリを削除した場合にデータが失われます</span>
+            </div>
+
+            <div style={{ fontSize:17, fontWeight:800, color:C.text, marginBottom:8, lineHeight:1.5 }}>連携すればすべてのデータが安全に保存されます</div>
+
+            <Card style={{ marginBottom:20 }}>
+              {[
+                "端末をなくしてもデータ復旧可能",
+                "機種変更時にもデータの引き継ぎが可能",
+                "複数端末でデータの同期が可能",
+                "締日設定が可能",
+              ].map(t => (
+                <div key={t} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid ${C.border}`, fontSize:14, color:C.sub }}>
+                  <span style={{ color:C.accentLight, fontSize:16, flexShrink:0 }}>✓</span>{t}
+                </div>
+              ))}
+            </Card>
+
+            {onAccountLink && (
+              <button onClick={onAccountLink} style={{ width:"100%", padding:"14px 0", borderRadius:12, fontSize:15, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:C.surface, color:C.text, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+                <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.2 33.5 29.7 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 2.9l6-6C34.5 6.5 29.6 4.5 24 4.5 12.7 4.5 3.5 13.7 3.5 25S12.7 45.5 24 45.5c11 0 20.5-8 20.5-20.5 0-1.4-.1-2.7-.5-5z"/><path fill="#34A853" d="M6.3 14.7l7 5.1C15.1 16 19.2 13 24 13c3 0 5.7 1.1 7.8 2.9l6-6C34.5 6.5 29.6 4.5 24 4.5c-7.5 0-14 4.3-17.7 10.2z"/><path fill="#FBBC05" d="M24 45.5c5.5 0 10.5-1.8 14.3-4.9l-6.6-5.4C29.7 36.9 27 38 24 38c-5.7 0-10.5-3.7-12.2-8.8l-7 5.4C8.3 41.4 15.5 45.5 24 45.5z"/><path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.8 2.3-2.3 4.3-4.3 5.6l6.6 5.4C42 36.4 44.5 31 44.5 25c0-1.4-.1-2.7-.5-5z"/></svg>
+                Googleで連携する
+              </button>
+            )}
+          </div>
+        ) : (
+          <Card>
+            <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20 }}>
+              <div style={{ width:48, height:48, borderRadius:"50%", backgroundColor:C.accentLight+"22", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>✓</div>
+              <div>
+                <div style={{ fontSize:14, fontWeight:700, color:C.text }}>アカウント連携済み</div>
+                <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{user?.email || "Google アカウント"}</div>
+              </div>
+            </div>
+            <div style={{ fontSize:11, color:C.muted, lineHeight:1.8, backgroundColor:C.bg, borderRadius:10, padding:"10px 14px" }}>
+              データはクラウドに安全に保存されています。機種変更時もログインすれば引き継げます。
+            </div>
+          </Card>
+        )
+      )}
 
       {subTab==="profile" && (
         <Card>

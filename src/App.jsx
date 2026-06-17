@@ -356,11 +356,6 @@ function GuestAccountModal({ onClose, onOAuth, onSwitchToRegister }) {
 
         {error && <div style={{ backgroundColor:"#ffebee", borderRadius:8, padding:"8px 12px", fontSize:12, color:"#c62828", marginBottom:12 }}>{error}</div>}
 
-        {/* Appleボタン */}
-        <button onClick={()=>doOAuth("apple")} disabled={loading} style={{ width:"100%", padding:"14px 0", borderRadius:12, fontSize:15, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.text, color:C.bg, display:"flex", alignItems:"center", justifyContent:"center", gap:10, marginBottom:10 }}>
-          <svg width="18" height="18" viewBox="0 0 814 1000" fill={C.bg}><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57.8-155.5-127.4C46 790.7 0 663.2 0 541.8c0-207.4 134.9-316.8 267.5-316.8 79.7 0 146 52.1 197.9 52.1 49.9 0 128.2-55.2 218.8-55.2 35.4 0 127.5 3.2 190.5 106.3zm-183.9-177.2c32.3-38.2 56.1-91 56.1-143.7 0-7.7-.6-15.4-1.9-21.7-53.4 2-116.7 35.4-155.1 82.4-29 33.9-56.1 86.6-56.1 139.9 0 8.3 1.3 16.6 1.9 19.2 3.2.6 8.3 1.3 13.4 1.3 48 0 109.3-32.3 141.7-77.4z"/></svg>
-          Appleでサインイン
-        </button>
         {/* Googleボタン */}
         <button onClick={()=>doOAuth("google")} disabled={loading} style={{ width:"100%", padding:"14px 0", borderRadius:12, fontSize:15, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:C.surface, color:C.text, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
           <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.2 33.5 29.7 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 2.9l6-6C34.5 6.5 29.6 4.5 24 4.5 12.7 4.5 3.5 13.7 3.5 25S12.7 45.5 24 45.5c11 0 20.5-8 20.5-20.5 0-1.4-.1-2.7-.5-5z"/><path fill="#34A853" d="M6.3 14.7l7 5.1C15.1 16 19.2 13 24 13c3 0 5.7 1.1 7.8 2.9l6-6C34.5 6.5 29.6 4.5 24 4.5c-7.5 0-14 4.3-17.7 10.2z"/><path fill="#FBBC05" d="M24 45.5c5.5 0 10.5-1.8 14.3-4.9l-6.6-5.4C29.7 36.9 27 38 24 38c-5.7 0-10.5-3.7-12.2-8.8l-7 5.4C8.3 41.4 15.5 45.5 24 45.5z"/><path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.8 2.3-2.3 4.3-4.3 5.6l6.6 5.4C42 36.4 44.5 31 44.5 25c0-1.4-.1-2.7-.5-5z"/></svg>
