@@ -22,6 +22,7 @@ import {
   updateReport,
   saveReferredBy,
   signInWithOAuth,
+  resetPasswordForEmail,
 } from "./lib/supabase";
 
 // Screens
@@ -146,7 +147,6 @@ function LoginScreen({ onLogin, onGuestLogin }) {
     if (SUPABASE_READY) {
       const { data, error: err } = await signUpWithEmail(form.email, form.password);
       if (err) { setError(err.message); setLoading(false); return; }
-      // usersテーブルを更新（トリガーで基本行は作成済み）
       if (data.user) {
         const profileData = {
           id: data.user.id,
@@ -156,9 +156,10 @@ function LoginScreen({ onLogin, onGuestLogin }) {
             monthly_target: parseInt(form.target) || 380000,
           }),
         };
-        // 紹介コード経由なら referred_by を保存
         if (refFromUrl) profileData.referred_by = refFromUrl.toUpperCase();
         await insertProfile(profileData);
+        // メール認証が必要な場合（session===null）は確認待ち画面へ
+        if (!data.session) { setStep("verify_email"); setLoading(false); return; }
         onLogin({ id: data.user.id, name: form.name, company: form.company, workType: form.workType, target: form.target, plan:"free", uploadCount:0, areas, _migrationUserId: data.user.id });
       }
     } else {
@@ -271,7 +272,67 @@ function LoginScreen({ onLogin, onGuestLogin }) {
           <button onClick={doLogin} disabled={loading} style={{ ...btnPrimary, opacity:loading?0.5:1, marginBottom:10 }}>
             {loading ? "ログイン中..." : "ログイン"}
           </button>
+          <div style={{ textAlign:"center", marginBottom:12 }}>
+            <span onClick={()=>{ setError(""); setStep("reset"); }} style={{ fontSize:12, color:C.accentLight, cursor:"pointer", textDecoration:"underline" }}>
+              パスワードをお忘れの方
+            </span>
+          </div>
           <button onClick={()=>setStep("top")} style={btnGhost}>戻る</button>
+        </div>
+      )}
+
+      {/* パスワードリセット */}
+      {step === "reset" && (
+        <div style={{ width:"100%", maxWidth:360 }}>
+          <div style={{ fontSize:17, fontWeight:700, marginBottom:8, textAlign:"center" }}>パスワードリセット</div>
+          <div style={{ fontSize:13, color:C.muted, marginBottom:18, textAlign:"center", lineHeight:1.7 }}>
+            登録済みのメールアドレスを入力してください。<br/>パスワード再設定のリンクを送ります。
+          </div>
+          <div style={{ marginBottom:16 }}>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>メールアドレス</div>
+            <input type="email" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} placeholder="taxi@example.com" style={inputStyle}/>
+          </div>
+          <button onClick={async()=>{
+            if (!form.email) { setError("メールアドレスを入力してください"); return; }
+            setLoading(true); setError("");
+            const { error:err } = await resetPasswordForEmail(form.email);
+            setLoading(false);
+            if (err) { setError(err.message); }
+            else { setStep("reset_sent"); }
+          }} disabled={loading} style={{ ...btnPrimary, opacity:loading?0.5:1, marginBottom:10 }}>
+            {loading ? "送信中..." : "リセットメールを送る"}
+          </button>
+          <button onClick={()=>setStep("login")} style={btnGhost}>戻る</button>
+        </div>
+      )}
+
+      {/* リセットメール送信完了 */}
+      {step === "reset_sent" && (
+        <div style={{ width:"100%", maxWidth:360, textAlign:"center" }}>
+          <div style={{ fontSize:48, marginBottom:16 }}>📧</div>
+          <div style={{ fontSize:17, fontWeight:800, marginBottom:10 }}>メールを送りました</div>
+          <div style={{ fontSize:13, color:C.muted, lineHeight:1.8, marginBottom:24 }}>
+            <strong>{form.email}</strong> にパスワード再設定のリンクを送りました。<br/>
+            メールが届かない場合は迷惑メールフォルダを確認してください。
+          </div>
+          <button onClick={()=>{ setStep("login"); setForm(p=>({...p,password:""})); }} style={btnGhost}>ログイン画面に戻る</button>
+        </div>
+      )}
+
+      {/* メール認証待ち */}
+      {step === "verify_email" && (
+        <div style={{ width:"100%", maxWidth:360, textAlign:"center" }}>
+          <div style={{ fontSize:48, marginBottom:16 }}>✉️</div>
+          <div style={{ fontSize:17, fontWeight:800, marginBottom:10 }}>確認メールを送りました</div>
+          <div style={{ fontSize:13, color:C.muted, lineHeight:1.8, marginBottom:24 }}>
+            <strong>{form.email}</strong> に確認メールを送りました。<br/>
+            メール内のリンクをクリックして登録を完了してください。
+          </div>
+          <div style={{ backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:12, padding:"12px 16px", fontSize:12, color:C.sub, lineHeight:1.8, marginBottom:24, textAlign:"left" }}>
+            ✅ リンクをクリックするとアプリに戻ります<br/>
+            📁 届かない場合は迷惑メールフォルダを確認してください
+          </div>
+          <button onClick={()=>setStep("top")} style={btnGhost}>トップに戻る</button>
         </div>
       )}
 
@@ -446,6 +507,8 @@ export default function App() {
   const [notif, setNotif]       = useState(() => loadS("taxi_notif", { delays:true, events:false, traffic:false, dailyTip:false, achievement:true, dailyResult:false }));
   const [showAreaModal, setShowAreaModal] = useState(false);
   const [showAccountLink, setShowAccountLink] = useState(false);
+  const [showClosingPrompt, setShowClosingPrompt] = useState(false);
+  const [toast, setToast] = useState(null); // { msg, type: "success"|"error"|"info" }
   const areaModalShownRef = useRef(false); // セッション中1回だけ表示
   // SUPABASE_READYでもキャッシュユーザーがあればすぐ表示（リフレッシュ対策）
   const [authReady, setAuthReady] = useState(!SUPABASE_READY || !!loadS("taxi_user", null));
@@ -596,6 +659,22 @@ export default function App() {
     }
   }, [user]);
 
+  // 締日未設定の新規ユーザーに1度だけ促す
+  useEffect(() => {
+    if (!user || user._isGuest) return;
+    if (user.closing_day != null) return; // 設定済みはスキップ
+    if (loadS("taxi_closing_prompted", false)) return;
+    saveS("taxi_closing_prompted", true);
+    setShowClosingPrompt(true);
+  }, [user?.id]);
+
+  // トーストの自動消去
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   if (!authReady) {
     return <div style={{ minHeight:"100vh", backgroundColor:C.bg, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted, fontFamily:"'Inter','Hiragino Sans',sans-serif" }}>読み込み中...</div>;
   }
@@ -684,11 +763,15 @@ export default function App() {
     });
   };
 
+  // トーストヘルパー
+  const showToast = (msg, type = "info") => setToast({ msg, type });
+
   // 日報保存（Supabase or ローカル）
   const handleSave = async (r) => {
     let savedReport = r;
     if (SUPABASE_READY && user.id) {
-      const { data } = await insertReport({
+      try {
+      const { data, error: saveErr } = await insertReport({
         user_id: user.id,
         report_date: r.date,
         gross_sales: r.gross_sales,
@@ -708,7 +791,12 @@ export default function App() {
         ai_comment: r.ai_comment,
         trouble_note: r.trouble_note,
       });
+      if (saveErr) throw saveErr;
       if (data) savedReport = { ...r, id: data.id };
+      } catch(e) {
+        showToast("保存に失敗しました。通信状況を確認してください", "error");
+        console.error("[handleSave]", e);
+      }
     }
     setReports(prev => [savedReport, ...prev]);
     const { xpGained: reportXp, newBadges } = processReport(user.uploadCount || 0, user.badges || []);
@@ -816,12 +904,64 @@ export default function App() {
         if (SUPABASE_READY && user?.id) upsertProfile({ id: user.id, areas });
       }} onClose={()=>setShowAreaModal(false)}/>}
       {showAccountLink && <GuestAccountModal onClose={()=>setShowAccountLink(false)} />}
+
+      {/* 締日設定促進モーダル */}
+      {showClosingPrompt && (
+        <div style={{ position:"fixed", inset:0, backgroundColor:"#0008", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+          <div style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, padding:"24px 24px 48px" }}>
+            <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 20px" }}/>
+            <div style={{ fontSize:17, fontWeight:800, marginBottom:8 }}>📅 締日を設定しましょう</div>
+            <div style={{ fontSize:13, color:C.muted, lineHeight:1.8, marginBottom:20 }}>
+              締日を設定すると「今月の残り出番」や期間集計が正しく計算されます。<br/>
+              <span style={{ color:C.accentLight, fontWeight:700 }}>例）15日締めなら「前月16日〜当月15日」が1ヶ月</span>
+            </div>
+            {(() => {
+              const [closingDay, setClosingDay] = useState(15);
+              const [saving, setSaving] = useState(false);
+              const options = [{ value:0, label:"月末日" }, ...[5,10,15,20,25].map(d=>({ value:d, label:`毎月${d}日` }))];
+              return (
+                <>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:20 }}>
+                    {options.map(o => (
+                      <div key={o.value} onClick={()=>setClosingDay(o.value)} style={{ padding:"10px 16px", borderRadius:10, border:`2px solid ${closingDay===o.value?C.accentLight:C.border}`, color:closingDay===o.value?C.accentLight:C.muted, fontSize:14, fontWeight:closingDay===o.value?700:400, cursor:"pointer" }}>
+                        {o.label}
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={async()=>{
+                    setSaving(true);
+                    if (SUPABASE_READY && user?.id) await upsertProfile({ id:user.id, closing_day:closingDay });
+                    setUser(u=>({...u, closing_day:closingDay}));
+                    setSaving(false);
+                    setShowClosingPrompt(false);
+                    setToast({ msg:"締日を設定しました ✓", type:"success" });
+                  }} disabled={saving} style={{ width:"100%", padding:"14px 0", borderRadius:12, fontSize:15, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff", marginBottom:10 }}>
+                    {saving ? "保存中..." : "この締日で設定する"}
+                  </button>
+                  <button onClick={()=>setShowClosingPrompt(false)} style={{ width:"100%", padding:"12px 0", borderRadius:12, fontSize:13, fontWeight:600, cursor:"pointer", backgroundColor:"transparent", border:"none", color:C.muted }}>
+                    あとで設定する
+                  </button>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
       {showTutorial && (
         <Tutorial
           onComplete={() => setShowTutorial(false)}
           onSetTarget={() => setShowTutorial(false)}
         />
       )}
+
+      {/* トースト通知 */}
+      {toast && (
+        <div style={{ position:"fixed", bottom:90, left:"50%", transform:"translateX(-50%)", zIndex:500, backgroundColor: toast.type==="error" ? C.red : toast.type==="success" ? C.green : C.accentLight, color:"#fff", padding:"12px 20px", borderRadius:12, fontSize:13, fontWeight:700, boxShadow:"0 4px 20px #0004", whiteSpace:"nowrap", pointerEvents:"none" }}>
+          {toast.msg}
+        </div>
+      )}
+
       <PWAInstallBanner />
     </div>
   );

@@ -36,6 +36,14 @@ export async function signInWithOAuth(provider) {
   return { data, error };
 }
 
+/** パスワードリセットメールを送信 */
+export async function resetPasswordForEmail(email) {
+  const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin,
+  });
+  return { data, error };
+}
+
 /** サインアウト */
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
