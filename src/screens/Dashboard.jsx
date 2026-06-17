@@ -923,10 +923,60 @@ function UnifiedCalendar({ reports, monthTarget, user, onOpenReport, noCard = fa
   return <Card style={{ marginBottom:14, padding:"12px 14px" }}>{calendarBody}</Card>;
 }
 
+// ━━━ 月間目標クイック編集モーダル ━━━━━━━━━━━━━━
+function TargetEditModal({ current, onSave, onClose }) {
+  const [val, setVal] = useState(String(current || 380000));
+  return (
+    <div style={{ position:"fixed", inset:0, backgroundColor:"#00000099", zIndex:400, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}
+      onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()}
+        style={{ backgroundColor:C.surface, borderRadius:18, width:"100%", maxWidth:340, padding:24 }}>
+        <div style={{ fontSize:15, fontWeight:800, marginBottom:6 }}>🎯 月間目標を設定</div>
+        <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>達成率・必要売上の計算に使用されます</div>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:20 }}>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={val}
+            onChange={e=>setVal(e.target.value)}
+            autoFocus
+            style={{ flex:1, padding:"13px 14px", borderRadius:11, border:`1.5px solid ${C.accentLight}`, backgroundColor:C.bg, color:C.text, fontSize:18, fontWeight:700, outline:"none" }}
+          />
+          <span style={{ fontSize:14, color:C.muted }}>円</span>
+        </div>
+        {/* クイック選択 */}
+        <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" }}>
+          {[300000,350000,380000,400000,450000,500000].map(v => (
+            <button key={v} onClick={()=>setVal(String(v))}
+              style={{ padding:"6px 10px", borderRadius:8, fontSize:12, fontWeight:600, cursor:"pointer",
+                border:`1.5px solid ${String(v)===val ? C.accentLight : C.border}`,
+                backgroundColor: String(v)===val ? C.accentGlow : "transparent",
+                color: String(v)===val ? C.accentLight : C.muted }}>
+              {v/10000}万
+            </button>
+          ))}
+        </div>
+        <div style={{ display:"flex", gap:10 }}>
+          <button onClick={onClose}
+            style={{ flex:1, padding:"12px 0", borderRadius:10, fontSize:14, fontWeight:600, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.muted }}>
+            キャンセル
+          </button>
+          <button onClick={()=>{ onSave(parseInt(val,10)||380000); onClose(); }}
+            style={{ flex:2, padding:"12px 0", borderRadius:10, fontSize:14, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff" }}>
+            保存する
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ━━━ Dashboard メイン ━━━━━━━━━━━━━━━━━━━━━━━━━
-export default function Dashboard({ reports, user, onOpenReport, onManageArea, rankPrefs = { showMyRank:false, showTopSales:false }, appMode = "standard", onGoShift, onUpdateReport, onGoRanking }) {
+export default function Dashboard({ reports, user, onOpenReport, onManageArea, rankPrefs = { showMyRank:false, showTopSales:false }, appMode = "standard", onGoShift, onUpdateReport, onGoRanking, onUpdateUser }) {
   const { start: periodStart, end: periodEnd } = getClosingPeriod(user?.closing_day ?? 0);
   const monthReports = reports.filter(r => r.date >= periodStart && r.date <= periodEnd);
+
+  const [showTargetEdit, setShowTargetEdit] = useState(false);
 
   const monthTotal    = monthReports.reduce((s,r) => s + (r.gross_sales || 0), 0);
   const monthTarget   = parseInt(user.target) || 380000;
@@ -1058,6 +1108,14 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
     );
   };
 
+  const targetEditModal = showTargetEdit && (
+    <TargetEditModal
+      current={monthTarget}
+      onSave={v => onUpdateUser?.({ ...user, target: String(v) })}
+      onClose={() => setShowTargetEdit(false)}
+    />
+  );
+
   // ━━━ かんたんモード ━━━━━━━━━━━━━━━━━━━━━━━━━
   if (isSimple) {
     return (
@@ -1085,9 +1143,11 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
           <div style={{ fontSize:52, fontWeight:900, color:C.text, lineHeight:1.1 }}>
             {fmt(monthTotal)}<span style={{ fontSize:20, color:C.muted, marginLeft:6 }}>円</span>
           </div>
-          <div style={{ fontSize:15, color:C.muted, marginTop:8 }}>
-            目標 {fmt(monthTarget)}円
-            <span style={{ color:achColor, fontWeight:700, marginLeft:8 }}>達成率 {achievement}%</span>
+          <div style={{ fontSize:15, color:C.muted, marginTop:8, display:"flex", alignItems:"center", gap:10 }}>
+            <span onClick={()=>setShowTargetEdit(true)} style={{ cursor:"pointer", borderBottom:`1px dashed ${C.border}` }}>
+              目標 {fmt(monthTarget)}円
+            </span>
+            <span style={{ color:achColor, fontWeight:700 }}>達成率 {achievement}%</span>
           </div>
           <ProgressBar value={Math.min(achievement, 100)} max={100} color={achColor} height={10} style={{ marginTop:12 }} />
 
@@ -1125,6 +1185,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
             <div style={{ fontSize:14, color:C.muted }}>日報を登録すると売上が表示されます</div>
           </Card>
         )}
+        {targetEditModal}
       </div>
     );
   }
@@ -1157,9 +1218,13 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
             <div style={{ fontSize:32, fontWeight:900, color:C.text }}>
               {fmt(monthTotal)}<span style={{ fontSize:13, color:C.muted, marginLeft:4 }}>円</span>
             </div>
-            <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
-              目標 {fmt(monthTarget)}円
-              <span style={{ color:achColor, fontWeight:700, marginLeft:6 }}>達成率 {achievement}%</span>
+            <div style={{ fontSize:11, color:C.muted, marginTop:4, display:"flex", alignItems:"center", gap:8 }}>
+              <span
+                onClick={()=>setShowTargetEdit(true)}
+                style={{ cursor:"pointer", borderBottom:`1px dashed ${C.border}` }}>
+                目標 {fmt(monthTarget)}円
+              </span>
+              <span style={{ color:achColor, fontWeight:700 }}>達成率 {achievement}%</span>
             </div>
           </div>
           <div style={{ textAlign:"right" }}>
@@ -1233,6 +1298,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
       {/* ⑥ AIアドバイス（3件以上でモード別表示） */}
       <AiAdviceCard reports={monthReports} appMode={appMode} />
 
+      {targetEditModal}
     </div>
   );
 }
