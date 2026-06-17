@@ -741,7 +741,12 @@ export default function App() {
 
   if (!user) {
     return <LoginScreen onLogin={u => {
-      if (u._returningUser) { saveS("taxi_onboarding_done", true); setOnboardingDone(true); }
+      if (u._returningUser) {
+        saveS("taxi_onboarding_done", true); setOnboardingDone(true);
+        // 再ログイン時は利用規約・締日モーダルをスキップ
+        localStorage.setItem("taxi_consent_done", "true");
+        saveS("taxi_closing_prompted", true);
+      }
       // メール登録でゲストデータがある場合は移行
       if (u._migrationUserId && SUPABASE_READY) {
         const localReports = loadS("taxi_reports", []);
