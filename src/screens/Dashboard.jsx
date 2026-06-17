@@ -998,10 +998,11 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   const totalSalesInc  = monthTotal; // 税込
   const totalSalesExc  = Math.round(monthTotal / 1.1); // 税抜（10%消費税）
 
-  // ── 残りシフト・今日必要な売上 ──
+  // ── 今月の残り出番・今日必要な売上（締日ベース） ──
   const today         = new Date();
-  const daysInMonth   = new Date(THIS_YEAR, THIS_MONTH, 0).getDate();
-  const remainingDays = Math.max(0, daysInMonth - today.getDate());
+  // periodEnd は "YYYY-MM-DD" 文字列。締日の23:59:59まで残り日数を計算
+  const periodEndDate = new Date(periodEnd + "T23:59:59");
+  const remainingDays = Math.max(0, Math.ceil((periodEndDate - today) / (1000 * 60 * 60 * 24)));
   const shiftsPerDay  = (user.workType === "隔日勤務") ? 0.5 : 0.75;
   const remainingShifts = Math.round(remainingDays * shiftsPerDay);
   const remainingAmount = Math.max(0, monthTarget - monthTotal);
@@ -1166,7 +1167,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
             {hasTarget && monthTotal < monthTarget && remainingShifts > 0 && (
               <div style={{ display:"flex", gap:12, marginTop:12 }}>
                 <div style={{ flex:1, backgroundColor:C.bg, borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
-                  <div style={{ fontSize:10, color:C.muted, marginBottom:3 }}>残りシフト</div>
+                  <div style={{ fontSize:10, color:C.muted, marginBottom:3 }}>今月の残り出番</div>
                   <div style={{ fontSize:22, fontWeight:900, color:C.text }}>{remainingShifts}<span style={{ fontSize:12, marginLeft:2 }}>回</span></div>
                 </div>
                 <div style={{ flex:1, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}33`, borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
@@ -1251,7 +1252,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         {hasTarget && monthTotal < monthTarget && remainingShifts > 0 && (
           <div style={{ display:"flex", gap:8, marginTop:12, paddingTop:12, borderTop:`1px solid ${C.border}` }}>
             <div style={{ flex:1, backgroundColor:C.bg, borderRadius:9, padding:"8px 10px", textAlign:"center" }}>
-              <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>残りシフト(推定)</div>
+              <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>今月の残り出番</div>
               <div style={{ fontSize:18, fontWeight:900, color:C.text }}>{remainingShifts}<span style={{ fontSize:10, marginLeft:2 }}>回</span></div>
             </div>
             <div style={{ flex:1, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}33`, borderRadius:9, padding:"8px 10px", textAlign:"center" }}>
