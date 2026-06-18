@@ -77,6 +77,7 @@ export default function AvatarPicker({ userId, avatarUrl, avatarPreset, onSave }
   const [previewUrl,     setPreviewUrl]     = useState(avatarUrl ?? null);
   const [uploading,      setUploading]      = useState(false);
   const [uploadErr,      setUploadErr]      = useState(null);
+  const [showPresets,    setShowPresets]    = useState(false);
   const fileRef = useRef();
 
   // 写真を選択してアップロード
@@ -155,50 +156,57 @@ export default function AvatarPicker({ userId, avatarUrl, avatarPreset, onSave }
         />
       </div>
 
-      {/* プリセット一覧 */}
-      <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 10, letterSpacing: "0.05em" }}>
-        キャラクターから選ぶ
+      {/* キャラクター選択（折りたたみ） */}
+      <div
+        onClick={() => setShowPresets(p => !p)}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", padding: "10px 14px", borderRadius: 10, border: `1px solid ${C.border}`, backgroundColor: C.surface, marginTop: 4 }}
+      >
+        <span style={{ fontSize: 13, color: C.sub, fontWeight: 600 }}>🐾 キャラクターから選ぶ</span>
+        <span style={{ fontSize: 12, color: C.muted }}>{showPresets ? "▲" : "▼"}</span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-        {AVATAR_PRESETS.map(preset => {
-          const isSelected = selectedPreset === preset.id && !previewUrl;
-          return (
-            <div
-              key={preset.id}
-              onClick={() => handlePreset(preset)}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 5,
-                cursor: "pointer",
-                padding: "8px 4px",
-                borderRadius: 10,
-                border: `2px solid ${isSelected ? preset.bg : "transparent"}`,
-                backgroundColor: isSelected ? preset.bg + "18" : "transparent",
-                transition: "all 0.15s",
-              }}
-            >
-              <div style={{
-                width: 50,
-                height: 50,
-                borderRadius: "50%",
-                backgroundColor: preset.bg + "cc",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 26,
-                boxShadow: isSelected ? `0 2px 12px ${preset.bg}66` : "none",
-              }}>
-                {preset.emoji}
+
+      {showPresets && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 10 }}>
+          {AVATAR_PRESETS.map(preset => {
+            const isSelected = selectedPreset === preset.id && !previewUrl;
+            return (
+              <div
+                key={preset.id}
+                onClick={() => handlePreset(preset)}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 5,
+                  cursor: "pointer",
+                  padding: "8px 4px",
+                  borderRadius: 10,
+                  border: `2px solid ${isSelected ? preset.bg : "transparent"}`,
+                  backgroundColor: isSelected ? preset.bg + "18" : "transparent",
+                  transition: "all 0.15s",
+                }}
+              >
+                <div style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: "50%",
+                  backgroundColor: preset.bg + "cc",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 26,
+                  boxShadow: isSelected ? `0 2px 12px ${preset.bg}66` : "none",
+                }}>
+                  {preset.emoji}
+                </div>
+                <div style={{ fontSize: 10, color: isSelected ? preset.bg : C.muted, fontWeight: isSelected ? 700 : 400 }}>
+                  {preset.label}
+                </div>
               </div>
-              <div style={{ fontSize: 10, color: isSelected ? preset.bg : C.muted, fontWeight: isSelected ? 700 : 400 }}>
-                {preset.label}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

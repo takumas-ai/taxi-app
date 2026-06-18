@@ -242,11 +242,9 @@ function BusinessPointModal({ onClose }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSettings, onManageArea, hasNewRanking }) {
   const items = [
-    { icon:"📈", label:"統計",             action:()=>{ setTab("stats"); onClose(); } },
-    { icon:"🏆", label:"ランキング",       action:()=>{ setTab("ranking"); onClose(); }, badge: hasNewRanking },
-    { icon:"🗺️", label:"エリア設定",       action:()=>{ onManageArea?.(); onClose(); } },
-    { icon:"📍", label:"マイポイント",       action:()=>{ onOpenBizPoints(); onClose(); } },
-    { icon:"💴", label:"手取り設定",       action:()=>{ onNavigateSettings("takepay"); onClose(); } },
+    { icon:"📈", label:"統計",       action:()=>{ setTab("stats"); onClose(); } },
+    { icon:"🏆", label:"ランキング", action:()=>{ setTab("ranking"); onClose(); }, badge: hasNewRanking },
+    { icon:"📍", label:"マイポイント", action:()=>{ onOpenBizPoints(); onClose(); } },
   ];
 
   return (
@@ -259,13 +257,23 @@ function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSet
 
         {/* ユーザープロフィール */}
         <div style={{ padding:"52px 20px 20px", backgroundColor:C.card, borderBottom:`1px solid ${C.border}` }}>
-          <div style={{ marginBottom:10 }}>
-            <UserAvatar avatarUrl={user?.avatarUrl} avatarPreset={user?.avatarPreset} size={48} />
+          {/* 画像 */}
+          <div style={{ marginBottom:12 }}>
+            <UserAvatar avatarUrl={user?.avatarUrl} avatarPreset={user?.avatarPreset} size={56} />
           </div>
-          <div style={{ fontSize:15, fontWeight:800, color:C.text }}>{user?.name || "ゲスト"}</div>
-          <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{user?.company || ""}</div>
-          {user?.workType && <div style={{ display:"inline-block", marginTop:6, fontSize:10, backgroundColor:C.accentGlow, color:C.accentLight, border:`1px solid ${C.accentLight}44`, borderRadius:99, padding:"2px 10px", fontWeight:700 }}>{user.workType}</div>}
-          <div onClick={()=>{ onNavigateSettings("profile"); onClose(); }} style={{ marginTop:10, display:"inline-block", fontSize:12, color:C.accentLight, cursor:"pointer", padding:"5px 12px", borderRadius:8, border:`1px solid ${C.accentLight}44`, backgroundColor:C.accentLight+"11" }}>✏️ プロフィールを編集</div>
+          {/* 名前 */}
+          <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:4 }}>{user?.name || "ゲスト"}</div>
+          {/* 勤務スタイル */}
+          {user?.workType && (
+            <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>{user.workType}</div>
+          )}
+          {/* プロフィールを編集 */}
+          <div
+            onClick={()=>{ onNavigateSettings("profile"); onClose(); }}
+            style={{ display:"block", width:"100%", boxSizing:"border-box", fontSize:13, color:C.accentLight, cursor:"pointer", padding:"9px 14px", borderRadius:10, border:`1px solid ${C.accentLight}44`, backgroundColor:C.accentLight+"11", textAlign:"center", fontWeight:700 }}
+          >
+            ✏️ プロフィールを編集
+          </div>
         </div>
 
         {/* メニュー項目 */}
@@ -401,12 +409,6 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
             style={{ display:"flex", alignItems:"center", gap:2, cursor:"pointer", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:99, padding:"4px 8px", flexShrink:0 }}>
             <span style={{ fontSize:11, color:C.sub, fontWeight:700 }}>モード</span>
             <span style={{ fontSize:9, color:C.muted }}>▾</span>
-          </div>
-
-          {/* 強制リロード */}
-          <div onClick={() => window.location.reload()} title="最新版に更新"
-            style={{ cursor:"pointer", padding:"5px 6px", borderRadius:10, fontSize:15, opacity:0.55, lineHeight:1, flexShrink:0 }}>
-            🔄
           </div>
 
           {/* 通知 */}
