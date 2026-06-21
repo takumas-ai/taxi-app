@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { C, fmt, loadS, saveS } from "../../lib/constants";
 import { Card } from "../UI";
-import { upsertShifts, deleteShift } from "../../lib/supabase";
+import { upsertShifts, deleteShift, fetchShifts } from "../../lib/supabase";
 
 const SUPABASE_READY = !!(
   import.meta.env.VITE_SUPABASE_URL &&
@@ -70,7 +70,7 @@ function UnifiedDayModal({ dateStr, shift, report, onClose, onSaveShift, onDelet
           <div style={{ backgroundColor:C.goldGlow||C.gold+"12", border:`1px solid ${C.gold}44`, borderRadius:12, padding:14, marginBottom:12 }}>
             <div style={{ fontSize:12, color:C.gold, fontWeight:700, marginBottom:8 }}>💴 日報入力済み</div>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div><div style={{ fontSize:10, color:C.muted }}>総売上</div><div style={{ fontSize:22, fontWeight:900, color:C.gold }}>{fmt(report.gross_sales)}円</div></div>
+              <div><div style={{ fontSize:10, color:C.muted }}>総売上（税抜）</div><div style={{ fontSize:22, fontWeight:900, color:C.gold }}>{fmt(report.gross_sales)}円</div></div>
               <div><div style={{ fontSize:10, color:C.muted }}>営業回数</div><div style={{ fontSize:22, fontWeight:900 }}>{report.ride_count}回</div></div>
             </div>
             <button onClick={()=>{ onOpenReport(report); onClose(); }} style={{ marginTop:10, width:"100%", backgroundColor:C.gold+"22", color:C.gold, border:`1px solid ${C.gold}44`, borderRadius:9, padding:"9px 0", fontSize:12, fontWeight:700, cursor:"pointer" }}>日報の詳細を見る →</button>
@@ -98,6 +98,24 @@ function UnifiedCalendar({ reports, monthTarget, user, onOpenReport, noCard = fa
   const [dayShift,    setDayShift]    = useState(null);
   const [dayReport,   setDayReport]   = useState(null);
   const [shifts,      setShifts]      = useState(() => loadS("taxi_shifts", []));
+
+  // Supabaseからシフトを取得してlocalStorageと同期（デバイス間共有）
+  useEffect(() => {
+    if (!SUPABASE_READY || !user?.id) return;
+    fetchShifts(user.id).then(({ data }) => {
+      if (!data?.length) return;
+      const mapped = data.map(s => ({
+        id:       s.id || ("sb_" + s.shift_date),
+        date:     s.shift_date,
+        clockIn:  s.clock_in  || "",
+        clockOut: s.clock_out || "",
+        isNight:  s.is_night  || false,
+        note:     s.note      || "",
+      }));
+      setShifts(mapped);
+      saveS("taxi_shifts", mapped);
+    });
+  }, [user?.id]);
 
   const ym = `${viewYear}-${String(viewMonth+1).padStart(2,"0")}`;
   const monthReports = reports.filter(r => r.date?.startsWith(ym));
@@ -219,7 +237,7 @@ export function ShiftSummaryCard({ reports = [], user, onOpenReport, monthTarget
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
         <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", flex:1 }}>
           <span style={{ fontSize:13, fontWeight:700 }}>📅 カレンダー</span>
-          {todayShift && <span style={{ fontSize:10, backgroundColor:C.green+"22", color:C.green, fontWeight:700, padding:"2px 8px", borderRadius:99 }}>本日出勤</span>}
+          {todayShift && <span style={{ fontSize:10, backgroundColor:C.green+"22", color:C.green, fontWeight:700, padding:"2px 7px", borderRadius:99, textAlign:"center", lineHeight:1.3 }}>本日<br/>出勤</span>}
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <button onClick={e=>{ e.stopPropagation(); onGoShift?.(); }}

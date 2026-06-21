@@ -19,7 +19,7 @@ export function BottomNav({ tab, setTab, userAreas=[], alertsSeen=false }) {
     { id:"list",       icon:"📋", label:"日報"     },
     { id:"upload",     icon:"＋", label:"記録",  special:true },
     { id:"guide",      icon:"📍", label:"ガイド"   },
-    { id:"community",  icon:"💬", label:"コミュニティ" },
+    { id:"map",        icon:"🗺️", label:"マップ" },
   ];
 
   const isActive = id => {
@@ -240,11 +240,13 @@ function BusinessPointModal({ onClose }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ハンバーガーメニュー（左ドロワー）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSettings, onManageArea, hasNewRanking }) {
+function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSettings, onManageArea, hasNewRanking, eventCount = 0 }) {
   const items = [
-    { icon:"📈", label:"統計",       action:()=>{ setTab("stats"); onClose(); } },
-    { icon:"🏆", label:"ランキング", action:()=>{ setTab("ranking"); onClose(); }, badge: hasNewRanking },
-    { icon:"📍", label:"マイポイント", action:()=>{ onOpenBizPoints(); onClose(); } },
+    { icon:"📣", label:"イベント",    action:()=>{ setTab("events"); onClose(); }, badge: eventCount > 0 ? eventCount : null },
+    { icon:"📈", label:"統計",        action:()=>{ setTab("stats"); onClose(); } },
+    { icon:"🏆", label:"ランキング",  action:()=>{ setTab("ranking"); onClose(); }, badge: hasNewRanking ? "NEW" : null },
+    { icon:"📍", label:"マイポイント",action:()=>{ onOpenBizPoints(); onClose(); } },
+    { icon:"💬", label:"コミュニティ",action:()=>{ setTab("community"); onClose(); } },
   ];
 
   return (
@@ -286,8 +288,10 @@ function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSet
             >
               <span style={{ fontSize:18, width:24, textAlign:"center" }}>{item.icon}</span>
               <span style={{ fontSize:14, color:C.text, fontWeight:500 }}>{item.label}</span>
-              {item.badge && (
-                <span style={{ marginLeft:"auto", backgroundColor:C.red, color:"#fff", fontSize:9, fontWeight:700, borderRadius:99, padding:"2px 7px" }}>NEW</span>
+              {item.badge != null && (
+                <span style={{ marginLeft:"auto", backgroundColor:C.red, color:"#fff", fontSize:9, fontWeight:700, borderRadius:99, padding:"2px 7px", minWidth:18, textAlign:"center" }}>
+                  {item.badge}
+                </span>
               )}
             </div>
           ))}
@@ -354,6 +358,10 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
   const [showDrawer, setShowDrawer]     = useState(false);
   const [showModeSheet, setShowModeSheet] = useState(false);
   const [showBizPoints, setShowBizPoints] = useState(false);
+
+  // 今日チェック済みイベント数（バッジ表示用）
+  const eventChecks = loadS("taxi_event_checks", {});
+  const checkedEventCount = Object.values(eventChecks).filter(Boolean).length;
 
   const userAreas = user?.areas || [];
   const alertCount = MOCK_DELAYS.filter(d =>
@@ -429,6 +437,7 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
           onNavigateSettings={onNavigateSettings}
           onManageArea={onManageArea}
           hasNewRanking={hasNewRanking}
+          eventCount={checkedEventCount}
         />
       )}
 

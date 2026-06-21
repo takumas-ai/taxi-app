@@ -3,7 +3,30 @@
 // React Native 移行時: この App.jsx を App.js にリネームし
 //   <div> → <View>、inline style → StyleSheet に置換する
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Component } from "react";
+
+// ━━━ ErrorBoundary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  componentDidCatch(e, info) { console.error("[ErrorBoundary]", e, info); }
+  render() {
+    if (this.state.error) {
+      const msg = String(this.state.error?.message || this.state.error);
+      return (
+        <div style={{ padding:24, fontFamily:"monospace", fontSize:13, color:"#f87171", backgroundColor:"#1a0000", minHeight:"50vh" }}>
+          <div style={{ fontWeight:700, marginBottom:8 }}>⚠️ 画面描画エラー</div>
+          <div style={{ whiteSpace:"pre-wrap", wordBreak:"break-all", marginBottom:16 }}>{msg}</div>
+          <button onClick={()=>this.setState({error:null})}
+            style={{ padding:"8px 16px", backgroundColor:"#ef4444", color:"#fff", border:"none", borderRadius:8, cursor:"pointer" }}>
+            リトライ
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { C, loadS, saveS, applyTheme, computeIsDark } from "./lib/constants";
 import { sanitizeProfile, isValidEmail, isValidPassword } from "./lib/validate";
 import { INITIAL_REPORTS, ALL_AREAS, AREA_MASTER } from "./data/mockData";
@@ -41,6 +64,9 @@ import CommunityScreen    from "./screens/Community";
 import AdminScreen        from "./screens/Admin";
 import RankingScreen, { hasUnseenRanking } from "./screens/Ranking";
 import StatsScreen      from "./screens/Stats";
+import EventsScreen     from "./screens/EventsScreen";
+import MapScreen        from "./screens/MapScreen";
+import { registerServiceWorker } from "./lib/push";
 
 // Components
 import { BottomNav, Header, TakuroFAB } from "./components/Navigation";
@@ -135,6 +161,15 @@ function LoginScreen({ onLogin, onGuestLogin }) {
   const [areas, setAreas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
+
+  const ua = navigator.userAgent;
+  const isAndroid = /Android/.test(ua);
+  const isWebView = (() => {
+    if (/FBAN|FBAV|Instagram|Line\/|Twitter/.test(ua)) return true;
+    if (/iPhone|iPad|iPod/.test(ua) && /AppleWebKit/.test(ua) && !/Safari/.test(ua)) return true;
+    if (isAndroid && /wv\)/.test(ua)) return true;
+    return false;
+  })();
 
   const toggleArea = a => setAreas(prev => prev.includes(a) ? prev.filter(x=>x!==a) : [...prev,a]);
 
@@ -237,6 +272,21 @@ function LoginScreen({ onLogin, onGuestLogin }) {
       </div>
 
       {error && <div style={{ backgroundColor:C.redGlow, border:`1px solid ${C.red}44`, borderRadius:10, padding:"10px 14px", marginBottom:14, fontSize:13, color:C.red, maxWidth:360, width:"100%" }}>{error}</div>}
+
+      {/* WebViewバナー */}
+      {isWebView && (
+        <div style={{ width:"100%", maxWidth:360, marginBottom:14, backgroundColor:"#FAEEDA", border:"1px solid #EF9F27", borderRadius:10, padding:"12px 14px", display:"flex", gap:10, alignItems:"flex-start" }}>
+          <span style={{ fontSize:18, flexShrink:0 }}>⚠️</span>
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, color:"#633806", marginBottom:4 }}>アプリ内ブラウザではGoogleログインができません</div>
+            <div style={{ fontSize:12, color:"#854F0B", lineHeight:1.7, marginBottom:6 }}>LINEやSNSのリンクから開いている場合は、ブラウザで開き直してください。</div>
+            {isAndroid
+              ? <div style={{ fontSize:12, color:"#633806" }}>🤖 右上「⋮」→「他のアプリで開く」→ Chrome</div>
+              : <div style={{ fontSize:12, color:"#633806" }}>🍎 右下「…」→「ブラウザで開く」</div>
+            }
+          </div>
+        </div>
+      )}
 
       {/* トップ */}
       {step === "top" && (
@@ -724,6 +774,9 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Service Worker 登録（プッシュ通知の前提）
+  useEffect(() => { registerServiceWorker(); }, []);
+
   if (!authReady) {
     return <div style={{ minHeight:"100vh", backgroundColor:C.bg, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted, fontFamily:"'Inter','Hiragino Sans',sans-serif" }}>読み込み中...</div>;
   }
@@ -925,14 +978,16 @@ export default function App() {
 
   const handleLogout = async () => {
     if (SUPABASE_READY) await signOut();
-    // 同意・オンボーディング・締日フラグはログアウト後も保持
+    // ログアウト後も保持するフラグ
     const consentFlag     = localStorage.getItem("taxi_consent_done");
     const onboardingFlag  = localStorage.getItem("taxi_onboarding_done");
     const closingFlag     = localStorage.getItem("taxi_closing_prompted");
+    const themeFlag       = localStorage.getItem("taxi_theme_mode"); // カラーテーマを保持
     localStorage.clear();
     if (consentFlag)    localStorage.setItem("taxi_consent_done", consentFlag);
     if (onboardingFlag) localStorage.setItem("taxi_onboarding_done", onboardingFlag);
     if (closingFlag)    localStorage.setItem("taxi_closing_prompted", closingFlag);
+    if (themeFlag)      localStorage.setItem("taxi_theme_mode", themeFlag);
     setUser(null);
     setReports(INITIAL_REPORTS);
   };
@@ -955,7 +1010,9 @@ export default function App() {
       case "guide":     return <GuideScreen userAreas={userAreas} user={user}/>;
       case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")} user={user} onBack={()=>handleSetTab("dashboard")}/>;
       case "settings":  return <Settings key={settingsSection||"settings"} appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={async u=>{ setUser(prev=>({...prev,...u})); if(SUPABASE_READY&&user?.id&&!user?._isGuest){const p={id:user.id};if(u.name!==undefined)p.name=u.name;if(u.workType!==undefined)p.work_type=u.workType;if(u.company!==undefined)p.company_name=u.company;if(u.target!==undefined)p.monthly_target=Number(u.target);if(u.closing_day!==undefined)p.closing_day=u.closing_day;if("avatar_url"in u)p.avatar_url=u.avatar_url;if("avatar_preset"in u)p.avatar_preset=u.avatar_preset;if(Object.keys(p).length>1)await upsertProfile(p);}}} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined} onOpenAdmin={()=>handleSetTab("admin")} onAccountLink={user?._isGuest ? ()=>setShowAccountLink(true) : undefined}/>;
+      case "events":    return <EventsScreen user={user} onBack={() => handleSetTab("dashboard")} />;
       case "community": return <CommunityScreen />;
+      case "map":       return <MapScreen reports={reports} user={user} />;
       case "ranking":   return <RankingScreen user={user} rankPrefs={rankPrefs} />;
       case "stats":     return <StatsScreen reports={reports} />;
       case "admin":     return <AdminScreen user={{ ...user, email: user.email || "" }} onExit={() => handleSetTab("dashboard")}/>;
@@ -967,7 +1024,7 @@ export default function App() {
   return (
     <div key={themeVer} style={{ minHeight:"100vh", backgroundColor:C.bg, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text, overflowX:"hidden" }}>
       <Header user={user} tab={tab} setTab={handleSetTab} appMode={appMode} onModeChange={setAppMode} alertsSeen={alertsSeen} onNavigateSettings={handleNavigateSettings} onManageArea={()=>setShowAreaModal(true)} hasNewRanking={hasNewRanking && notif.dailyResult} />
-      {renderScreen()}
+      <ErrorBoundary key={`${tab}-${appMode}`}>{renderScreen()}</ErrorBoundary>
       <ReportModal key={selected ? `${selected.id}-${selectedForEdit}` : "none"} report={selected} onClose={()=>{setSelected(null);setSelectedForEdit(false);}} onUpdate={handleUpdateReport} onDelete={handleDeleteReport} startInEdit={selectedForEdit}/>
       <TakuroFAB setTab={handleSetTab} />
       <BottomNav tab={tab} setTab={handleSetTab} userAreas={userAreas} alertsSeen={alertsSeen}/>
