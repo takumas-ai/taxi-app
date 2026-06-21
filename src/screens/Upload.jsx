@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import { C, fmt, occ, dow, hourly, FREE_LIMIT } from "../lib/constants";
+import { C, fmt, occ, dow, hourly, PLAN_OCR_LIMITS, PLAN_LABELS } from "../lib/constants";
 import { generateReportComment, runReportOCR, runReportOCRP2 } from "../lib/ai";
 import { Card, Btn, ProgressBar } from "../components/UI";
 import { RideMatchModal } from "../components/RideMatchModal";
 import { ZONE_AREAS } from "../data/trafficZones";
-import { supabase } from "../lib/supabase";
+import { supabase, uploadReportImage } from "../lib/supabase";
 import { validateImageFile, validateReportForm, sanitizeReportData } from "../lib/validate";
 
 const OCR_SEQ = ["画像を解析中...","日付・勤務時間を読み取り中...","売上データを抽出中...","営業回数・走行距離を確認中...","フォーマット差異を吸収中...","読み取り完了 ✓"];
@@ -249,13 +249,17 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [matchData, setMatchData] = useState(null); // { ocrRides, manualRecords }
   const [ocrImageUrl, setOcrImageUrl] = useState(null); // OCR後の画像プレビュー用URL
+  const [ocrFile, setOcrFile]         = useState(null); // Storageアップロード用ファイル
   const [ocrConfidence, setOcrConfidence] = useState(null); // OCR全体の信頼度(0-100)
   const [imgExpanded, setImgExpanded] = useState(false); // 画像拡大表示
 
   // step/form/ocrLines が変わったらlocalStorageに保存
   useEffect(() => { saveDraft(step, form, ocrLines); }, [step, form, ocrLines]);
   const fileInputRef = useRef(null);
-  const remaining = FREE_LIMIT - uploadCount;
+  const planKey = user?.plan || "free";
+  const planLimit = PLAN_OCR_LIMITS[planKey] ?? PLAN_OCR_LIMITS.free;
+  const planLabel = PLAN_LABELS[planKey] ?? "無料プラン";
+  const remaining = planLimit - uploadCount;
 
   // ━━ ドラッグ＆ドロップ: window レベルで直接拾う（React合成イベントを迂回）━━
   const stepRef = useRef(step);
@@ -328,6 +332,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
 
       // 画像プレビュー用URLを生成（確認画面で日報を見ながら修正できるように）
       setOcrImageUrl(URL.createObjectURL(files[0]));
+      setOcrFile(files[0]); // Storageアップロード用に保持
 
       const result1 = await runReportOCR(base64_1, "image/jpeg");
       if (result1?.error === "monthly_limit_exceeded") {
@@ -462,7 +467,13 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
     // ユーザーがリクエストした場合のみAIコメント生成
     const comment = wantAiAdvice ? await generateReportComment(data, reports) : "";
     data.ai_comment = comment;
+    // OCR画像をSupabase Storageに保存
+    if (ocrFile && user?.id) {
+      const { url } = await uploadReportImage(ocrFile, user.id);
+      if (url) data.image_url = url;
+    }
     setSaving(false); onSave(data); setForm(EMPTY); setIsManual(false); setWantAiAdvice(false);
+    setOcrFile(null);
     localStorage.removeItem(OCR_DRAFT_KEY); // 保存完了でdraftクリア
     setStep("done");
   };
@@ -490,12 +501,18 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   };
 
   if (remaining <= 0) {
+    const upgradeMsg = planKey === "free"
+      ? "スタンダードプランにアップグレードすると月30回まで使えます"
+      : planKey === "standard"
+      ? "プロプランにアップグレードすると月60回まで使えます"
+      : "今月のOCR上限（60回）に達しました。来月また使えます";
     return (
       <div style={{ maxWidth:480, margin:"0 auto", padding:"20px 16px 100px" }}>
         <Card style={{ textAlign:"center", padding:32 }}>
           <div style={{ fontSize:36, marginBottom:12 }}>📊</div>
-          <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>今月の無料枠を使い切りました</div>
-          <Btn variant="gold">月額480円で続ける</Btn>
+          <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>今月のOCR上限に達しました</div>
+          <div style={{ fontSize:13, color:C.muted, marginBottom:16, lineHeight:1.6 }}>{upgradeMsg}</div>
+          {planKey !== "pro" && <Btn variant="gold">プランをアップグレード</Btn>}
         </Card>
       </div>
     );
@@ -720,7 +737,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         </div>
       )}
       <div style={{ backgroundColor:C.goldGlow, border:`1px solid ${C.gold}44`, borderRadius:12, padding:"10px 14px", marginBottom:14 }}>
-        <span style={{ fontSize:13, color:C.sub }}>今月残り <strong style={{ color:C.gold }}>{remaining}件</strong> 無料</span>
+        <span style={{ fontSize:13, color:C.sub }}>{planLabel}｜今月残り <strong style={{ color:C.gold }}>{remaining}件</strong>（上限{planLimit}回）</span>
       </div>
 
       {/* 撮影ガイドの簡易プレビュー（常時表示） */}

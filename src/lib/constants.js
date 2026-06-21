@@ -56,6 +56,8 @@ export function computeIsDark(mode) {
 
 export const DAYS_JA = ["日","月","火","水","木","金","土"];
 export const FREE_LIMIT = 8;
+export const PLAN_OCR_LIMITS = { free: 8, standard: 30, pro: 60 };
+export const PLAN_LABELS = { free: "無料プラン", standard: "スタンダード", pro: "プロ" };
 export const TODAY = new Date().toISOString().slice(0,10);
 export const THIS_YEAR  = new Date().getFullYear();
 export const THIS_MONTH = new Date().getMonth() + 1;

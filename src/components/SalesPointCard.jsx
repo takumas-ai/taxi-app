@@ -64,7 +64,7 @@ function getGps() {
     navigator.geolocation.getCurrentPosition(
       pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
       err => reject(err),
-      { enableHighAccuracy: true, timeout: 8000 }
+      { enableHighAccuracy: false, timeout: 10000 }
     );
   });
 }
@@ -105,17 +105,21 @@ function RecordModal({ onClose, onSave, editTarget }) {
   const [gpsLoading,       setGpsLoading]       = useState(false);
   const [gpsFor,           setGpsFor]           = useState("");
   const [gpsError,         setGpsError]         = useState("");
+
+  const ua = navigator.userAgent;
+  const osType = /iPhone|iPad|iPod/.test(ua) ? "ios"
+               : /Android/.test(ua)           ? "android"
+               : "pc";
   const [showPickupDrop,   setShowPickupDrop]   = useState(false);
+  const [viaLocation,      setViaLocation]      = useState(editTarget?.viaLocation ?? "");
+  const [showVia,          setShowVia]          = useState(!!(editTarget?.viaLocation));
 
   // 登録済み営業ポイント（ハンバーガーメニュー #19 で管理）
   const bizPoints = (() => {
     try { return JSON.parse(localStorage.getItem("taxi_biz_points") || "[]"); } catch { return []; }
   })();
 
-  // 新規登録時: GPS自動取得
-  useEffect(() => {
-    if (!editTarget) fetchGps("pickup");
-  }, []);
+  // GPS自動取得なし（ボタン押下時のみ取得）
 
   async function fetchGps(target) {
     setGpsLoading(true);
@@ -130,8 +134,13 @@ function RecordModal({ onClose, onSave, editTarget }) {
       } else {
         setDropoffLocation(addr);
       }
-    } catch {
-      setGpsError("GPS取得失敗。手動で入力してください。");
+    } catch (err) {
+      const code = err?.code;
+      const msg = code === 1 ? "permission"
+                : code === 2 ? "位置情報を取得できませんでした（電波・GPS確認）"
+                : code === 3 ? "タイムアウト。もう一度試してください"
+                : `GPS取得失敗（${err?.message || "不明"}）`;
+      setGpsError(msg);
     } finally {
       setGpsLoading(false);
       setGpsFor("");
@@ -155,6 +164,7 @@ function RecordModal({ onClose, onSave, editTarget }) {
       boardingMethod,
       radioType:       RADIO_BOARDING.includes(boardingMethod) ? radioType : "",
       memo:            memo.trim(),
+      viaLocation:     viaLocation.trim(),
       lat,
       lng,
       // 統計用に spotName も残す（乗車場所を代入）
@@ -191,11 +201,32 @@ function RecordModal({ onClose, onSave, editTarget }) {
             📡 GPS取得中...
           </div>
         )}
-        {gpsError && (
+        {gpsError === "permission" ? (
+          <div style={{ marginBottom:12, padding:"12px 14px", backgroundColor:C.surface, border:`1px solid ${C.border}`, borderRadius:10 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>📍 位置情報の許可が必要です</div>
+            <div style={{ fontSize:12, color:C.muted, lineHeight:1.7, marginBottom:8 }}>
+              タクローは <strong style={{color:C.text}}>📡ボタンを押した時だけ</strong> 現在地を取得します。<br/>
+              常時追跡・バックグラウンド取得は一切行いません。
+            </div>
+            <div style={{ fontSize:11, color:C.muted, lineHeight:1.8 }}>
+              {osType === "ios" && <>
+                <div style={{ marginBottom:4 }}>① 設定 → プライバシーとセキュリティ → 位置情報サービス → Safari Webサイト →「使用中のみ許可」</div>
+                <div>② Safariのアドレスバー「AA」→ Webサイトの設定 → 位置情報 →「許可」</div>
+              </>}
+              {osType === "android" && <>
+                <div>ブラウザのアドレスバー左の🔒 → 位置情報 →「許可」</div>
+              </>}
+              {osType === "pc" && <>
+                <div style={{ marginBottom:4 }}>① OSの位置情報設定でブラウザを許可</div>
+                <div>② ブラウザのアドレスバー左の🔒 → 位置情報 →「許可」</div>
+              </>}
+            </div>
+          </div>
+        ) : gpsError ? (
           <div style={{ fontSize:12, color:"#f87171", marginBottom:12, padding:"8px 12px", backgroundColor:"#f8717122", borderRadius:9 }}>
             ⚠️ {gpsError}
           </div>
-        )}
+        ) : null}
 
         {/* 乗務日 */}
         <div style={sectionStyle}>
@@ -257,6 +288,29 @@ function RecordModal({ onClose, onSave, editTarget }) {
             </div>
           )}
         </div>
+
+        {/* 経由地ボタン＋欄 */}
+        {!showVia ? (
+          <div style={{ marginBottom:14, textAlign:"center" }}>
+            <button onClick={()=>setShowVia(true)}
+              style={{ fontSize:12, color:C.accentLight, background:"none", border:`1px dashed ${C.accentLight}44`, borderRadius:8, padding:"6px 16px", cursor:"pointer" }}>
+              ＋ 経由地を追加
+            </button>
+          </div>
+        ) : (
+          <div style={sectionStyle}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+              <label style={{ ...labelStyle, marginBottom:0 }}>経由地</label>
+              <button onClick={()=>{ setShowVia(false); setViaLocation(""); }}
+                style={{ fontSize:11, color:C.muted, background:"none", border:"none", cursor:"pointer", padding:0 }}>
+                ✕ 削除
+              </button>
+            </div>
+            <input type="text" value={viaLocation} onChange={e=>setViaLocation(e.target.value)}
+              placeholder="経由した場所を入力"
+              style={inputStyle} />
+          </div>
+        )}
 
         {/* 降車日時 */}
         <div style={sectionStyle}>

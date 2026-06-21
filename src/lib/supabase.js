@@ -598,3 +598,18 @@ export async function fetchSummary(summaryDate) {
     .single();
   return { data, error };
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 東京イベント
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** 指定日の東京イベントを優先度降順で取得 */
+export async function fetchTodayEvents(eventDate) {
+  const { data, error } = await supabase
+    .from("events")
+    .select("*")
+    .eq("event_date", eventDate)
+    .order("priority", { ascending: false })
+    .order("estimated_capacity", { ascending: false });
+  return { data: data ?? [], error };
+}

@@ -1,7 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const FREE_OCR_LIMIT = 8; // 無料ユーザーの月次上限
+const OCR_LIMITS: Record<string, number> = {
+  free:     8,
+  standard: 30,
+  pro:      60,
+};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -99,11 +103,13 @@ serve(async (req) => {
 
     if (userId) {
       const { data: profile } = await db.from("users").select("plan, monthly_upload_count, upload_reset_month").eq("id", userId).single();
-      if (profile && profile.plan !== "paid") {
+      if (profile) {
+        const plan = profile.plan || "free";
+        const limit = OCR_LIMITS[plan] ?? OCR_LIMITS.free;
         const currentMonth = new Date().toISOString().slice(0, 7);
         const count = profile.upload_reset_month === currentMonth ? (profile.monthly_upload_count || 0) : 0;
-        if (count >= FREE_OCR_LIMIT) {
-          return new Response(JSON.stringify({ error: "monthly_limit_exceeded", limit: FREE_OCR_LIMIT }), { status: 429, headers: corsHeaders });
+        if (count >= limit) {
+          return new Response(JSON.stringify({ error: "monthly_limit_exceeded", limit }), { status: 429, headers: corsHeaders });
         }
       }
     }
