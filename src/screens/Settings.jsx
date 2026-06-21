@@ -43,15 +43,32 @@ function ClosingSection({ user, onUpdate }) {
   );
 }
 
-function TakePaySection({ takePay, saveTakePay }) {
+
+function TakePaySection({ takePay, saveTakePay, user, onUpdate }) {
+  const [deductionStr, setDeductionStr] = useState(String(takePay.deduction));
+  const [calcMode, setCalcMode] = useState("reverse"); // "reverse" | "forward"
   const [wantedTake, setWantedTake] = useState("");
+  const [salesInput, setSalesInput] = useState("");
+  const [goalSaved, setGoalSaved] = useState(false);
+
   const fmt2 = (n) => n.toLocaleString();
-  const preview = (sales) => Math.max(0, Math.round(sales * takePay.rate / 100 - takePay.deduction));
-  const requiredSales = wantedTake
-    ? Math.round((parseInt(wantedTake.replace(/,/g,"")) + takePay.deduction) / (takePay.rate / 100))
-    : 0;
+  const calcTake  = (sales) => Math.max(0, Math.round(sales * takePay.rate / 100 - takePay.deduction));
+  const calcSales = (take)  => Math.round((take + takePay.deduction) / (takePay.rate / 100));
+
+  const reverseSales = wantedTake  ? calcSales(parseInt(wantedTake.replace(/,/g,""))  || 0) : 0;
+  const forwardTake  = salesInput   ? calcTake(parseInt(salesInput.replace(/,/g,""))   || 0) : 0;
+
+  const setGoal = (val) => {
+    onUpdate({ target: val });
+    setGoalSaved(true);
+    setTimeout(() => setGoalSaved(false), 2000);
+  };
+
+  const currentTarget = parseInt(user?.target) || 0;
+
   return (
     <div>
+      {/* 条件設定 */}
       <Card style={{ marginBottom:12 }}>
         <div style={{ fontSize:12, color:C.muted, marginBottom:14 }}>会社や契約によって異なります。自分の条件に合わせて設定してください。</div>
         <div style={{ marginBottom:16 }}>
@@ -66,47 +83,101 @@ function TakePaySection({ takePay, saveTakePay }) {
             <span>30%</span><span>80%</span>
           </div>
         </div>
-        <div style={{ marginBottom:16 }}>
+        <div>
           <div style={{ fontSize:13, fontWeight:600, marginBottom:8 }}>月間控除額（社保・税など）</div>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6 }}>
             {[20000,30000,40000,50000,60000,70000].map(v=>(
-              <div key={v} onClick={()=>saveTakePay({...takePay, deduction:v})} style={{ padding:"8px 0", textAlign:"center", borderRadius:9, border:`2px solid ${takePay.deduction===v?C.accentLight:C.border}`, color:takePay.deduction===v?C.accentLight:C.muted, fontSize:12, fontWeight:takePay.deduction===v?700:400, cursor:"pointer" }}>
+              <div key={v} onClick={()=>{ saveTakePay({...takePay, deduction:v}); setDeductionStr(String(v)); }}
+                style={{ padding:"8px 0", textAlign:"center", borderRadius:9, border:`2px solid ${takePay.deduction===v?C.accentLight:C.border}`, color:takePay.deduction===v?C.accentLight:C.muted, fontSize:12, fontWeight:takePay.deduction===v?700:400, cursor:"pointer" }}>
                 {v/10000}万円
               </div>
             ))}
           </div>
           <div style={{ marginTop:8 }}>
             <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>または直接入力（円）</div>
-            <input type="number" value={takePay.deduction} onChange={e=>saveTakePay({...takePay, deduction:parseInt(e.target.value)||0})}
+            <input type="number" value={deductionStr}
+              onChange={e => setDeductionStr(e.target.value)}
+              onBlur={e => { const v = parseInt(e.target.value)||0; setDeductionStr(String(v)); saveTakePay({...takePay, deduction:v}); }}
+              onFocus={e => e.target.select()}
               style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}/>
           </div>
         </div>
       </Card>
-      <Card style={{ marginBottom:12 }}>
-        <div style={{ fontSize:12, fontWeight:700, color:C.muted, marginBottom:10 }}>🔄 逆算（欲しい手取り→必要な売上）</div>
-        <div style={{ fontSize:11, color:C.muted, marginBottom:10 }}>目標手取り額を入力すると必要な売上を計算します</div>
-        <div style={{ display:"flex", gap:8, marginBottom:12, alignItems:"center" }}>
-          <input type="number" value={wantedTake} onChange={e=>setWantedTake(e.target.value)} placeholder="例: 200000"
-            style={{ flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}/>
-          <span style={{ fontSize:13, color:C.muted, flexShrink:0 }}>円</span>
-        </div>
-        {requiredSales > 0 && (
-          <div style={{ backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:10, padding:"14px 16px" }}>
-            <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>必要な月間売上（税抜）</div>
-            <div style={{ fontSize:28, fontWeight:900, color:C.accentLight }}>{fmt2(requiredSales)}<span style={{ fontSize:13, marginLeft:4 }}>円</span></div>
-            <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>手取り目標 {fmt2(parseInt(wantedTake)||0)}円 ÷ 歩合{takePay.rate}% + 控除{fmt2(takePay.deduction)}円</div>
+
+      {/* 計算 */}
+      <Card>
+        {/* 現在の目標 */}
+        {currentTarget > 0 && (
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, padding:"10px 12px", backgroundColor:C.accentGlow, borderRadius:10 }}>
+            <span style={{ fontSize:12, color:C.muted }}>🎯 現在の目標（税抜）</span>
+            <span style={{ fontSize:15, fontWeight:800, color:C.accentLight }}>¥{fmt2(currentTarget)}</span>
           </div>
         )}
-      </Card>
-      <Card>
-        <div style={{ fontSize:12, fontWeight:700, color:C.muted, marginBottom:10 }}>📊 シミュレーション（売上→手取り）</div>
-        {[200000,300000,380000,450000,500000].map(sales=>(
-          <div key={sales} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:`1px solid ${C.border}` }}>
-            <span style={{ fontSize:13, color:C.muted }}>売上 {(sales/10000).toFixed(0)}万円</span>
-            <span style={{ fontSize:14, fontWeight:700, color:C.text }}>手取り約 <span style={{ color:C.accentLight }}>{Math.round(preview(sales)/10000)}万円</span></span>
+
+        {/* トグル */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:16 }}>
+          {[["reverse","手取りから計算"],["forward","売上から計算"]].map(([mode,label])=>(
+            <div key={mode} onClick={()=>setCalcMode(mode)}
+              style={{ padding:"10px 0", textAlign:"center", borderRadius:9, fontSize:13, fontWeight:700, cursor:"pointer",
+                backgroundColor: calcMode===mode ? C.accentLight : C.bg,
+                color: calcMode===mode ? "#fff" : C.muted,
+                border: `1px solid ${calcMode===mode ? C.accentLight : C.border}` }}>
+              {label}
+            </div>
+          ))}
+        </div>
+
+        {/* 手取りから計算 */}
+        {calcMode === "reverse" && (
+          <div>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:6 }}>目標手取り（月）</div>
+            <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:12 }}>
+              <input type="number" value={wantedTake} onChange={e=>setWantedTake(e.target.value)}
+                onFocus={e=>e.target.select()} placeholder="例: 250000"
+                style={{ flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:16, outline:"none" }}/>
+              <span style={{ fontSize:13, color:C.muted, flexShrink:0 }}>円</span>
+            </div>
+            {reverseSales > 0 && (
+              <div style={{ backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:10, padding:"14px 16px", marginBottom:12 }}>
+                <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>必要な月間売上（税抜）</div>
+                <div style={{ fontSize:30, fontWeight:900, color:C.accentLight }}>{fmt2(reverseSales)}<span style={{ fontSize:13, marginLeft:4 }}>円</span></div>
+                <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>手取り {fmt2(parseInt(wantedTake)||0)}円 ÷ 歩合{takePay.rate}% + 控除{fmt2(takePay.deduction)}円</div>
+              </div>
+            )}
+            {reverseSales > 0 && (
+              <Btn onClick={()=>setGoal(reverseSales)} variant={goalSaved?"secondary":"primary"}>
+                {goalSaved ? "✓ 目標に設定しました" : "この売上を目標にする（税抜）"}
+              </Btn>
+            )}
           </div>
-        ))}
-        <div style={{ fontSize:10, color:C.muted, marginTop:8 }}>※ 概算です。実際の手取りは会社の規定により異なります。</div>
+        )}
+
+        {/* 売上から計算 */}
+        {calcMode === "forward" && (
+          <div>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:6 }}>月間売上（税抜）</div>
+            <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:12 }}>
+              <input type="number" value={salesInput} onChange={e=>setSalesInput(e.target.value)}
+                onFocus={e=>e.target.select()} placeholder="例: 450000"
+                style={{ flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:16, outline:"none" }}/>
+              <span style={{ fontSize:13, color:C.muted, flexShrink:0 }}>円</span>
+            </div>
+            {forwardTake > 0 && (
+              <div style={{ backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}44`, borderRadius:10, padding:"14px 16px", marginBottom:12 }}>
+                <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>手取り（概算）</div>
+                <div style={{ fontSize:30, fontWeight:900, color:C.accentLight }}>{fmt2(forwardTake)}<span style={{ fontSize:13, marginLeft:4 }}>円</span></div>
+                <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>売上 {fmt2(parseInt(salesInput)||0)}円 × 歩合{takePay.rate}% − 控除{fmt2(takePay.deduction)}円</div>
+              </div>
+            )}
+            {forwardTake > 0 && (
+              <Btn onClick={()=>setGoal(parseInt(salesInput)||0)} variant={goalSaved?"secondary":"primary"}>
+                {goalSaved ? "✓ 目標に設定しました" : "この売上を目標にする（税抜）"}
+              </Btn>
+            )}
+          </div>
+        )}
+
+        <div style={{ fontSize:10, color:C.muted, marginTop:12 }}>※ 概算です。実際の手取りは会社の規定により異なります。</div>
       </Card>
     </div>
   );
@@ -341,7 +412,7 @@ function CouponSection({ user }) {
 
   useEffect(() => {
     if (!SUPABASE_READY || !user?.id) { setLoading(false); return; }
-    fetchMyCoupons(user.id).then(data => { setCoupons(data || []); setLoading(false); }).catch(() => setLoading(false));
+    fetchMyCoupons(user.id).then(({ data }) => { setCoupons(data || []); setLoading(false); }).catch(() => setLoading(false));
   }, [user?.id]);
 
   const typeLabel = { invited:"招待登録特典", milestone:"招待マイルストーン特典" };
@@ -729,7 +800,7 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
     ]},
     { label: "収入計算", items: [
       {id:"closing", icon:"📅", label:"締日設定",            sub: user.closing_day ? `毎月${user.closing_day}日締め` : "月末締め"},
-      {id:"takepay", icon:"💴", label:"手取り設定",           sub:`歩合${takePay.rate}% / 控除${(takePay.deduction/10000).toFixed(1)}万円`},
+      {id:"takepay", icon:"💴", label:"売上・手取り設定",       sub: user.target ? `目標¥${parseInt(user.target).toLocaleString()} / 歩合${takePay.rate}%` : `歩合${takePay.rate}% / 控除${(takePay.deduction/10000).toFixed(1)}万円`},
     ]},
     { label: "特典", items: [
       {id:"referral",icon:"🎁", label:"友達を招待",           sub:"紹介リンク・特典"},
@@ -877,6 +948,7 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
 
       {subTab==="closing" && <ClosingSection user={user} onUpdate={onUpdate} />}
 
+
       {subTab==="area" && (
         <div>
           <Card style={{ marginBottom:12 }}>
@@ -981,111 +1053,6 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
       {subTab==="notif" && <NotifSection notifSettings={notifSettings} onUpdateNotif={onUpdateNotif} />}
 
       {/* OLD notif IIFE removed — replaced by <NotifSection> above */}
-      {false && (() => {
-        const [notifTab, setNotifTab] = useState("settings");
-        const [quietHours, setQuietHours] = useState(() => loadS("taxi_quiet_hours", { enabled:true, from:"23:00", to:"07:00" }));
-        const saveQuiet = (next) => { setQuietHours(next); saveS("taxi_quiet_hours", next); };
-
-        const NOTIF_ITEMS = [
-          { k:"delays",      icon:"🚃", l:"電車遅延チャンス通知",   d:"遅延・見合わせ発生時（エリア内）" },
-          { k:"events",      icon:"🎵", l:"イベント前通知",         d:"出勤予定のイベントの60分前" },
-          { k:"traffic",     icon:"🚗", l:"重大渋滞通知",           d:"渋滞レベル3以上の発生時" },
-          { k:"dailyTip",    icon:"🤖", l:"AI日次戦略通知",         d:"毎朝8時にエリア別の戦略ヒント" },
-          { k:"achievement", icon:"🏆", l:"自己ベスト更新通知",     d:"売上・実車率・時間単価の更新時" },
-          { k:"dailyResult", icon:"📣", l:"翌日発表通知",           d:"毎朝8時 — 前日の集計・エリア平均" },
-        ];
-
-        const MOCK_LOG = [
-          { icon:"🚃", title:"電車遅延チャンス", body:"東海道線が遅延中（横浜方面）。駅周辺の需要が上昇しています。", time:"今日 18:42", read:false },
-          { icon:"🏆", title:"自己ベスト更新！", body:"今日の売上が過去最高の73,200円を記録しました！", time:"今日 06:31", read:false },
-          { icon:"📣", title:"翌日発表 — 6/11", body:"昨日の平均売上: 62,400円。あなたは上位28%でした。", time:"昨日 08:00", read:true },
-          { icon:"🤖", title:"今日の戦略ヒント", body:"金曜夜は六本木・銀座エリアの需要が高い傾向があります。", time:"昨日 08:00", read:true },
-          { icon:"🎵", title:"イベント前通知", body:"横浜アリーナでコンサートが19:00開始。17時以降に現地入り推奨。", time:"6/11 16:00", read:true },
-        ];
-
-        return (
-          <>
-            {/* タブ切り替え */}
-            <div style={{ display:"flex", backgroundColor:C.surface, borderRadius:10, padding:3, gap:3, marginBottom:16 }}>
-              {[["settings","⚙️ 設定"],["log","📋 通知ログ"]].map(([v,l])=>(
-                <div key={v} onClick={()=>setNotifTab(v)} style={{ flex:1, textAlign:"center", padding:"8px 0", borderRadius:8, fontSize:13, fontWeight:notifTab===v?700:400, backgroundColor:notifTab===v?C.card:"transparent", color:notifTab===v?C.text:C.muted, cursor:"pointer" }}>{l}</div>
-              ))}
-            </div>
-
-            {notifTab === "settings" && (
-              <>
-                {/* サイレント時間帯 */}
-                <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>🌙 サイレント時間帯</div>
-                <Card style={{ marginBottom:14, padding:"14px 16px" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: quietHours.enabled ? 14 : 0 }}>
-                    <div>
-                      <div style={{ fontSize:14, fontWeight:600 }}>おやすみモード</div>
-                      <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>設定した時間帯は通知を受け取りません</div>
-                    </div>
-                    <Toggle value={quietHours.enabled} onChange={v=>saveQuiet({...quietHours, enabled:v})}/>
-                  </div>
-                  {quietHours.enabled && (
-                    <div style={{ display:"flex", alignItems:"center", gap:12, paddingTop:14, borderTop:`1px solid ${C.border}` }}>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:10, color:C.muted, marginBottom:5 }}>開始</div>
-                        <input type="time" value={quietHours.from} onChange={e=>saveQuiet({...quietHours, from:e.target.value})}
-                          style={{ width:"100%", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:"8px 10px", color:C.text, fontSize:14, fontWeight:700, outline:"none" }}/>
-                      </div>
-                      <div style={{ fontSize:18, color:C.muted, paddingTop:14 }}>〜</div>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:10, color:C.muted, marginBottom:5 }}>終了</div>
-                        <input type="time" value={quietHours.to} onChange={e=>saveQuiet({...quietHours, to:e.target.value})}
-                          style={{ width:"100%", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:"8px 10px", color:C.text, fontSize:14, fontWeight:700, outline:"none" }}/>
-                      </div>
-                    </div>
-                  )}
-                </Card>
-
-                {/* 通知種別 */}
-                <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>📬 通知の種類</div>
-                <Card style={{ padding:0, overflow:"hidden" }}>
-                  {NOTIF_ITEMS.map(({k,icon,l,d}, i)=>(
-                    <div key={k} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom: i<NOTIF_ITEMS.length-1?`1px solid ${C.border}`:"none" }}>
-                      <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-                        <span style={{ fontSize:20 }}>{icon}</span>
-                        <div>
-                          <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{l}</div>
-                          <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{d}</div>
-                        </div>
-                      </div>
-                      <Toggle value={notifSettings[k]||false} onChange={v=>onUpdateNotif(k,v)}/>
-                    </div>
-                  ))}
-                </Card>
-
-                {/* 注意書き */}
-                <div style={{ marginTop:12, padding:"10px 14px", backgroundColor:C.surface, borderRadius:10, fontSize:11, color:C.muted, lineHeight:1.7 }}>
-                  💡 プッシュ通知は有料プランで利用可能です。現在はアプリ内通知のみ対応しています。
-                </div>
-              </>
-            )}
-
-            {notifTab === "log" && (
-              <>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>直近7日間の通知履歴</div>
-                {MOCK_LOG.map((n, i) => (
-                  <div key={i} style={{ display:"flex", gap:12, padding:"13px 14px", backgroundColor: n.read ? C.surface : C.accentGlow, border:`1px solid ${n.read ? C.border : C.accentLight+"44"}`, borderRadius:12, marginBottom:8 }}>
-                    <span style={{ fontSize:22, flexShrink:0 }}>{n.icon}</span>
-                    <div style={{ flex:1 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:3 }}>
-                        <div style={{ fontSize:13, fontWeight:n.read?600:800, color:C.text }}>{n.title}</div>
-                        {!n.read && <div style={{ width:7, height:7, borderRadius:"50%", backgroundColor:C.accentLight, flexShrink:0 }}/>}
-                      </div>
-                      <div style={{ fontSize:12, color:C.sub, lineHeight:1.6 }}>{n.body}</div>
-                      <div style={{ fontSize:10, color:C.muted, marginTop:5 }}>{n.time}</div>
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
-          </>
-        );
-      })()}
 
       {subTab==="rank" && (() => {
         const xpData   = levelFromXp(user.xp || 0);
@@ -1192,7 +1159,7 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
         </div>
       )}
 
-      {subTab==="takepay" && <TakePaySection takePay={takePay} saveTakePay={saveTakePay} />}
+      {subTab==="takepay" && <TakePaySection takePay={takePay} saveTakePay={saveTakePay} user={user} onUpdate={onUpdate} />}
 
       {subTab==="roadmap" && (
         <Card>
@@ -1211,553 +1178,18 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
 
       {subTab==="export" && <ExportSection user={user} reports={reports} />}
 
-      {false && (() => {
-        const isPaid = user?.plan === "paid" || user?.plan === "kojin";
-        const now    = new Date();
-        const thisYear  = now.getFullYear();
-        const thisMonth = now.getMonth() + 1;
-
-        // 月リスト（過去12ヶ月）
-        const months = [];
-        for (let i = 0; i < 12; i++) {
-          let m = thisMonth - i, y = thisYear;
-          if (m <= 0) { m += 12; y--; }
-          months.push({ y, m });
-        }
-
-        const [exportYear,  setExportYear]  = useState(thisYear);
-        const [exportMonth, setExportMonth] = useState(thisMonth);
-        const [exportRange, setExportRange] = useState("month"); // month | year
-
-        const getReports = () => {
-          if (exportRange === "month") {
-            const prefix = `${exportYear}-${String(exportMonth).padStart(2,"0")}`;
-            return reports.filter(r => r.date.startsWith(prefix));
-          }
-          return reports.filter(r => r.date.startsWith(String(exportYear)));
-        };
-        const label = exportRange === "month"
-          ? `${exportYear}年${exportMonth}月`
-          : `${exportYear}年間`;
-        const targetReports = getReports();
-
-        return (
-          <div>
-            {!isPaid && (
-              <div style={{ backgroundColor:C.goldGlow, border:`1px solid ${C.gold}44`, borderRadius:10, padding:"10px 14px", marginBottom:16, fontSize:12, color:C.sub, lineHeight:1.7 }}>
-                💡 無料プランは直近1ヶ月のみ出力できます。全期間は有料プランで利用可能です。
-              </div>
-            )}
-
-            {/* 期間選択 */}
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>期間</div>
-            <div style={{ display:"flex", backgroundColor:C.surface, borderRadius:10, padding:3, gap:3, marginBottom:14 }}>
-              {[["month","月次"],["year","年次"]].map(([v,l])=>(
-                <div key={v} onClick={()=>setExportRange(v)} style={{ flex:1, textAlign:"center", padding:"8px 0", borderRadius:8, fontSize:13, fontWeight:exportRange===v?700:400, backgroundColor:exportRange===v?C.card:"transparent", color:exportRange===v?C.text:C.muted, cursor:"pointer" }}>{l}</div>
-              ))}
-            </div>
-
-            <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-              {/* 年選択 */}
-              <select value={exportYear} onChange={e=>setExportYear(Number(e.target.value))}
-                style={{ flex:1, backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}>
-                {[thisYear, thisYear-1, thisYear-2].map(y => <option key={y} value={y}>{y}年</option>)}
-              </select>
-              {/* 月選択（月次のみ） */}
-              {exportRange === "month" && (
-                <select value={exportMonth} onChange={e=>setExportMonth(Number(e.target.value))}
-                  style={{ flex:1, backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}>
-                  {Array.from({length:12},(_,i)=>i+1).map(m=><option key={m} value={m}>{m}月</option>)}
-                </select>
-              )}
-            </div>
-
-            {/* 対象件数プレビュー */}
-            <div style={{ backgroundColor:C.surface, borderRadius:10, padding:"12px 16px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div style={{ fontSize:13, color:C.muted }}>{label} の日報</div>
-              <div style={{ fontSize:18, fontWeight:800, color: targetReports.length>0?C.text:C.muted }}>{targetReports.length}<span style={{ fontSize:12, marginLeft:3 }}>件</span></div>
-            </div>
-
-            {targetReports.length === 0 ? (
-              <div style={{ textAlign:"center", padding:"24px", color:C.muted, fontSize:13 }}>この期間の日報はありません</div>
-            ) : (
-              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                <button onClick={()=>downloadCSV(targetReports, label)}
-                  style={{ width:"100%", padding:"14px 0", borderRadius:11, fontSize:14, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.green, color:"#fff" }}>
-                  📊 CSV でダウンロード
-                </button>
-                <button onClick={()=>printAsPDF(targetReports, label, user)}
-                  style={{ width:"100%", padding:"14px 0", borderRadius:11, fontSize:14, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:C.card, color:C.text }}>
-                  🖨️ PDF で印刷 / 保存
-                </button>
-              </div>
-            )}
-            <div style={{ marginTop:12, fontSize:11, color:C.muted, lineHeight:1.7 }}>
-              ※ PDFはブラウザの印刷ダイアログから「PDFとして保存」を選んでください。
-            </div>
-
-            {/* 乗車記録CSV */}
-            <div style={{ marginTop:20, paddingTop:20, borderTop:`1px solid ${C.border}` }}>
-              <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:10 }}>乗車記録</div>
-              {(() => {
-                let allRecs = [];
-                try { allRecs = JSON.parse(localStorage.getItem("taxi_sales_records") || "[]"); } catch {}
-                const recs = exportRange === "month"
-                  ? allRecs.filter(r => (r.workDate||"").startsWith(`${exportYear}-${String(exportMonth).padStart(2,"0")}`))
-                  : allRecs.filter(r => (r.workDate||"").startsWith(String(exportYear)));
-                return (
-                  <>
-                    <div style={{ backgroundColor:C.surface, borderRadius:10, padding:"12px 16px", marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <div style={{ fontSize:13, color:C.muted }}>{label} の乗車記録</div>
-                      <div style={{ fontSize:18, fontWeight:800, color: recs.length>0?C.text:C.muted }}>{recs.length}<span style={{ fontSize:12, marginLeft:3 }}>件</span></div>
-                    </div>
-                    {recs.length > 0 ? (
-                      <button onClick={()=>downloadRideRecordsCSV(recs, label)}
-                        style={{ width:"100%", padding:"14px 0", borderRadius:11, fontSize:14, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff" }}>
-                        🚕 乗車記録を CSV でダウンロード
-                      </button>
-                    ) : (
-                      <div style={{ textAlign:"center", padding:"16px", color:C.muted, fontSize:13 }}>この期間の乗車記録はありません</div>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-          </div>
-        );
-      })()}
 
       {subTab==="coupon" && <CouponSection user={user} />}
 
-      {false && (() => {
-        const [coupons,  setCoupons]  = useState([]);
-        const [loading,  setLoading]  = useState(true);
-
-        useState(() => {
-          if (!SUPABASE_READY || !user?.id) { setLoading(false); return; }
-          import("../lib/supabase").then(({ fetchMyCoupons }) => {
-            fetchMyCoupons(user.id).then(data => { setCoupons(data || []); setLoading(false); });
-          });
-        });
-
-        const typeLabel = { invited:"招待登録特典", milestone:"招待マイルストーン特典" };
-        const typeIcon  = { invited:"🎁", milestone:"🏅" };
-
-        return (
-          <div>
-            {/* 保有クーポン一覧 */}
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>保有クーポン</div>
-
-            {loading ? (
-              <Card><div style={{ textAlign:"center", padding:"20px 0", color:C.muted, fontSize:13 }}>読み込み中...</div></Card>
-            ) : coupons.length === 0 ? (
-              <Card>
-                <div style={{ textAlign:"center", padding:"24px 0" }}>
-                  <div style={{ fontSize:32, marginBottom:8 }}>🎟️</div>
-                  <div style={{ fontSize:13, color:C.muted }}>まだクーポンがありません</div>
-                  <div style={{ fontSize:11, color:C.muted, marginTop:6 }}>友達を招待すると特典クーポンが届きます</div>
-                </div>
-              </Card>
-            ) : (
-              <Card style={{ padding:0, overflow:"hidden", marginBottom:16 }}>
-                {coupons.map((cp, i) => (
-                  <div key={cp.id} style={{ padding:"14px 16px", borderBottom: i<coupons.length-1?`1px solid ${C.border}`:"none" }}>
-                    <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
-                      <div style={{ width:40, height:40, borderRadius:10, backgroundColor:cp.used_at?C.surface:C.accentLight+"22", border:`1px solid ${cp.used_at?C.border:C.accentLight+"44"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
-                        {typeIcon[cp.type] || "🎟️"}
-                      </div>
-                      <div style={{ flex:1 }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
-                          <span style={{ fontSize:13, fontWeight:700, color:cp.used_at?C.muted:C.text }}>{typeLabel[cp.type] || "クーポン"}</span>
-                          {cp.used_at && <span style={{ fontSize:10, color:C.muted, backgroundColor:C.surface, padding:"1px 6px", borderRadius:4, fontWeight:600 }}>使用済み</span>}
-                        </div>
-                        <div style={{ fontSize:12, color:cp.used_at?C.muted:C.accentLight, fontWeight:700 }}>無料期間 +{cp.benefit_days}日</div>
-                        <div style={{ fontSize:10, color:C.muted, marginTop:3 }}>
-                          発行日: {new Date(cp.issued_at).toLocaleDateString("ja-JP")}
-                          {cp.expires_at ? ` ／ 有効期限: ${new Date(cp.expires_at).toLocaleDateString("ja-JP")}` : " ／ 有効期限: 無期限"}
-                        </div>
-                      </div>
-                      <button
-                        disabled
-                        style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${C.border}`, backgroundColor:C.surface, color:C.muted, fontSize:11, fontWeight:700, cursor:"not-allowed", flexShrink:0, opacity:cp.used_at?0.4:0.8 }}
-                      >
-                        近日公開
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </Card>
-            )}
-
-            <div style={{ padding:"12px 14px", backgroundColor:C.surface, borderRadius:10, fontSize:11, color:C.muted, lineHeight:1.8 }}>
-              🎟️ クーポンは友達招待の特典として自動発行されます。<br/>
-              ⏳ クーポン適用機能は有料プランと同時に公開予定です。<br/>
-              ✅ 保有クーポンは期限なし（無期限）で保存されます。
-            </div>
-          </div>
-        );
-      })()}
 
       {subTab==="referral" && <ReferralSection user={user} />}
 
-      {false && (() => {
-        const myCode = user?.referral_code || null;
-        const appUrl = "https://taxi-app-nine-eta.vercel.app";
-        const refUrl = myCode ? `${appUrl}/?ref=${myCode}` : appUrl;
-        const shareText = `タクシードライバー向けアプリ「タクロー」を使ってみて！日報記録・売上分析・AIアドバイスが全部ひとつ🦉\n招待コード: ${myCode}\n${refUrl}`;
-
-        const [copied, setCopied]         = useState(false);
-        const [copiedLink, setCopiedLink] = useState(false);
-        const [stats, setStats]           = useState(null); // { events, coupons }
-        const [loading, setLoading]       = useState(true);
-
-        useState(() => {
-          if (!SUPABASE_READY || !user?.id) { setLoading(false); return; }
-          import("../lib/supabase").then(({ fetchMyReferralStats }) => {
-            fetchMyReferralStats(user.id, myCode).then(s => { setStats(s); setLoading(false); });
-          });
-        });
-
-        const total = stats?.events?.length ?? 0;
-        // 次のマイルストーン
-        const MILESTONES = [1, 3, 6, 9, 12];
-        const nextMilestone = MILESTONES.find(m => m > total) ?? null;
-        const lastMilestone = [...MILESTONES].reverse().find(m => m <= total) ?? 0;
-
-        const copyCode = () => {
-          navigator.clipboard.writeText(myCode || "").catch(()=>{});
-          setCopied(true); setTimeout(()=>setCopied(false), 2000);
-        };
-        const copyLink2 = () => {
-          navigator.clipboard.writeText(refUrl).catch(()=>{});
-          setCopiedLink(true); setTimeout(()=>setCopiedLink(false), 2000);
-        };
-        const shareLine = () => {
-          window.open(`https://line.me/R/msg/text/?${encodeURIComponent(shareText)}`, "_blank");
-        };
-
-        const REWARD_TIERS = [
-          { count:1,  days:14,  label:"1人招待",   benefit:"+14日延長クーポン", xp:100 },
-          { count:3,  days:30,  label:"3人招待",   benefit:"+30日延長クーポン", xp:100 },
-          { count:6,  days:30,  label:"6人招待",   benefit:"+30日延長クーポン", xp:100 },
-          { count:9,  days:30,  label:"9人招待",   benefit:"+30日延長クーポン", xp:100 },
-          { count:12, days:30,  label:"12人招待",  benefit:"+30日延長クーポン", xp:100 },
-        ];
-
-        if (!myCode && !loading) {
-          return (
-            <Card>
-              <div style={{ textAlign:"center", padding:"20px 0", color:C.muted, fontSize:13 }}>
-                招待コードの準備中です。少し待ってからもう一度開いてください。
-              </div>
-            </Card>
-          );
-        }
-
-        return (
-          <div>
-            {/* 実績バナー */}
-            <div style={{ background:`linear-gradient(135deg, ${C.accentLight}18, ${C.accentLight}08)`, border:`1px solid ${C.accentLight}33`, borderRadius:14, padding:"16px", marginBottom:16, textAlign:"center" }}>
-              <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>累計招待人数</div>
-              <div style={{ fontSize:40, fontWeight:900, color:C.text }}>
-                {loading ? "—" : total}
-                <span style={{ fontSize:16, color:C.muted, marginLeft:4 }}>人</span>
-              </div>
-              {!loading && total > 0 && (
-                <div style={{ fontSize:12, color:C.accentLight, fontWeight:700, marginTop:4 }}>
-                  累計 +{total * 100} XP 獲得
-                </div>
-              )}
-              {!loading && nextMilestone && (
-                <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
-                  あと{nextMilestone - total}人で次の特典クーポン！
-                </div>
-              )}
-              {!loading && !nextMilestone && total > 0 && (
-                <div style={{ fontSize:12, color:C.green, fontWeight:700, marginTop:4 }}>
-                  🏆 全マイルストーン達成！
-                </div>
-              )}
-            </div>
-
-            {/* 自分の招待コード */}
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>あなたの招待コード</div>
-            <div style={{ display:"flex", gap:8, marginBottom:10 }}>
-              <div style={{ flex:1, backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px" }}>
-                <div style={{ fontSize:18, fontWeight:900, color:C.accentLight, letterSpacing:"2px", fontFamily:"monospace" }}>{myCode || "..."}</div>
-              </div>
-              <button onClick={copyCode} style={{ padding:"0 16px", borderRadius:10, border:`1px solid ${copied?C.green:C.border}`, backgroundColor:copied?C.greenGlow:C.card, color:copied?C.green:C.sub, fontSize:13, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
-                {copied ? "✓ 済" : "コピー"}
-              </button>
-            </div>
-
-            {/* シェアボタン */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:20 }}>
-              <button onClick={shareLine} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"13px 0", borderRadius:11, border:"1px solid #06C75544", backgroundColor:"#06C75514", color:"#06C755", fontSize:14, fontWeight:800, cursor:"pointer" }}>
-                💬 LINEで送る
-              </button>
-              <button onClick={copyLink2} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"13px 0", borderRadius:11, border:`1px solid ${copiedLink?C.green:C.border}`, backgroundColor:copiedLink?C.greenGlow:C.card, color:copiedLink?C.green:C.sub, fontSize:14, fontWeight:700, cursor:"pointer" }}>
-                {copiedLink ? "✓ コピー済" : "🔗 リンクをコピー"}
-              </button>
-            </div>
-
-            {/* 特典マイルストーン */}
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>🎁 招待特典（累計人数で達成）</div>
-            <Card style={{ padding:0, overflow:"hidden", marginBottom:16 }}>
-              {REWARD_TIERS.map((tier, i) => {
-                const achieved = total >= tier.count;
-                const isCurrent = lastMilestone === tier.count && achieved;
-                return (
-                  <div key={tier.count} style={{ display:"flex", alignItems:"center", gap:12, padding:"13px 16px", borderBottom: i < REWARD_TIERS.length-1 ? `1px solid ${C.border}` : "none", backgroundColor: isCurrent ? C.accentLight+"0c" : "transparent" }}>
-                    <div style={{ width:32, height:32, borderRadius:"50%", backgroundColor: achieved ? C.green+"22" : C.surface, border:`2px solid ${achieved ? C.green : C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, color: achieved ? C.green : C.muted, flexShrink:0 }}>
-                      {achieved ? "✓" : tier.count}
-                    </div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:13, fontWeight:700, color: achieved ? C.text : C.muted }}>{tier.label}</div>
-                      <div style={{ fontSize:11, color: achieved ? C.green : C.muted, marginTop:2 }}>{tier.benefit}</div>
-                    </div>
-                    <div style={{ fontSize:11, color:C.accentLight, fontWeight:700, opacity: achieved ? 1 : 0.4 }}>+{tier.xp} XP</div>
-                    {achieved && <span style={{ fontSize:16 }}>🏅</span>}
-                  </div>
-                );
-              })}
-            </Card>
-
-            {/* 招待した人の履歴 */}
-            {stats?.events?.length > 0 && (
-              <>
-                <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>招待した人</div>
-                <Card style={{ padding:0, overflow:"hidden", marginBottom:16 }}>
-                  {stats.events.map((e, i) => (
-                    <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: i < stats.events.length-1 ? `1px solid ${C.border}` : "none" }}>
-                      <div style={{ width:32, height:32, borderRadius:"50%", backgroundColor:C.accentLight+"22", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>🦉</div>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:13, fontWeight:600 }}>{e.referred_name || "ドライバー"}</div>
-                        <div style={{ fontSize:11, color:C.muted }}>{new Date(e.created_at).toLocaleDateString("ja-JP")}</div>
-                      </div>
-                      <span style={{ fontSize:11, color:C.green, fontWeight:700 }}>登録済み</span>
-                    </div>
-                  ))}
-                </Card>
-              </>
-            )}
-
-            <div style={{ padding:"10px 14px", backgroundColor:C.surface, borderRadius:10, fontSize:11, color:C.muted, lineHeight:1.8 }}>
-              ※ 招待した相手が登録完了した時点でカウントされます。<br/>
-              ※ クーポンはアプリ内通知でお知らせします。<br/>
-              ※ 招待された方は登録時に+30日の無料期間が付与されます。
-            </div>
-          </div>
-        );
-      })()}
 
       {subTab==="feedback" && <FeedbackSection user={user} />}
 
-      {false && (() => {
-        const CATEGORIES = [
-          { id:"feature", label:"✨ 機能要望", color:C.accentLight },
-          { id:"bug",     label:"🐛 バグ報告", color:C.red },
-          { id:"praise",  label:"👍 良かった点", color:C.green },
-          { id:"other",   label:"💭 その他",    color:C.muted },
-        ];
-        const [fbCategory, setFbCategory] = useState("feature");
-        const [fbBody, setFbBody]         = useState("");
-        const [fbAnon, setFbAnon]         = useState(false);
-        const [fbState, setFbState]       = useState("idle"); // idle | sending | done | error
-
-        const handleSend = async () => {
-          if (!fbBody.trim()) return;
-          setFbState("sending");
-          try {
-            if (SUPABASE_READY) {
-              const { error } = await insertFeedback({ userId: user?.id, category: fbCategory, body: fbBody.trim(), anonymous: fbAnon });
-              if (error) throw error;
-            } else {
-              // Supabase未設定時はローカル保存で代替
-              const prev = loadS("taxi_feedback_local", []);
-              saveS("taxi_feedback_local", [...prev, { category: fbCategory, body: fbBody.trim(), anonymous: fbAnon, at: new Date().toISOString() }]);
-              await new Promise(r => setTimeout(r, 600));
-            }
-            setFbState("done");
-            setFbBody("");
-          } catch {
-            setFbState("error");
-          }
-        };
-
-        if (fbState === "done") {
-          return (
-            <div style={{ textAlign:"center", padding:"48px 24px" }}>
-              <div style={{ fontSize:52, marginBottom:16 }}>🙏</div>
-              <div style={{ fontSize:18, fontWeight:800, marginBottom:8 }}>ありがとうございます！</div>
-              <div style={{ fontSize:13, color:C.muted, marginBottom:24, lineHeight:1.8 }}>ご意見はしっかり読んで、アプリ改善に活かします。</div>
-              <button onClick={()=>setFbState("idle")} style={{ padding:"10px 24px", borderRadius:10, border:`1px solid ${C.border}`, background:"none", color:C.accentLight, cursor:"pointer", fontSize:13, fontWeight:700 }}>
-                もう一件送る
-              </button>
-            </div>
-          );
-        }
-
-        const catColor = CATEGORIES.find(c=>c.id===fbCategory)?.color || C.muted;
-
-        return (
-          <div>
-            <div style={{ fontSize:13, color:C.muted, marginBottom:16, lineHeight:1.8 }}>
-              アプリへのご意見・要望・バグ報告をお送りください。開発者が全件読んでいます。
-            </div>
-
-            {/* カテゴリ */}
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>カテゴリ</div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
-              {CATEGORIES.map(cat=>(
-                <div key={cat.id} onClick={()=>setFbCategory(cat.id)}
-                  style={{ padding:"10px 12px", borderRadius:10, border:`2px solid ${fbCategory===cat.id?cat.color:C.border}`, backgroundColor:fbCategory===cat.id?cat.color+"15":"transparent", color:fbCategory===cat.id?cat.color:C.muted, fontSize:13, fontWeight:fbCategory===cat.id?700:400, cursor:"pointer", textAlign:"center" }}>
-                  {cat.label}
-                </div>
-              ))}
-            </div>
-
-            {/* テキスト */}
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>内容</div>
-            <textarea
-              value={fbBody}
-              onChange={e=>setFbBody(e.target.value)}
-              placeholder="例：〇〇機能が使いにくい、△△画面でエラーが出る など"
-              rows={5}
-              style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.card, border:`1px solid ${fbBody?catColor+"77":C.border}`, borderRadius:10, padding:"12px 14px", color:C.text, fontSize:13, outline:"none", resize:"vertical", lineHeight:1.7, fontFamily:"inherit" }}
-            />
-            <div style={{ fontSize:11, color:C.muted, textAlign:"right", marginTop:4, marginBottom:16 }}>
-              {fbBody.length} 文字
-            </div>
-
-            {/* 匿名オプション */}
-            <div onClick={()=>setFbAnon(p=>!p)} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20, cursor:"pointer" }}>
-              <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${fbAnon?C.accentLight:C.border}`, backgroundColor:fbAnon?C.accentLight:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                {fbAnon && <span style={{ color:"#fff", fontSize:13, fontWeight:900 }}>✓</span>}
-              </div>
-              <div>
-                <div style={{ fontSize:13, color:C.text }}>匿名で送る</div>
-                <div style={{ fontSize:11, color:C.muted }}>チェックするとユーザーIDが送信されません</div>
-              </div>
-            </div>
-
-            {/* 送信ボタン */}
-            {fbState === "error" && (
-              <div style={{ backgroundColor:C.redGlow, border:`1px solid ${C.red}44`, borderRadius:8, padding:"8px 12px", marginBottom:12, fontSize:12, color:C.red }}>
-                送信に失敗しました。しばらく待ってから再度お試しください。
-              </div>
-            )}
-            <button onClick={handleSend} disabled={!fbBody.trim() || fbState==="sending"}
-              style={{ width:"100%", padding:"13px 0", borderRadius:11, fontSize:14, fontWeight:700, cursor:fbBody.trim()?"pointer":"not-allowed", border:"none", backgroundColor:fbBody.trim()?catColor:"#444", color:fbBody.trim()?"#fff":"#888", opacity:fbState==="sending"?0.6:1 }}>
-              {fbState === "sending" ? "送信中..." : "📨 送信する"}
-            </button>
-          </div>
-        );
-      })()}
 
       {subTab==="help" && <HelpSection setSubTab={setSubTab} />}
 
-      {false && (() => {
-        const FAQ_DATA = [
-          { category:"日報の記録", icon:"📋", items:[
-            { q:"日報はどうやって登録するの？", a:"下のナビバーの「＋ アップロード」タブから登録できます。カメラで日報を撮影するとAIが自動読み取り（OCR）します。手動入力も可能です。" },
-            { q:"OCRが正確に読み取れない", a:"画像が暗い・斜め・ぼけている場合に精度が下がります。明るい場所でまっすぐ撮影してください。読み取り後に数値を手修正することもできます。" },
-            { q:"過去の日報を編集したい", a:"「記録」タブから日報を選び、詳細画面の「✏️ 編集」ボタンで修正できます。一覧画面の各カード右側の小さな✏️からも直接編集できます。" },
-            { q:"1日に複数の日報を登録できる？", a:"はい、同じ日付で複数登録できます。日報は日付ごとに管理されます。" },
-          ]},
-          { category:"目標・売上", icon:"🎯", items:[
-            { q:"月の目標売上はどこで設定する？", a:"設定 › プロフィール から「月間目標売上」を変更できます。" },
-            { q:"残りシフトの計算はどうやってる？", a:"隔日勤務の場合は残り日数÷2、それ以外は残り日数×0.75で推定しています。シフト実績と異なる場合があります。" },
-            { q:"手取り計算の歩合・控除を変えたい", a:"設定 › 手取り設定 から歩合率と固定控除額を変更できます。" },
-          ]},
-          { category:"乗り場ガイド", icon:"📍", items:[
-            { q:"乗り場ガイドの情報はいつ更新されるの？", a:"現在はアプリのバージョンアップ時に更新されます。今後、ドライバーからの投稿で随時更新できる仕組みを検討中です。" },
-            { q:"自分のエリア外の乗り場も見られる？", a:"はい、全ての乗り場・空港を閲覧できます。エリア設定はホームの情報表示の絞り込みにのみ影響します。" },
-            { q:"お気に入りに追加した乗り場はどこに保存される？", a:"お使いの端末のローカルに保存されます。アプリを削除すると消えます。" },
-          ]},
-          { category:"XP・レベル", icon:"🏅", items:[
-            { q:"XPはどうすれば貯まるの？", a:"日報登録（+20XP）、毎日ログイン（+5〜10XP）、デイリーミッション達成、実績バッジ獲得などで増えます。" },
-            { q:"レベルが上がると何がある？", a:"現在はドライバー称号（見習い→ベテラン→エースなど）が変わります。今後、上位ランクへの特典を追加予定です。" },
-          ]},
-          { category:"アカウント・データ", icon:"🔐", items:[
-            { q:"データはどこに保存されているの？", a:"Supabaseのクラウドに安全に暗号化して保存されています。アカウント登録することでデータはどの端末からもアクセスできます。" },
-            { q:"アカウントを削除したい", a:"設定 › プロフィール の一番下から削除申請ができます。申請後、30日以内にすべてのデータをサーバーから完全削除します。" },
-            { q:"無料プランでできることは？", a:"月8件まで日報を登録できます。基本的な売上グラフ・分析・乗り場ガイドは全て無料で使えます。" },
-          ]},
-        ];
-
-        const [helpSearch, setHelpSearch] = useState("");
-        const [openItems, setOpenItems] = useState({});
-        const toggleItem = key => setOpenItems(p => ({...p, [key]: !p[key]}));
-
-        const q = helpSearch.trim().toLowerCase();
-        const filtered = FAQ_DATA.map(cat => ({
-          ...cat,
-          items: cat.items.filter(item =>
-            !q || item.q.toLowerCase().includes(q) || item.a.toLowerCase().includes(q)
-          )
-        })).filter(cat => cat.items.length > 0);
-
-        return (
-          <div>
-            {/* 検索バー */}
-            <div style={{ position:"relative", marginBottom:16 }}>
-              <span style={{ position:"absolute", left:11, top:"50%", transform:"translateY(-50%)", fontSize:14, color:C.muted, pointerEvents:"none" }}>🔍</span>
-              <input
-                value={helpSearch}
-                onChange={e=>setHelpSearch(e.target.value)}
-                placeholder="キーワードで検索（例：OCR、編集）"
-                style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px 10px 34px", fontSize:13, color:C.text, outline:"none" }}
-              />
-              {helpSearch && (
-                <button onClick={()=>setHelpSearch("")} style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:16 }}>×</button>
-              )}
-            </div>
-
-            {/* 結果なし */}
-            {filtered.length === 0 && (
-              <div style={{ textAlign:"center", padding:"40px 20px", color:C.muted }}>
-                <div style={{ fontSize:32, marginBottom:10 }}>🤔</div>
-                <div style={{ fontSize:14 }}>「{helpSearch}」に一致する質問が見つかりませんでした</div>
-              </div>
-            )}
-
-            {/* FAQリスト */}
-            {filtered.map(cat => (
-              <div key={cat.category} style={{ marginBottom:16 }}>
-                <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>
-                  {cat.icon} {cat.category}
-                </div>
-                <Card style={{ padding:0, overflow:"hidden" }}>
-                  {cat.items.map((item, idx) => {
-                    const key = cat.category + idx;
-                    const isOpen = !!openItems[key];
-                    return (
-                      <div key={idx} style={{ borderBottom: idx < cat.items.length-1 ? `1px solid ${C.border}` : "none" }}>
-                        <div onClick={()=>toggleItem(key)} style={{ display:"flex", alignItems:"center", gap:10, padding:"14px 16px", cursor:"pointer" }}>
-                          <div style={{ flex:1, fontSize:13, fontWeight:isOpen?700:400, color:isOpen?C.text:C.sub, lineHeight:1.4 }}>{item.q}</div>
-                          <span style={{ color:C.muted, fontSize:14, flexShrink:0 }}>{isOpen?"▲":"▼"}</span>
-                        </div>
-                        {isOpen && (
-                          <div style={{ padding:"0 16px 14px", fontSize:12, color:C.sub, lineHeight:1.8, borderTop:`1px solid ${C.border}`, backgroundColor:C.bg }}>
-                            {item.a}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </Card>
-              </div>
-            ))}
-
-            {/* お問い合わせリンク */}
-            <div onClick={()=>setSubTab("feedback")} style={{ marginTop:8, padding:"14px 16px", backgroundColor:C.surface, borderRadius:12, border:`1px solid ${C.border}`, textAlign:"center", cursor:"pointer" }}>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>解決しませんでしたか？</div>
-              <div style={{ fontSize:13, color:C.accentLight, fontWeight:700 }}>💬 意見箱に送る →</div>
-            </div>
-          </div>
-        );
-      })()}
 
       {subTab==="terms" && (
         <div style={{ fontSize:13, color:C.sub, lineHeight:1.8 }}>
