@@ -373,7 +373,7 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
 
   return (
     <>
-      <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 14px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:40 }}>
+      <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 14px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between", position:"fixed", top:0, left:0, right:0, zIndex:40, maxWidth:"100vw" }}>
 
         {/* 左：ハンバーガーメニュー ＋ エリアチップ */}
         <div style={{ display:"flex", alignItems:"center", gap:6, flex:1, minWidth:0 }}>
