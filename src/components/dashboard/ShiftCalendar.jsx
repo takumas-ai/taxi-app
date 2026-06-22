@@ -14,7 +14,7 @@ const DAYS = ["日","月","火","水","木","金","土"];
 function UnifiedDayModal({ dateStr, shift, report, onClose, onSaveShift, onDeleteShift, onOpenReport }) {
   const d = new Date(dateStr);
   const wd = DAYS[d.getDay()];
-  const todayStr = new Date().toISOString().slice(0,10);
+  const _td = new Date(); const todayStr = `${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,"0")}-${String(_td.getDate()).padStart(2,"0")}`;
   const isPast = dateStr < todayStr;
 
   const [editing, setEditing] = useState(!shift);
@@ -91,7 +91,7 @@ function UnifiedDayModal({ dateStr, shift, report, onClose, onSaveShift, onDelet
 // ━━━ カレンダー本体 ━━━━━━━━━━━━━━━━━━━━━━━━━
 function UnifiedCalendar({ reports, monthTarget, user, onOpenReport, noCard = false }) {
   const today = new Date();
-  const todayStr = today.toISOString().slice(0,10);
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
   const [viewYear,    setViewYear]    = useState(today.getFullYear());
   const [viewMonth,   setViewMonth]   = useState(today.getMonth());
   const [selectedDay, setSelectedDay] = useState(null);
