@@ -75,10 +75,18 @@ export default function MapScreen({ reports, user }) {
   const getMyRides = useCallback(() => {
     const rides = [];
     reports.forEach(r => {
+      // 乗車記録ごとのエリア
       (r.rides || []).forEach(ride => {
         const address = (ride.pickup_area || ride.point_name || "").trim();
         if (address) rides.push({ address, amount: ride.amount || 0 });
       });
+      // 乗車記録がない場合は work_area + gross_sales / ride_count で代替
+      if ((r.rides || []).length === 0 && r.work_area && r.gross_sales) {
+        const perRide = r.ride_count > 0
+          ? Math.round(r.gross_sales / r.ride_count)
+          : Math.round(r.gross_sales);
+        rides.push({ address: r.work_area.trim(), amount: perRide });
+      }
     });
     loadS("taxi_sales_records", []).forEach(r => {
       const address = (r.pickupLocation || r.spotName || "").trim();
@@ -266,8 +274,8 @@ export default function MapScreen({ reports, user }) {
         </div>
       )}
 
-      {/* データなし */}
-      {!loading && allStats.length === 0 && (
+      {/* ── ランキングビュー ── */}
+      {view === "list" && allStats.length === 0 && !loading && (
         <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center",
           justifyContent:"center", color:C.muted, gap:12, padding:"0 32px", textAlign:"center" }}>
           <div style={{ fontSize:44 }}>📍</div>
@@ -277,8 +285,6 @@ export default function MapScreen({ reports, user }) {
           </div>
         </div>
       )}
-
-      {/* ── ランキングビュー ── */}
       {view === "list" && allStats.length > 0 && (
         <div style={{ flex:1, overflowY:"auto" }}>
           {/* ヘッダー行 */}
