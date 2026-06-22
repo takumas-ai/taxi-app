@@ -652,9 +652,10 @@ export default function App() {
             avatarPreset: profile.avatar_preset || null,
             closing_day: profile.closing_day ?? null,
           });
-          const { data: reps } = await fetchReports(session.user.id);
-          if (reps?.length) setReports(reps.map(r => ({ ...r, date: r.report_date })));
-          else setReports([]);
+          const { data: reps, error: repsError } = await fetchReports(session.user.id);
+          if (!repsError && reps?.length) setReports(reps.map(r => ({ ...r, date: r.report_date })));
+          else if (!repsError) setReports([]);
+          // repsError時はキャッシュを保持（ネットワークエラー等で消えないように）
         } else {
           // Google/Apple OAuth 新規ユーザー → プロフィール作成してオンボーディングへ
           const oauthName = session.user.user_metadata?.full_name
@@ -804,6 +805,13 @@ export default function App() {
         // 再ログイン時は利用規約・締日モーダルをスキップ
         localStorage.setItem("taxi_consent_done", "true");
         saveS("taxi_closing_prompted", true);
+        // 再ログイン時にレポートをSupabaseから取得（getSessionは初回マウント時のみ走るため）
+        if (SUPABASE_READY && u.id) {
+          fetchReports(u.id).then(({ data: reps, error }) => {
+            if (!error && reps?.length) setReports(reps.map(r => ({ ...r, date: r.report_date })));
+            else if (!error) setReports([]);
+          });
+        }
       }
       // メール登録でゲストデータがある場合は移行
       if (u._migrationUserId && SUPABASE_READY) {
