@@ -317,16 +317,23 @@ function AnalysisTodayCard({ reports }) {
   const today = new Date().toISOString().slice(0, 10);
   const todayReport = reports.find(r => r.date === today);
   const todaySales = todayReport?.gross_sales ?? 0;
+  const todayRideCount = todayReport?.ride_count ?? 0;
 
-  // 着地予想：過去の平均単価 × 想定営業回数
-  const withSales = reports.filter(r => r.gross_sales > 0 && r.ride_count > 0);
+  // 着地予想：過去の実績（今日除く）から平均単価・平均乗車回数を算出
+  const withSales = reports.filter(r => r.date !== today && r.gross_sales > 0 && r.ride_count > 0);
   const avgPerRide = withSales.length
     ? Math.round(withSales.reduce((s,r) => s + r.gross_sales / r.ride_count, 0) / withSales.length)
     : 0;
   const avgRideCount = withSales.length
     ? Math.round(withSales.reduce((s,r) => s + r.ride_count, 0) / withSales.length)
     : 0;
-  const landingForecast = avgPerRide > 0 && avgRideCount > 0 ? avgPerRide * avgRideCount : 0;
+
+  // 今日の実績がある場合：今日の売上 + 残り見込み回数 × 平均単価
+  // 今日の実績がない場合：過去平均（avgPerRide × avgRideCount）
+  const remainingRides = Math.max(0, avgRideCount - todayRideCount);
+  const landingForecast = avgPerRide > 0 && avgRideCount > 0
+    ? (todaySales > 0 ? todaySales + remainingRides * avgPerRide : avgPerRide * avgRideCount)
+    : 0;
 
   return (
     <div style={{ marginBottom:14 }}>
@@ -364,7 +371,9 @@ function AnalysisTodayCard({ reports }) {
                   {fmt(landingForecast)}<span style={{ fontSize:11, marginLeft:2 }}>円</span>
                 </div>
                 <div style={{ fontSize:10, color:C.muted, marginTop:4 }}>
-                  平均単価{fmt(avgPerRide)}×{avgRideCount}回ペース
+                  {todaySales > 0
+                    ? `現在${fmt(todaySales)}円＋残り${remainingRides}回×単価${fmt(avgPerRide)}`
+                    : `平均単価${fmt(avgPerRide)}×${avgRideCount}回ペース`}
                 </div>
               </>
             ) : (
