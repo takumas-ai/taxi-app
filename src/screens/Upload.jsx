@@ -8,7 +8,7 @@ import { supabase, uploadReportImage } from "../lib/supabase";
 import { validateImageFile, validateReportForm, sanitizeReportData } from "../lib/validate";
 
 const OCR_SEQ = ["画像を解析中...","日付・勤務時間を読み取り中...","売上データを抽出中...","営業回数・走行距離を確認中...","フォーマット差異を吸収中...","読み取り完了 ✓"];
-const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"", highway_fee:"", trouble_note:"", work_area:"", rides:[], break_times:[] };
+const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", emoney_sales:"", ticket_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"", highway_fee:"", adjustment:"", trouble_note:"", work_area:"", rides:[], break_times:[] };
 
 // HEIC/HEIFをJPEG Blobに変換（heic2any CDN経由）
 async function convertHeicToJpeg(file) {
@@ -603,16 +603,31 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         <Card>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
             {F({label:"日付", fk:"date", type:"date", required:true, span:2})}
-            {F({label:"売上（税込）（円）", fk:"gross_sales", required:true})}
             {F({label:"営業回数（回）", fk:"ride_count"})}
-            {F({label:"売上（税抜）（円）", fk:"cash_sales"})}
-            {F({label:"カード売上（円）", fk:"card_sales"})}
-            {F({label:"配車アプリ（円）", fk:"app_sales", span:2})}
+            {F({label:"売上（税込）（円）", fk:"gross_sales", required:true})}
+            {/* 売上（税抜）: 税込から自動計算・読み取り専用 */}
+            <div style={{ gridColumn:"span 2" }}>
+              <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>売上（税抜）（自動計算）</div>
+              <div style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.surface, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.muted, fontSize:15 }}>
+                {form.gross_sales ? Math.round(parseInt(form.gross_sales) / 1.1).toLocaleString() : "—"} 円
+              </div>
+            </div>
+            {F({label:"高速料金（円）", fk:"highway_fee"})}
+            {/* 調整欄（±補正） */}
+            <div>
+              <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>調整（±円）</div>
+              <input type="number" value={form.adjustment} placeholder="例: -500" onChange={e=>setForm(p=>({...p,adjustment:e.target.value}))}
+                style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:15, outline:"none" }}/>
+            </div>
+            {F({label:"現金売上（円）", fk:"cash_sales"})}
+            {F({label:"アプリ決済（円）", fk:"app_sales"})}
+            {F({label:"クレジットカード（円）", fk:"card_sales"})}
+            {F({label:"電子マネー（円）", fk:"emoney_sales"})}
+            {F({label:"タクシーチケット（円）", fk:"ticket_sales", span:2})}
             {F({label:"走行距離（km）", fk:"total_distance"})}
             {F({label:"実車距離（km）", fk:"occupied_distance"})}
             {F({label:"勤務時間（h）", fk:"work_hours"})}
             {F({label:"休憩時間（h）", fk:"break_hours"})}
-            {F({label:"高速料金（円）", fk:"highway_fee", span:2})}
           </div>
           <div style={{ marginTop:12 }}>
             <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>事故・トラブル備考</div>

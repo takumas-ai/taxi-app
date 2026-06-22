@@ -30,7 +30,10 @@ function buildForm(report) {
     cash_sales:         report.cash_sales         != null ? String(report.cash_sales)         : "",
     card_sales:         report.card_sales         != null ? String(report.card_sales)         : "",
     app_sales:          report.app_sales          != null ? String(report.app_sales)          : "",
+    emoney_sales:       report.emoney_sales       != null ? String(report.emoney_sales)       : "",
+    ticket_sales:       report.ticket_sales       != null ? String(report.ticket_sales)       : "",
     highway_fee:        report.highway_fee        != null ? String(report.highway_fee)        : "0",
+    adjustment:         report.adjustment         != null ? String(report.adjustment)         : "0",
     ride_count:         report.ride_count         != null ? String(report.ride_count)         : "",
     total_distance:     report.total_distance     != null ? String(report.total_distance)     : "",
     occupied_distance:  report.occupied_distance  != null ? String(report.occupied_distance)  : "",
@@ -300,25 +303,28 @@ export function ReportModal({ report, onClose, onUpdate, onDelete, startInEdit =
 
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
           <Field label="日付" fk="date" form={form} setForm={setForm} errors={errors} type="date" span={2}/>
-          <Field label="総売上（税抜・円）" fk="gross_sales" form={form} setForm={setForm} errors={errors} ph="62000"/>
           <Field label="営業回数（回）" fk="ride_count" form={form} setForm={setForm} errors={errors} ph="30"/>
-          <Field label="現金売上（円）" fk="cash_sales" form={form} setForm={setForm} errors={errors} ph="37000"/>
-          <Field label="カード売上（円）" fk="card_sales" form={form} setForm={setForm} errors={errors} ph="18000"/>
-          <Field label="配車アプリ（円）" fk="app_sales" form={form} setForm={setForm} errors={errors} ph="7000" span={2}/>
-        </div>
-
-        {/* 配車アプリ・無線の種類 */}
-        <div style={{ marginTop:12 }}>
-          <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>配車アプリ・無線の種類 <span style={{ fontSize:10, backgroundColor:"#2a2a4a", color:C.muted, borderRadius:4, padding:"1px 5px", marginLeft:4 }}>任意</span></div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-            {["GO（ゴー）","S.RIDE（エスライド）","DiDi（ディディ）","Uber Taxi","NearMe","全日本無線","東京無線","その他"].map(opt => (
-              <button key={opt} type="button"
-                onClick={() => setForm(p => ({ ...p, dispatch_type: p.dispatch_type === opt ? "" : opt }))}
-                style={{ padding:"7px 14px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer", border:`1.5px solid ${form.dispatch_type === opt ? C.accentLight : C.border}`, backgroundColor: form.dispatch_type === opt ? C.accentLight+"22" : "transparent", color: form.dispatch_type === opt ? C.accentLight : C.muted }}>
-                {opt}
-              </button>
-            ))}
+          <Field label="売上（税込）（円）" fk="gross_sales" form={form} setForm={setForm} errors={errors} ph="62000"/>
+          {/* 売上（税抜）: 自動計算・読み取り専用 */}
+          <div style={{ gridColumn:"span 2" }}>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>売上（税抜）（自動計算）</div>
+            <div style={{ backgroundColor:C.surface, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.muted, fontSize:15 }}>
+              {form.gross_sales ? Math.round(parseInt(form.gross_sales) / 1.1).toLocaleString() : "—"} 円
+            </div>
           </div>
+          <Field label="高速料金（円）" fk="highway_fee" form={form} setForm={setForm} errors={errors} ph="800"/>
+          {/* 調整欄（±補正） */}
+          <div>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>調整（±円）</div>
+            <input type="number" value={form.adjustment} placeholder="例: -500"
+              onChange={e=>setForm(p=>({...p,adjustment:e.target.value}))}
+              style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:15, outline:"none" }}/>
+          </div>
+          <Field label="現金売上（円）" fk="cash_sales" form={form} setForm={setForm} errors={errors} ph="37000"/>
+          <Field label="アプリ決済（円）" fk="app_sales" form={form} setForm={setForm} errors={errors} ph="7000"/>
+          <Field label="クレジットカード（円）" fk="card_sales" form={form} setForm={setForm} errors={errors} ph="18000"/>
+          <Field label="電子マネー（円）" fk="emoney_sales" form={form} setForm={setForm} errors={errors} ph="0"/>
+          <Field label="タクシーチケット（円）" fk="ticket_sales" form={form} setForm={setForm} errors={errors} ph="0" span={2}/>
         </div>
 
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:12 }}>
@@ -326,24 +332,6 @@ export function ReportModal({ report, onClose, onUpdate, onDelete, startInEdit =
           <Field label="実車距離（km）" fk="occupied_distance" form={form} setForm={setForm} errors={errors} ph="155"/>
           <Field label="勤務時間（h）" fk="work_hours" form={form} setForm={setForm} errors={errors} ph="13.5"/>
           <Field label="休憩時間（h）" fk="break_hours" form={form} setForm={setForm} errors={errors} ph="1.0"/>
-          <Field label="高速料金（円）" fk="highway_fee" form={form} setForm={setForm} errors={errors} ph="800" span={2}/>
-        </div>
-
-        {/* エリア */}
-        <div style={{ marginTop:12 }}>
-          <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>📍 メインエリア</div>
-          <select
-            value={form.work_area}
-            onChange={e=>setForm(p=>({...p,work_area:e.target.value}))}
-            style={{ width:"100%", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:form.work_area?C.text:C.muted, fontSize:14, outline:"none" }}
-          >
-            <option value="">選択してください（任意）</option>
-            {Object.entries(WORK_AREAS_BY_PARENT).map(([parent, areas]) => (
-              <optgroup key={parent} label={parent}>
-                {areas.map(a => <option key={a} value={a}>{a}</option>)}
-              </optgroup>
-            ))}
-          </select>
         </div>
 
         {/* 備考 */}
