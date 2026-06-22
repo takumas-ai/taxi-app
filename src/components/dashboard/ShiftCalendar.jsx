@@ -219,7 +219,7 @@ function UnifiedCalendar({ reports, monthTarget, user, onOpenReport, noCard = fa
 }
 
 // ━━━ シフトサマリーカード（折りたたみ式カレンダー） ━━━
-export function ShiftSummaryCard({ reports = [], user, onOpenReport, monthTarget = 380000, onGoShift }) {
+export function ShiftSummaryCard({ reports = [], user, onOpenReport, monthTarget = 0, onGoShift }) {
   const [open, setOpen] = useState(false);
   const today = new Date();
   const y = today.getFullYear(), m = today.getMonth() + 1;

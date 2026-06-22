@@ -379,7 +379,7 @@ function AnalysisTodayCard({ reports }) {
 
 // ━━━ 月間目標クイック編集モーダル ━━━━━━━━━━━━━━
 function TargetEditModal({ current, onSave, onClose }) {
-  const [val, setVal] = useState(String(current || 380000));
+  const [val, setVal] = useState(current ? String(current) : "");
   return (
     <div style={{ position:"fixed", inset:0, backgroundColor:"#00000099", zIndex:400, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}
       onClick={onClose}>
@@ -415,7 +415,7 @@ function TargetEditModal({ current, onSave, onClose }) {
             style={{ flex:1, padding:"12px 0", borderRadius:10, fontSize:14, fontWeight:600, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.muted }}>
             キャンセル
           </button>
-          <button onClick={()=>{ onSave(parseInt(val,10)||380000); onClose(); }}
+          <button onClick={()=>{ onSave(parseInt(val,10)||0); onClose(); }}
             style={{ flex:2, padding:"12px 0", borderRadius:10, fontSize:14, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff" }}>
             保存する
           </button>

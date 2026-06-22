@@ -157,7 +157,7 @@ function PWAInstallBanner() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function LoginScreen({ onLogin, onGuestLogin }) {
   const [step, setStep]   = useState("top");
-  const [form, setForm]   = useState({ name:"", email:"", password:"", company:"", workType:"隔日勤務", target:"380000" });
+  const [form, setForm]   = useState({ name:"", email:"", password:"", company:"", workType:"隔日勤務", target:"" });
   const [areas, setAreas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
@@ -707,7 +707,7 @@ export default function App() {
             name: oauthName,
             company: "",
             workType: "隔日勤務",
-            target: "380000",
+            target: "",
             plan: "free",
             uploadCount: 0,
             areas: [],
