@@ -631,10 +631,9 @@ export default function App() {
             upsertProfile({ id: session.user.id, monthly_upload_count: 0, upload_reset_month: currentMonth });
           }
 
-          // 既にonboarding済みの場合のみ強制セット（新規登録直後の初回ログインはスキップしない）
-          if (localStorage.getItem("taxi_onboarding_done")) {
-            setOnboardingDone(true);
-          }
+          // プロフィールがDBに存在 = 既存ユーザー → 必ずオンボーディングをスキップ
+          localStorage.setItem("taxi_onboarding_done", "true");
+          setOnboardingDone(true);
           setUser({
             id: session.user.id,
             email: session.user.email,
