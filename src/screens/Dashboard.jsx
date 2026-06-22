@@ -479,7 +479,9 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   const _todayYMD = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
   // カレンダーに登録されたシフトから残り出番を計算。未登録時は従来の推定式にフォールバック
   const _periodShifts = calShifts.filter(s => s.date >= periodStart && s.date <= periodEnd);
-  const _remainingCalShifts = _periodShifts.filter(s => s.date > _todayYMD).length;
+  // 今日の日報がまだない場合は今日も残り出番に含める（日報保存後は今日を除外）
+  const _hasTodayReport = monthReports.some(r => r.date === _todayYMD);
+  const _remainingCalShifts = _periodShifts.filter(s => _hasTodayReport ? s.date > _todayYMD : s.date >= _todayYMD).length;
   const shiftsPerDay  = (user.workType === "隔日勤務") ? 0.5 : 0.75;
   const remainingShifts = _periodShifts.length > 0
     ? _remainingCalShifts
