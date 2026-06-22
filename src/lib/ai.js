@@ -128,16 +128,56 @@ export async function generateWeeklyInsight(reports) {
   const best = [...recent].sort((a,b)=>(b.gross_sales||0)-(a.gross_sales||0))[0];
   const worst = [...recent].sort((a,b)=>(a.gross_sales||0)-(b.gross_sales||0))[0];
 
+  // 乗車単価集計（rides配列から）
+  const rideAmounts = recent.flatMap(r => (r.rides||[]).map(ride => Number(ride.amount)||0)).filter(v => v > 0);
+  const avgFare = rideAmounts.length > 0 ? Math.round(rideAmounts.reduce((s,v)=>s+v,0)/rideAmounts.length) : null;
+  const totalRides = recent.reduce((s,r) => s + (Number(r.ride_count)||0), 0);
+  const calcAvgFare = totalRides > 0
+    ? Math.round(recent.reduce((s,r)=>s+(Number(r.gross_sales)||0),0) / totalRides)
+    : null;
+  const fareStr = avgFare ? `${fmt(avgFare)}円（乗車記録より）`
+    : calcAvgFare ? `${fmt(calcAvgFare)}円（営業回数より概算）`
+    : "データなし";
+
+  // エリア別集計（rides.pickup_area + work_area）
+  const areaMap = {};
+  recent.forEach(r => {
+    // 乗車記録のエリア
+    (r.rides||[]).forEach(ride => {
+      const area = (ride.pickup_area||"").trim().replace(/[0-9０-９丁目番号]/g,"").slice(0,6);
+      if (!area) return;
+      if (!areaMap[area]) areaMap[area] = { count:0, total:0 };
+      areaMap[area].count++;
+      areaMap[area].total += Number(ride.amount)||0;
+    });
+    // 営業エリア（work_area）
+    const wa = (r.work_area||"").trim();
+    if (wa) {
+      if (!areaMap[wa]) areaMap[wa] = { count:0, total:0, days:0 };
+      areaMap[wa].days = (areaMap[wa].days||0) + 1;
+    }
+  });
+  const areaLines = Object.entries(areaMap)
+    .filter(([,v]) => v.count >= 2)
+    .sort((a,b) => (b[1].total/b[1].count||0) - (a[1].total/a[1].count||0))
+    .slice(0, 5)
+    .map(([name,v]) => `${name}: ${v.count}件 平均単価${fmt(Math.round(v.total/v.count))}円`)
+    .join("\n");
+
   return callSonnet(`あなたは経験豊富なタクシー営業コーチです。以下の直近データを分析し、改善ポイントと来週の戦略を日本語・丁寧語で4〜5文でアドバイスしてください。
-具体的な曜日・数字を引用し、実践的な行動提案を含めてください。データが少ない場合は「まだ傾向が見えにくいですが」と添えてください。
+具体的な曜日・数字・エリアを引用し、実践的な行動提案を含めてください。データが少ない場合は「まだ傾向が見えにくいですが」と添えてください。
 
 【直近${recent.length}回の集計】
 全体平均売上: ${fmt(avgSales)}円
+平均乗車単価: ${fareStr}
 最高: ${best?.date}(${dow(best?.date)}) ${fmt(best?.gross_sales)}円
 最低: ${worst?.date}(${dow(worst?.date)}) ${fmt(worst?.gross_sales)}円
 
 【曜日別平均】
 ${dowLines || "データ不足"}
+
+【エリア別単価（乗車記録より・上位5エリア）】
+${areaLines || "エリアデータなし（乗車記録にエリア名を入力すると分析できます）"}
 
 【直近記録（新しい順）】
 ${recent.slice(0,10).map(r => `${r.date}(${dow(r.date)}) ${fmt(r.gross_sales)}円 実車率${occ(r)}% ${fmt(hourly(r))}円/h`).join("\n")}`, 1500);
