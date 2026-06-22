@@ -1,7 +1,7 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ナビゲーションコンポーネント
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { C, loadS, saveS } from "../lib/constants";
 import { MOCK_DELAYS } from "../data/mockData";
 import { ZONE_META } from "../data/trafficZones";
@@ -241,6 +241,13 @@ function BusinessPointModal({ onClose }) {
 // ハンバーガーメニュー（左ドロワー）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSettings, onManageArea, hasNewRanking, eventCount = 0 }) {
+  // ドロワー表示中はbodyスクロールをロック（iOS対応）
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
   const items = [
     { icon:"📣", label:"イベント",    action:()=>{ setTab("events"); onClose(); }, badge: eventCount > 0 ? eventCount : null },
     { icon:"📈", label:"統計",        action:()=>{ setTab("stats"); onClose(); } },
