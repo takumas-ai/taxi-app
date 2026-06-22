@@ -71,6 +71,24 @@ export async function saveMemoDict(userId, dict) {
   return { error };
 }
 
+/** タクローチャット：Edge Functionを呼び出してAI返答を取得 */
+export async function callTakuroChat(messages, userContext) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/takuro-chat`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ messages, userContext }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data.text || "少し時間をおいてもう一度試してください。";
+}
+
 /** 現在のセッション取得 */
 export async function getSession() {
   const { data: { session } } = await supabase.auth.getSession();

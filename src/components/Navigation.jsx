@@ -327,24 +327,11 @@ function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSet
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // タクロー浮遊ボタン（右下常時表示）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-export function TakuroFAB({ setTab }) {
-  const [visible, setVisible] = useState(() => loadS("taxi_takuro_fab", true));
-
-  const hide = (e) => {
-    e.stopPropagation();
-    setVisible(false);
-    saveS("taxi_takuro_fab", false);
-  };
-
-  if (!visible) return null;
-
+export function TakuroFAB({ onOpenChat }) {
   return (
     <div style={{ position:"fixed", bottom:90, right:16, zIndex:49 }}>
-      {/* ×ボタン */}
-      <button onClick={hide} style={{ position:"absolute", top:-6, right:-6, width:18, height:18, borderRadius:"50%", backgroundColor:C.muted, border:"none", color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, zIndex:1 }}>×</button>
-
       {/* フクロウアイコン */}
-      <div onClick={()=>setTab("feedback")}
+      <div onClick={onOpenChat}
         style={{ width:52, height:52, borderRadius:"50%", backgroundColor:C.surface, border:`2px solid ${C.accentLight}66`, boxShadow:`0 4px 20px ${C.accentLight}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, cursor:"pointer", transition:"transform 0.2s" }}
         onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"}
         onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}

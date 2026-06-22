@@ -50,6 +50,7 @@ import {
   ensureReferralCode,
   registerWithReferral,
   saveMemoDict,
+  callTakuroChat,
 } from "./lib/supabase";
 
 // Screens
@@ -73,6 +74,7 @@ import { registerServiceWorker } from "./lib/push";
 
 // Components
 import { BottomNav, Header, TakuroFAB } from "./components/Navigation";
+import TakuroChat from "./components/TakuroChat";
 import { AreaSettingModal }  from "./components/AreaFilter";
 import Tutorial from "./components/Tutorial";
 
@@ -595,6 +597,7 @@ export default function App() {
   const [selectedForEdit, setSelectedForEdit] = useState(false);
   const [notif, setNotif]       = useState(() => loadS("taxi_notif", { delays:true, events:false, traffic:false, dailyTip:false, achievement:true, dailyResult:false }));
   const [showAreaModal, setShowAreaModal] = useState(false);
+  const [showTakuroChat, setShowTakuroChat] = useState(false);
   const [showAccountLink, setShowAccountLink] = useState(false);
   const [showClosingPrompt, setShowClosingPrompt] = useState(false);
   const [closingDayPick, setClosingDayPick] = useState(15);
@@ -1048,7 +1051,14 @@ export default function App() {
         <ErrorBoundary key={`${tab}-${appMode}`}>{renderScreen()}</ErrorBoundary>
       </div>
       <ReportModal key={selected ? `${selected.id}-${selectedForEdit}` : "none"} report={selected} onClose={()=>{setSelected(null);setSelectedForEdit(false);}} onUpdate={handleUpdateReport} onDelete={handleDeleteReport} startInEdit={selectedForEdit}/>
-      <TakuroFAB setTab={handleSetTab} />
+      <TakuroFAB onOpenChat={() => setShowTakuroChat(true)} />
+      {showTakuroChat && (
+        <TakuroChat
+          onClose={() => setShowTakuroChat(false)}
+          user={user}
+          callChat={callTakuroChat}
+        />
+      )}
       <BottomNav tab={tab} setTab={handleSetTab} userAreas={userAreas} alertsSeen={alertsSeen}/>
       {showAreaModal && <AreaSettingModal userAreas={userAreas} onSave={areas=>{
         setUser(u=>({...u,areas}));
