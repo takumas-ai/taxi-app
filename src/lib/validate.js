@@ -130,6 +130,7 @@ export function sanitizeReportData(form) {
     break_hours:        clampReportValue("break_hours",       parseFloat(form.break_hours)    || 0),
     emoney_sales:       clampReportValue("app_sales",  parseInt(form.emoney_sales) || 0),
     ticket_sales:       clampReportValue("app_sales",  parseInt(form.ticket_sales) || 0),
+    tip_amount:         clampReportValue("app_sales",  parseInt(form.tip_amount)   || 0),
     adjustment:         Math.max(-9999999, Math.min(9999999, parseInt(form.adjustment) || 0)),
     trouble_note:       sanitizeText(form.trouble_note, 1000),
     work_area:          sanitizeText(form.work_area, 50),

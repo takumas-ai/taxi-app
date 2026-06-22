@@ -8,7 +8,7 @@ import { supabase, uploadReportImage } from "../lib/supabase";
 import { validateImageFile, validateReportForm, sanitizeReportData } from "../lib/validate";
 
 const OCR_SEQ = ["画像を解析中...","日付・勤務時間を読み取り中...","売上データを抽出中...","営業回数・走行距離を確認中...","フォーマット差異を吸収中...","読み取り完了 ✓"];
-const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", emoney_sales:"", ticket_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"", highway_fee:"", adjustment:"", trouble_note:"", work_area:"", rides:[], break_times:[] };
+const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", emoney_sales:"", ticket_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"", highway_fee:"", adjustment:"", tip_amount:"", trouble_note:"", work_area:"", rides:[], break_times:[] };
 
 // HEIC/HEIFをJPEG Blobに変換（heic2any CDN経由）
 async function convertHeicToJpeg(file) {
@@ -58,95 +58,23 @@ async function imageToBase64(file) {
   });
 }
 
-// ━━━ 勤務時間入力（時刻入力 / 直接入力 切替） ━━━━━━━━━━━━
-function WorkHoursInput({ value, onChange }) {
-  const [mode, setMode] = useState("time");
-  const [dep, setDep] = useState("");
-  const [ret, setRet] = useState("");
-
-  const calcH = (d, r) => {
-    if (!d || !r) return "";
-    const [dh, dm] = d.split(":").map(Number);
-    const [rh, rm] = r.split(":").map(Number);
-    let diff = (rh * 60 + rm) - (dh * 60 + dm);
-    if (diff < 0) diff += 24 * 60;
-    return (diff / 60).toFixed(1);
-  };
-
-  useEffect(() => {
-    if (mode === "time") { const h = calcH(dep, ret); if (h) onChange(h); }
-  }, [dep, ret, mode]);
-
-  const tabBtn = (m, label) => (
-    <button onClick={() => setMode(m)} style={{ flex:1, padding:"7px 0", borderRadius:8, fontSize:12, fontWeight:600, cursor:"pointer", border:`1.5px solid ${mode===m?C.accentLight:C.border}`, backgroundColor:mode===m?C.accentLight+"22":"transparent", color:mode===m?C.accentLight:C.muted }}>
-      {label}
-    </button>
-  );
-
+// ━━━ 調整欄（±切替） ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function AdjustmentInput({ value, onChange }) {
+  const num = parseInt(value) || 0;
+  const isNeg = num < 0;
+  const absVal = Math.abs(num);
+  const inpStyle = { flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:15, outline:"none", boxSizing:"border-box", width:"100%" };
   return (
-    <div style={{ gridColumn:"span 2" }}>
-      <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>勤務時間</div>
-      <div style={{ display:"flex", gap:8, marginBottom:8 }}>
-        {tabBtn("time","時刻入力")}
-        {tabBtn("direct","直接入力")}
-      </div>
-      {mode === "time" ? (
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-          <div>
-            <div style={{ fontSize:10, color:C.muted, marginBottom:3 }}>出庫時刻</div>
-            <input type="time" value={dep} onChange={e=>setDep(e.target.value)} style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:15, outline:"none" }}/>
-          </div>
-          <div>
-            <div style={{ fontSize:10, color:C.muted, marginBottom:3 }}>帰庫時刻</div>
-            <input type="time" value={ret} onChange={e=>setRet(e.target.value)} style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:15, outline:"none" }}/>
-          </div>
-          {dep && ret && (
-            <div style={{ gridColumn:"span 2", textAlign:"center", fontSize:13, color:C.accentLight, fontWeight:700, padding:"6px 0" }}>
-              勤務時間 {calcH(dep, ret)}h
-            </div>
-          )}
+    <div>
+      <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>調整（±円）</div>
+      <div style={{ display:"flex", gap:8 }}>
+        <div style={{ display:"flex", borderRadius:9, border:`1px solid ${C.border}`, overflow:"hidden", flexShrink:0 }}>
+          <button onClick={() => onChange(String(absVal))} style={{ padding:"0 16px", fontSize:18, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:!isNeg?C.accentLight+"33":"transparent", color:!isNeg?C.accentLight:C.muted }}>＋</button>
+          <button onClick={() => onChange(String(-absVal))} style={{ padding:"0 16px", fontSize:18, fontWeight:700, cursor:"pointer", border:"none", borderLeft:`1px solid ${C.border}`, backgroundColor:isNeg?C.red+"33":"transparent", color:isNeg?C.red:C.muted }}>－</button>
         </div>
-      ) : (
-        <input type="number" value={value} placeholder="例: 13.5" onChange={e=>onChange(e.target.value)}
-          style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:15, outline:"none" }}/>
-      )}
-    </div>
-  );
-}
-
-// ━━━ 休憩時間ドラムロール ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function BreakHoursPicker({ value, onChange }) {
-  const totalMin = Math.round((parseFloat(value) || 0) * 60);
-  const selH = Math.min(5, Math.floor(totalMin / 60));
-  const selM = totalMin % 60;
-  const nearestM = [0,15,30,45].reduce((a,b) => Math.abs(b-selM)<Math.abs(a-selM)?b:a, 0);
-  const select = (h, m) => onChange(String(parseFloat((h + m/60).toFixed(4))));
-
-  const cell = (label, selected, onClick) => (
-    <div onClick={onClick} style={{ padding:"10px 0", textAlign:"center", borderRadius:8, marginBottom:2, cursor:"pointer",
-      fontSize:15, fontWeight:selected?700:400,
-      backgroundColor:selected?C.accentLight+"22":"transparent",
-      color:selected?C.accentLight:C.text, userSelect:"none" }}>
-      {label}
-    </div>
-  );
-
-  return (
-    <div style={{ gridColumn:"span 2" }}>
-      <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>休憩時間</div>
-      <div style={{ display:"flex", gap:0, backgroundColor:C.surface, borderRadius:12, border:`1px solid ${C.border}`, overflow:"hidden" }}>
-        <div style={{ flex:1, padding:"8px 4px", borderRight:`1px solid ${C.border}` }}>
-          <div style={{ fontSize:10, color:C.muted, textAlign:"center", marginBottom:4 }}>時間</div>
-          {[0,1,2,3,4,5].map(h => cell(`${h}時間`, h===selH, ()=>select(h, nearestM)))}
-        </div>
-        <div style={{ flex:1, padding:"8px 4px" }}>
-          <div style={{ fontSize:10, color:C.muted, textAlign:"center", marginBottom:4 }}>分</div>
-          {[0,15,30,45].map(m => cell(`${String(m).padStart(2,"0")}分`, m===nearestM, ()=>select(selH, m)))}
-        </div>
+        <input type="number" value={absVal} min="0" placeholder="0" onChange={e=>onChange(String(isNeg?-(parseInt(e.target.value)||0):(parseInt(e.target.value)||0)))} style={inpStyle}/>
       </div>
-      <div style={{ textAlign:"center", fontSize:12, color:C.accentLight, fontWeight:700, marginTop:6 }}>
-        {selH}時間{String(nearestM).padStart(2,"0")}分
-      </div>
+      {num!==0&&<div style={{ fontSize:12, color:num>0?C.green:C.red, marginTop:4, textAlign:"right", fontWeight:700 }}>{num>0?"+":""}{num.toLocaleString()}円</div>}
     </div>
   );
 }
@@ -694,33 +622,28 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         )}
 
         <Card>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-            {F({label:"日付", fk:"date", type:"date", required:true, span:2})}
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            {F({label:"日付", fk:"date", type:"date", required:true})}
             {F({label:"営業回数（回）", fk:"ride_count"})}
             {F({label:"売上（税込）（円）", fk:"gross_sales", required:true})}
-            {/* 売上（税抜）: 税込から自動計算・読み取り専用 */}
-            <div style={{ gridColumn:"span 2" }}>
+            {/* 売上（税抜）: 自動計算・読み取り専用 */}
+            <div>
               <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>売上（税抜）（自動計算）</div>
-              <div style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.surface, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.muted, fontSize:15 }}>
+              <div style={{ backgroundColor:C.surface, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.muted, fontSize:15 }}>
                 {form.gross_sales ? Math.round(parseInt(form.gross_sales) / 1.1).toLocaleString() : "—"} 円
               </div>
             </div>
             {F({label:"高速料金（円）", fk:"highway_fee"})}
-            {/* 調整欄（±補正） */}
-            <div>
-              <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>調整（±円）</div>
-              <input type="number" value={form.adjustment} placeholder="例: -500" onChange={e=>setForm(p=>({...p,adjustment:e.target.value}))}
-                style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:15, outline:"none" }}/>
-            </div>
+            <AdjustmentInput value={form.adjustment} onChange={v=>setForm(p=>({...p,adjustment:v}))} />
             {F({label:"現金売上（円）", fk:"cash_sales"})}
             {F({label:"アプリ決済（円）", fk:"app_sales"})}
             {F({label:"クレジットカード（円）", fk:"card_sales"})}
             {F({label:"電子マネー（円）", fk:"emoney_sales"})}
-            {F({label:"タクシーチケット（円）", fk:"ticket_sales", span:2})}
+            {F({label:"タクシーチケット（円）", fk:"ticket_sales"})}
             {F({label:"走行距離（km）", fk:"total_distance"})}
             {F({label:"実車距離（km）", fk:"occupied_distance"})}
-            <WorkHoursInput value={form.work_hours} onChange={v=>setForm(p=>({...p,work_hours:v}))} />
-            <BreakHoursPicker value={form.break_hours} onChange={v=>setForm(p=>({...p,break_hours:v}))} />
+            {F({label:"勤務時間（h）", fk:"work_hours"})}
+            {F({label:"チップ（円）", fk:"tip_amount"})}
           </div>
           <div style={{ marginTop:12 }}>
             <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>事故・トラブル備考</div>
