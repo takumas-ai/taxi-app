@@ -121,7 +121,7 @@ export default function MapScreen({ reports, user }) {
   const startGeocoding = useCallback(async () => {
     if (allStats.length === 0) return;
     const cache   = loadS(GEO_CACHE_KEY, {});
-    const topItems = allStats.slice(0, 50);
+    const topItems = allStats.slice(0, 20);
     const result  = [];
     setProgress({ done: 0, total: topItems.length });
 
@@ -152,9 +152,10 @@ export default function MapScreen({ reports, user }) {
     const map = L.map(mapContainerRef.current, {
       center: [35.6812, 139.7671], zoom: 12,
     });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 19,
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>',
+      maxZoom: 18,
+      subdomains: "abcd",
     }).addTo(map);
     markersLayer.current = L.layerGroup().addTo(map);
     mapRef.current       = map;
