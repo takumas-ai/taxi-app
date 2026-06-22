@@ -1,8 +1,9 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 統計画面
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { C, loadS, fmt } from "../lib/constants";
+import { generateWeeklyInsight } from "../lib/ai";
 
 const TABS = [
   { id:"point", label:"ポイント" },
@@ -13,8 +14,40 @@ const TABS = [
 
 const DAYS = ["日","月","火","水","木","金","土"];
 
+const AI_ADVICE_KEY = (n) => `taxi_stats_advice_${n}`;
+
 export default function StatsScreen({ reports }) {
   const [activeTab, setActiveTab] = useState("point");
+
+  // ─── AIアドバイス（5件刻み） ────────────────────────────────
+  const milestone = Math.floor(reports.length / 5) * 5; // 5, 10, 15...
+  const cacheKey  = AI_ADVICE_KEY(milestone);
+  const [advice, setAdvice]         = useState(() => milestone >= 5 ? (localStorage.getItem(cacheKey) || "") : "");
+  const [adviceLoading, setLoading] = useState(false);
+  const [adviceError, setAdviceErr] = useState("");
+
+  // マイルストーンが変わったらキャッシュを再読み込み
+  useEffect(() => {
+    if (milestone >= 5) setAdvice(localStorage.getItem(cacheKey) || "");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [milestone]);
+
+  const generateAdvice = async () => {
+    if (reports.length < 5) return;
+    setLoading(true); setAdviceErr("");
+    try {
+      const text = await generateWeeklyInsight(reports);
+      if (text) {
+        localStorage.setItem(cacheKey, text);
+        setAdvice(text);
+      } else {
+        setAdviceErr("生成に失敗しました。もう一度お試しください。");
+      }
+    } catch {
+      setAdviceErr("生成に失敗しました。もう一度お試しください。");
+    }
+    setLoading(false);
+  };
 
   // ─── ポイント別 ───────────────────────────────────────────
   // OCR/マージ済み rides → point_name
@@ -104,6 +137,35 @@ export default function StatsScreen({ reports }) {
   return (
     <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
       <div style={{ fontSize:18, fontWeight:900, color:C.text, marginBottom:16 }}>📈 統計</div>
+
+      {/* AIアドバイスカード */}
+      {reports.length >= 5 && (
+        <div style={{ backgroundColor:C.card, border:`1px solid ${C.accentLight}44`, borderRadius:14, padding:"16px", marginBottom:16 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: advice ? 10 : 0 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ fontSize:18 }}>🦉</span>
+              <div>
+                <div style={{ fontSize:13, fontWeight:800, color:C.text }}>AIアドバイス</div>
+                <div style={{ fontSize:10, color:C.muted }}>{reports.length}件目 / 次の更新 {milestone + 5}件</div>
+              </div>
+            </div>
+            <button
+              onClick={generateAdvice}
+              disabled={adviceLoading}
+              style={{ fontSize:11, fontWeight:700, padding:"6px 12px", borderRadius:20, border:`1.5px solid ${C.accentLight}`, backgroundColor: adviceLoading ? C.border : C.accentGlow, color: adviceLoading ? C.muted : C.accentLight, cursor: adviceLoading ? "default" : "pointer", flexShrink:0 }}
+            >
+              {adviceLoading ? "生成中..." : advice ? "再生成" : "生成する"}
+            </button>
+          </div>
+          {adviceError && <div style={{ fontSize:12, color:C.red, marginTop:8 }}>{adviceError}</div>}
+          {advice && !adviceLoading && (
+            <div style={{ fontSize:13, color:C.sub, lineHeight:1.8, whiteSpace:"pre-wrap" }}>{advice}</div>
+          )}
+          {!advice && !adviceLoading && (
+            <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>「生成する」を押すと、直近{reports.length}件のデータをもとにアドバイスが届きます。</div>
+          )}
+        </div>
+      )}
 
       {/* タブ */}
       <div style={{ display:"flex", gap:4, marginBottom:20, backgroundColor:C.surface, borderRadius:12, padding:4, border:`1px solid ${C.border}` }}>
