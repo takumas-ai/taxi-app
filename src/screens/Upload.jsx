@@ -120,6 +120,72 @@ function calcBreakHours(breakTimes) {
   return String(Math.round(total / 60 * 10) / 10);
 }
 
+// ━━━ 備考略語辞書 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const MEMO_MEANING_OPTIONS = [
+  { value: "電子マネー", label: "電子マネー（交通系等）" },
+  { value: "クレジット", label: "クレジットカード" },
+  { value: "QR",        label: "QRコード決済" },
+  { value: "ネット",    label: "ネット決済" },
+  { value: "現金",      label: "現金" },
+  { value: "高速",      label: "高速利用（現金）" },
+  { value: "無線",      label: "無線配車" },
+  { value: "skip",      label: "スキップ（変更しない）" },
+];
+
+const PAYMENT_FROM_MEANING = {
+  "電子マネー": "電子マネー",
+  "クレジット": "カード",
+  "QR":        "QR",
+  "ネット":    "ネット決済",
+  "現金":      "現金",
+  "高速":      "現金",
+  "無線":      "現金",
+};
+
+function applyMemoDict(rides, dict) {
+  return rides.map(r => {
+    const raw = r.note?.trim();
+    if (!raw || !dict[raw] || dict[raw] === "skip") return r;
+    const payment = PAYMENT_FROM_MEANING[dict[raw]] || r.payment || "現金";
+    return { ...r, payment };
+  });
+}
+
+function MemoDictModal({ unknownMemos, onSave, onSkip }) {
+  const [mappings, setMappings] = useState(() => {
+    const init = {};
+    unknownMemos.forEach(m => { init[m] = "skip"; });
+    return init;
+  });
+  return (
+    <div style={{ position:"fixed", inset:0, backgroundColor:"#000000bb", zIndex:300, display:"flex", alignItems:"flex-end" }}>
+      <div style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:"24px 20px 40px", maxHeight:"85vh", overflowY:"auto" }}>
+        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 16px" }}/>
+        <div style={{ fontSize:16, fontWeight:800, marginBottom:4 }}>📝 備考の略語を登録</div>
+        <div style={{ fontSize:12, color:C.muted, marginBottom:20, lineHeight:1.6 }}>日報に使われている略語の意味を教えてください。次回から自動で適用されます。</div>
+        {unknownMemos.map(memo => (
+          <div key={memo} style={{ marginBottom:20, padding:16, backgroundColor:C.bg, borderRadius:12 }}>
+            <div style={{ fontSize:17, fontWeight:900, color:C.accentLight, marginBottom:12 }}>「{memo}」の意味は？</div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+              {MEMO_MEANING_OPTIONS.map(({ value, label }) => (
+                <div key={value} onClick={() => setMappings(p => ({ ...p, [memo]: value }))}
+                  style={{ padding:"8px 14px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer",
+                    border:`1.5px solid ${mappings[memo]===value?C.accentLight:C.border}`,
+                    backgroundColor:mappings[memo]===value?C.accentLight+"22":"transparent",
+                    color:mappings[memo]===value?C.accentLight:C.muted }}>
+                  {label}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        <Btn onClick={() => onSave(mappings)} style={{ marginBottom:10 }}>登録して続ける</Btn>
+        <Btn onClick={onSkip} variant="ghost">後で登録する（スキップ）</Btn>
+      </div>
+    </div>
+  );
+}
+
 // ━━━ 乗車記録編集モーダル ━━━━━━━━━━━━━━━━━━━━━━━━
 const PAYMENT_OPTIONS = ["現金", "カード", "GO", "S.RIDE", "DiDi", "Uber", "未収", "その他"];
 const EMPTY_RIDE = { pickup_time:"", dropoff_time:"", pickup_area:"", dropoff_area:"", amount:"", passengers:1, payment:"現金", note:"" };
@@ -280,7 +346,7 @@ function loadDraft() {
   try { return JSON.parse(localStorage.getItem(OCR_DRAFT_KEY) || "null"); } catch { return null; }
 }
 
-export default function UploadScreen({ uploadCount, onSave, reports, user }) {
+export default function UploadScreen({ uploadCount, onSave, reports, user, onSaveMemoDict }) {
   const draft = loadDraft();
   const [step, setStep]     = useState(draft?.step || "select");
   const [isManual, setIsManual] = useState(false);
@@ -301,6 +367,8 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   const [ocrFile, setOcrFile]         = useState(null); // Storageアップロード用ファイル
   const [ocrConfidence, setOcrConfidence] = useState(null); // OCR全体の信頼度(0-100)
   const [imgExpanded, setImgExpanded] = useState(false); // 画像拡大表示
+  const [unknownMemos, setUnknownMemos] = useState([]); // 未登録の備考略語
+  const [pendingFormData, setPendingFormData] = useState(null); // 略語登録待ちのフォームデータ
 
   // step/form/ocrLines が変わったらlocalStorageに保存
   useEffect(() => { saveDraft(step, form, ocrLines); }, [step, form, ocrLines]);
@@ -432,7 +500,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
       } catch { /* ignore */ }
 
       const pos = (v) => (v != null && Number(v) >= 0) ? String(v) : ""; // マイナス値は除去
-      setForm({
+      const baseForm = {
         date:               reportDate,
         gross_sales:        pos(f.gross_sales),
         cash_sales:         pos(f.cash_sales),
@@ -450,8 +518,24 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         work_area:          f.work_area          ?? "",
         rides,
         break_times:        breakTimes,
-      });
-      setStep(hasMatch ? "select" : "confirm");
+      };
+
+      // 未登録の備考略語を検出
+      const existingDict = user?.memoDict || {};
+      const allNotes = rides.flatMap(r => r.note?.trim() ? [r.note.trim()] : []).filter(Boolean);
+      const uniqueNotes = [...new Set(allNotes)];
+      const unknown = uniqueNotes.filter(n => !(n in existingDict));
+
+      if (unknown.length > 0 && !hasMatch) {
+        // 略語登録モーダルへ
+        setPendingFormData(baseForm);
+        setUnknownMemos(unknown);
+        setStep("memo_map");
+      } else {
+        // 既存辞書で変換してからconfirmへ
+        setForm({ ...baseForm, rides: applyMemoDict(rides, existingDict) });
+        setStep(hasMatch ? "select" : "confirm");
+      }
     } catch (err) {
       console.error("[OCR]", err);
       setOcrError(err.message || "読み取りに失敗しました");
@@ -565,6 +649,31 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
           <div style={{ fontSize:13, color:C.muted, marginBottom:16, lineHeight:1.6 }}>{upgradeMsg}</div>
           {planKey !== "pro" && <Btn variant="gold">プランをアップグレード</Btn>}
         </Card>
+      </div>
+    );
+  }
+
+  if (step === "memo_map") {
+    return (
+      <div style={{ maxWidth:480, margin:"0 auto", padding:"20px 16px 100px" }}>
+        <MemoDictModal
+          unknownMemos={unknownMemos}
+          onSave={async (mappings) => {
+            const existingDict = user?.memoDict || {};
+            const newDict = { ...existingDict, ...mappings };
+            await onSaveMemoDict?.(newDict);
+            setForm({ ...pendingFormData, rides: applyMemoDict(pendingFormData.rides, newDict) });
+            setPendingFormData(null);
+            setUnknownMemos([]);
+            setStep("confirm");
+          }}
+          onSkip={() => {
+            setForm({ ...pendingFormData, rides: applyMemoDict(pendingFormData.rides, user?.memoDict || {}) });
+            setPendingFormData(null);
+            setUnknownMemos([]);
+            setStep("confirm");
+          }}
+        />
       </div>
     );
   }

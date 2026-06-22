@@ -62,6 +62,15 @@ export async function signOutOtherDevices() {
   return { error };
 }
 
+/** 備考略語辞書を保存（memo_dict: { "電": "電子マネー", ... }） */
+export async function saveMemoDict(userId, dict) {
+  const { error } = await supabase
+    .from("users")
+    .update({ memo_dict: dict })
+    .eq("id", userId);
+  return { error };
+}
+
 /** 現在のセッション取得 */
 export async function getSession() {
   const { data: { session } } = await supabase.auth.getSession();

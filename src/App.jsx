@@ -49,6 +49,7 @@ import {
   resetPasswordForEmail,
   ensureReferralCode,
   registerWithReferral,
+  saveMemoDict,
 } from "./lib/supabase";
 
 // Screens
@@ -239,6 +240,7 @@ function LoginScreen({ onLogin, onGuestLogin }) {
         uploadCount: profile?.monthly_upload_count || 0,
         areas: profile?.areas || [],
         closing_day: profile?.closing_day ?? null,
+        memoDict: profile?.memo_dict || {},
         _returningUser: true,
       });
     }
@@ -650,6 +652,7 @@ export default function App() {
             avatarUrl: profile.avatar_url || null,
             avatarPreset: profile.avatar_preset || null,
             closing_day: profile.closing_day ?? null,
+            memoDict: profile.memo_dict || {},
           });
           const { data: reps, error: repsError } = await fetchReports(session.user.id);
           if (!repsError && reps?.length) setReports(reps.map(r => ({ ...r, date: r.report_date })));
@@ -1018,7 +1021,7 @@ export default function App() {
     switch (tab) {
       case "dashboard": return <Dashboard reports={reports} user={user} onOpenReport={setSelected} onManageArea={()=>setShowAreaModal(true)} rankPrefs={rankPrefs} appMode={appMode} onGoShift={()=>handleSetTab("shift")} onUpdateReport={handleUpdateReport} onGoRanking={notif.dailyResult && hasNewRanking ? ()=>handleSetTab("ranking") : null} onUpdateUser={u=>setUser(u)}/>;
       case "list":      return <ReportList reports={reports} onSelect={r=>{setSelectedForEdit(false);setSelected(r);}} onEdit={r=>{setSelectedForEdit(true);setSelected(r);}}/>;
-      case "upload":    return <UploadScreen uploadCount={user.uploadCount||0} onSave={handleSave} reports={reports} user={user}/>;
+      case "upload":    return <UploadScreen uploadCount={user.uploadCount||0} onSave={handleSave} reports={reports} user={user} onSaveMemoDict={async (dict) => { setUser(p=>({...p,memoDict:dict})); if(user?.id&&SUPABASE_READY)await saveMemoDict(user.id,dict); }}/>;
       case "info":      return <InfoCenter notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} userAreas={userAreas} onManageArea={()=>setShowAreaModal(true)}/>;
       case "guide":     return <GuideScreen userAreas={userAreas} user={user}/>;
       case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")} user={user} onBack={()=>handleSetTab("dashboard")}/>;
