@@ -346,10 +346,13 @@ function loadDraft() {
   try { return JSON.parse(localStorage.getItem(OCR_DRAFT_KEY) || "null"); } catch { return null; }
 }
 
+const SKIP_CONFIRM_KEY = "taxi_skip_confirm";
+
 export default function UploadScreen({ uploadCount, onSave, reports, user, onSaveMemoDict }) {
   const draft = loadDraft();
   const [step, setStep]     = useState(draft?.step || "select");
   const [isManual, setIsManual] = useState(false);
+  const [skipConfirm, setSkipConfirm] = useState(() => localStorage.getItem(SKIP_CONFIRM_KEY) === "1");
   const [isClosure, setIsClosure] = useState(false);
   const [closureDate, setClosureDate] = useState(() => new Date().toISOString().slice(0,10));
   const [closureCount, setClosureCount] = useState(0);
@@ -532,9 +535,26 @@ export default function UploadScreen({ uploadCount, onSave, reports, user, onSav
         setUnknownMemos(unknown);
         setStep("memo_map");
       } else {
-        // 既存辞書で変換してからconfirmへ
-        setForm({ ...baseForm, rides: applyMemoDict(rides, existingDict) });
-        setStep(hasMatch ? "select" : "confirm");
+        // 既存辞書で変換
+        const finalForm = { ...baseForm, rides: applyMemoDict(rides, existingDict) };
+        setForm(finalForm);
+        if (hasMatch) {
+          setStep("select");
+        } else if (skipConfirm) {
+          // 確認スキップ：直接保存
+          setStep("auto_saving");
+          const data = { id: Date.now(), ...sanitizeReportData(finalForm), rides: finalForm.rides ?? [], break_times: finalForm.break_times ?? [], ai_comment: "" };
+          if (ocrFile && user?.id) {
+            const { url } = await uploadReportImage(ocrFile, user.id);
+            if (url) data.image_url = url;
+          }
+          onSave(data);
+          setForm(EMPTY); setOcrFile(null);
+          localStorage.removeItem(OCR_DRAFT_KEY);
+          setStep("done");
+        } else {
+          setStep("confirm");
+        }
       }
     } catch (err) {
       console.error("[OCR]", err);
@@ -869,6 +889,25 @@ export default function UploadScreen({ uploadCount, onSave, reports, user, onSav
           </div>
         </div>
         <Btn onClick={handleSave} disabled={saving}>{saving ? (wantAiAdvice ? "AI分析中..." : "保存中...") : "保存する"}</Btn>
+        {/* 次回から確認スキップ */}
+        {!isManual && !isClosure && (
+          <div
+            onClick={() => {
+              const next = !skipConfirm;
+              setSkipConfirm(next);
+              localStorage.setItem(SKIP_CONFIRM_KEY, next ? "1" : "0");
+            }}
+            style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", marginTop:10, borderRadius:10, border:`1px solid ${C.border}`, cursor:"pointer" }}
+          >
+            <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${skipConfirm ? C.accentLight : C.border}`, backgroundColor: skipConfirm ? C.accentLight : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              {skipConfirm && <span style={{ color:"#fff", fontSize:11, fontWeight:900 }}>✓</span>}
+            </div>
+            <div>
+              <div style={{ fontSize:13, fontWeight:600, color: skipConfirm ? C.accentLight : C.text }}>次回から確認画面を省略する</div>
+              <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>OCR後に自動で保存されます（いつでも解除可）</div>
+            </div>
+          </div>
+        )}
         <Btn onClick={()=>{ setIsManual(false); setIsClosure(false); setStep("select"); }} variant="ghost" style={{ marginTop:10 }}>戻る</Btn>
       </div>
     );
