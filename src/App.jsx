@@ -56,6 +56,7 @@ import {
 import Dashboard          from "./screens/Dashboard";
 import ReportList, { ReportModal } from "./screens/ReportList";
 import UploadScreen       from "./screens/Upload";
+import EnglishPhrases     from "./screens/EnglishPhrases";
 import InfoCenter         from "./screens/InfoCenter";
 import GuideScreen        from "./screens/Guide";
 import ShiftScreen        from "./screens/Shift";
@@ -1028,6 +1029,7 @@ export default function App() {
       case "settings":  return <Settings key={settingsSection||"settings"} appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={async u=>{ setUser(prev=>({...prev,...u})); if(SUPABASE_READY&&user?.id&&!user?._isGuest){const p={id:user.id};if(u.name!==undefined)p.name=u.name;if(u.workType!==undefined)p.work_type=u.workType;if(u.company!==undefined)p.company_name=u.company;if(u.target!==undefined)p.monthly_target=Number(u.target);if(u.closing_day!==undefined)p.closing_day=u.closing_day;if("avatar_url"in u)p.avatar_url=u.avatar_url;if("avatar_preset"in u)p.avatar_preset=u.avatar_preset;if(Object.keys(p).length>1)await upsertProfile(p);}}} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined} onOpenAdmin={()=>handleSetTab("admin")} onAccountLink={user?._isGuest ? ()=>setShowAccountLink(true) : undefined}/>;
       case "events":    return <EventsScreen user={user} onBack={() => handleSetTab("dashboard")} />;
       case "community": return <CommunityScreen />;
+      case "english":   return <EnglishPhrases onBack={() => handleSetTab("dashboard")} />;
       case "map":       return <MapScreen reports={reports} user={user} />;
       case "ranking":   return <RankingScreen user={user} rankPrefs={rankPrefs} />;
       case "stats":     return <StatsScreen reports={reports} />;
