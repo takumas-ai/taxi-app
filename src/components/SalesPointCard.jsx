@@ -82,6 +82,7 @@ const PAYMENT_OPTIONS = ["現金", "カード", "アプリ", "QRコード", "そ
 const BOARDING_OPTIONS = ["流し", "付け待ち", "配車アプリ", "無線", "定額", "その他"];
 const RADIO_TYPE_OPTIONS = ["GO（ゴー）", "S.RIDE（エスライド）", "DiDi（ディディ）", "Uber Taxi", "NearMe（ニアミー）", "全日本無線", "東京無線", "その他"];
 const RADIO_BOARDING = ["配車アプリ", "無線"]; // 無線種別を表示する乗車方法
+const NATIONALITY_OPTIONS = ["日本人", "英語圏", "中国語圏", "韓国語圏", "その他の外国人"];
 
 // ─── 記録モーダル ─────────────────────────────
 function RecordModal({ onClose, onSave, editTarget }) {
@@ -100,6 +101,7 @@ function RecordModal({ onClose, onSave, editTarget }) {
   const [boardingMethod, setBoardingMethod] = useState(editTarget?.boardingMethod ?? "");
   const [radioType,      setRadioType]      = useState(editTarget?.radioType ?? "");
   const [memo,           setMemo]           = useState(editTarget?.memo ?? "");
+  const [nationality,    setNationality]    = useState(editTarget?.nationality ?? "");
   const [lat,            setLat]            = useState(editTarget?.lat ?? null);
   const [lng,            setLng]            = useState(editTarget?.lng ?? null);
   const [gpsLoading,       setGpsLoading]       = useState(false);
@@ -164,6 +166,7 @@ function RecordModal({ onClose, onSave, editTarget }) {
       boardingMethod,
       radioType:       RADIO_BOARDING.includes(boardingMethod) ? radioType : "",
       memo:            memo.trim(),
+      nationality,
       viaLocation:     viaLocation.trim(),
       lat,
       lng,
@@ -392,6 +395,29 @@ function RecordModal({ onClose, onSave, editTarget }) {
             </select>
           </div>
         )}
+
+        {/* 客の国籍（任意） */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>客の国籍 <span style={{ fontSize:10, backgroundColor:C.border, color:C.muted, borderRadius:4, padding:"1px 5px", marginLeft:4 }}>任意</span></label>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+            {["", ...NATIONALITY_OPTIONS].map((opt, i) => (
+              <div key={i} onClick={() => setNationality(opt === nationality ? "" : opt)}
+                style={{ padding:"6px 12px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer",
+                  border:`1.5px solid ${nationality===opt && opt!==""?C.accentLight:C.border}`,
+                  backgroundColor:nationality===opt && opt!==""?C.accentLight+"22":"transparent",
+                  color:nationality===opt && opt!==""?C.accentLight:C.muted,
+                  display: opt===""?"none":"block" }}>
+                {opt}
+              </div>
+            ))}
+          </div>
+          {nationality && (
+            <div onClick={() => setNationality("")}
+              style={{ marginTop:6, fontSize:11, color:C.muted, cursor:"pointer", textDecoration:"underline" }}>
+              選択解除
+            </div>
+          )}
+        </div>
 
         {/* メモ（任意） */}
         <div style={{ marginBottom:22 }}>
