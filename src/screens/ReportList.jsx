@@ -44,22 +44,27 @@ function AdjustmentInput({ value, onChange }) {
 }
 
 // ━━━ 勤務時間ドロップダウン ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const SEL_STYLE = { flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:10, padding:"15px 16px", color:C.text, fontSize:17, outline:"none", appearance:"none", WebkitAppearance:"none" };
 function WorkHoursPicker({ value, onChange }) {
   const totalMin = Math.round((parseFloat(value) || 0) * 60);
   const selH = Math.min(20, Math.max(0, Math.floor(totalMin / 60)));
   const selM = [0,15,30,45].reduce((a,b) => Math.abs(b-(totalMin%60))<Math.abs(a-(totalMin%60))?b:a, 0);
   const update = (h, m) => onChange(String(parseFloat((h + m/60).toFixed(4))));
+  const wrap = { flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden" };
+  const sel  = { width:"100%", backgroundColor:"transparent", border:"none", padding:"15px 16px", color:C.text, fontSize:17, outline:"none" };
   return (
     <div>
       <div style={{ fontSize:13, fontWeight:600, color:C.muted, marginBottom:7 }}>勤務時間</div>
       <div style={{ display:"flex", gap:8 }}>
-        <select value={selH} onChange={e => update(Number(e.target.value), selM)} style={SEL_STYLE}>
-          {Array.from({length:21},(_,i)=>i).map(h => <option key={h} value={h}>{h}時間</option>)}
-        </select>
-        <select value={selM} onChange={e => update(selH, Number(e.target.value))} style={SEL_STYLE}>
-          {[0,15,30,45].map(m => <option key={m} value={m}>{String(m).padStart(2,"0")}分</option>)}
-        </select>
+        <div style={wrap}>
+          <select value={selH} onChange={e => update(Number(e.target.value), selM)} style={sel}>
+            {Array.from({length:21},(_,i)=>i).map(h => <option key={h} value={h}>{h}時間</option>)}
+          </select>
+        </div>
+        <div style={wrap}>
+          <select value={selM} onChange={e => update(selH, Number(e.target.value))} style={sel}>
+            {[0,15,30,45].map(m => <option key={m} value={m}>{String(m).padStart(2,"0")}分</option>)}
+          </select>
+        </div>
       </div>
     </div>
   );
