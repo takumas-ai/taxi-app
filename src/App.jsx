@@ -569,7 +569,8 @@ export default function App() {
   const [appMode, setAppMode]   = useState(() => { const m = loadS("taxi_app_mode","simple"); return m === "standard" ? "simple" : m; });
   const [themeMode, setThemeMode] = useState(() => loadS("taxi_theme_mode","light"));
   const [themeVer, setThemeVer] = useState(0); // テーマ変更時に全体を再描画させるカウンター
-  const [consentDone, setConsentDone]       = useState(() => !!loadS("taxi_consent_done", false));
+  // 規約確認は初回登録時のみ（ログイン前のブロッカーとして使わない）
+  const [consentDone, setConsentDone]       = useState(true);
   const [onboardingDone, setOnboardingDone] = useState(() => !!loadS("taxi_onboarding_done", false));
   const [showTutorial,  setShowTutorial]  = useState(false);
   const [reports, setReports]   = useState(() => {
