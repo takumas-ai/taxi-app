@@ -726,8 +726,10 @@ export default function App() {
     });
 
     // 認証状態の変化を監視
-    const { data: { subscription } } = onAuthStateChange(session => {
-      if (!session) { setUser(null); setReports([]); }
+    // SIGNED_OUT イベントのときだけログアウト処理する
+    // （TOKEN_REFRESHED などで一瞬 session が null になっても弾かないようにする）
+    const { data: { subscription } } = onAuthStateChange((session, event) => {
+      if (event === "SIGNED_OUT") { setUser(null); setReports([]); }
     });
     return () => subscription.unsubscribe();
   }, []);

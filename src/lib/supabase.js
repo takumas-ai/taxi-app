@@ -97,9 +97,9 @@ export async function getSession() {
   return session;
 }
 
-/** 認証状態の変化を監視 */
+/** 認証状態の変化を監視（event と session を両方渡す） */
 export function onAuthStateChange(callback) {
-  return supabase.auth.onAuthStateChange((_event, session) => callback(session));
+  return supabase.auth.onAuthStateChange((event, session) => callback(session, event));
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
