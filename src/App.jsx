@@ -57,6 +57,7 @@ import Dashboard          from "./screens/Dashboard";
 import ReportList, { ReportModal } from "./screens/ReportList";
 import UploadScreen       from "./screens/Upload";
 import EnglishPhrases     from "./screens/EnglishPhrases";
+import NewbieGuide        from "./screens/NewbieGuide";
 import InfoCenter         from "./screens/InfoCenter";
 import GuideScreen        from "./screens/Guide";
 import ShiftScreen        from "./screens/Shift";
@@ -1030,6 +1031,7 @@ export default function App() {
       case "events":    return <EventsScreen user={user} onBack={() => handleSetTab("dashboard")} />;
       case "community": return <CommunityScreen />;
       case "english":   return <EnglishPhrases onBack={() => handleSetTab("dashboard")} />;
+      case "newbie":    return <NewbieGuide    onBack={() => handleSetTab("dashboard")} />;
       case "map":       return <MapScreen reports={reports} user={user} />;
       case "ranking":   return <RankingScreen user={user} rankPrefs={rankPrefs} />;
       case "stats":     return <StatsScreen reports={reports} />;

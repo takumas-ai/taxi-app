@@ -246,6 +246,7 @@ function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSet
     { icon:"📈", label:"統計",        action:()=>{ setTab("stats"); onClose(); } },
     { icon:"🏆", label:"ランキング",  action:()=>{ setTab("ranking"); onClose(); }, badge: hasNewRanking ? "NEW" : null },
     { icon:"📍", label:"マイポイント",action:()=>{ onOpenBizPoints(); onClose(); } },
+    { icon:"🎓", label:"新人コース",  action:()=>{ setTab("newbie"); onClose(); } },
     { icon:"🌏", label:"英語フレーズ",action:()=>{ setTab("english"); onClose(); } },
     { icon:"💬", label:"コミュニティ",action:()=>{ setTab("community"); onClose(); } },
   ];
