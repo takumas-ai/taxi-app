@@ -122,13 +122,33 @@ export default function EnglishPhrases({ onBack }) {
   const speak = (text, idx) => {
     if (!window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = "en-US";
-    utter.rate = 0.85;
-    utter.onstart = () => setSpeakingIdx(idx);
-    utter.onend = () => setSpeakingIdx(null);
-    utter.onerror = () => setSpeakingIdx(null);
-    window.speechSynthesis.speak(utter);
+    const doSpeak = () => {
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = "en-US";
+      utter.rate = 0.82;
+      utter.pitch = 1.1;
+      const voices = window.speechSynthesis.getVoices();
+      const preferred =
+        voices.find(v => v.name === "Samantha") ||
+        voices.find(v => /Karen|Daniel|Moira/.test(v.name) && v.lang.startsWith("en")) ||
+        voices.find(v => v.name.includes("Google") && v.lang === "en-US") ||
+        voices.find(v => v.lang === "en-US" && !v.name.includes("Compact")) ||
+        voices.find(v => v.lang.startsWith("en"));
+      if (preferred) utter.voice = preferred;
+      utter.onstart = () => setSpeakingIdx(idx);
+      utter.onend = () => setSpeakingIdx(null);
+      utter.onerror = () => setSpeakingIdx(null);
+      window.speechSynthesis.speak(utter);
+    };
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      doSpeak();
+    } else {
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.onvoiceschanged = null;
+        doSpeak();
+      };
+    }
   };
 
   return (
