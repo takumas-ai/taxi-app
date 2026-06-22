@@ -80,68 +80,23 @@ function AdjustmentInput({ value, onChange }) {
 }
 
 // ━━━ 勤務時間ドラムロール ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ━━━ ドラムロール列 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const DRUM_H = 44;
-function DrumColumn({ items, selectedIdx, onSelect, format }) {
-  const ref = useRef(null);
-  const fromScroll = useRef(false);
-  useEffect(() => {
-    if (ref.current && !fromScroll.current) {
-      ref.current.scrollTop = selectedIdx * DRUM_H;
-    }
-  }, [selectedIdx]);
-  const handleScroll = () => {
-    fromScroll.current = true;
-    clearTimeout(handleScroll._t);
-    handleScroll._t = setTimeout(() => {
-      if (ref.current) {
-        const idx = Math.max(0, Math.min(items.length - 1, Math.round(ref.current.scrollTop / DRUM_H)));
-        onSelect(idx);
-      }
-      fromScroll.current = false;
-    }, 80);
-  };
-  return (
-    <div style={{ position:"relative", flex:1, overflow:"hidden" }}>
-      <div style={{ position:"absolute", top:"50%", transform:"translateY(-50%)", left:4, right:4, height:DRUM_H, backgroundColor:C.accentLight+"22", borderRadius:8, pointerEvents:"none", zIndex:1 }}/>
-      <div style={{ position:"absolute", top:0, left:0, right:0, height:DRUM_H*2, background:`linear-gradient(${C.surface}, transparent)`, pointerEvents:"none", zIndex:2 }}/>
-      <div style={{ position:"absolute", bottom:0, left:0, right:0, height:DRUM_H*2, background:`linear-gradient(transparent, ${C.surface})`, pointerEvents:"none", zIndex:2 }}/>
-      <div ref={ref} onScroll={handleScroll}
-        style={{ height:DRUM_H*5, overflowY:"scroll", scrollSnapType:"y mandatory", WebkitOverflowScrolling:"touch", scrollbarWidth:"none" }}>
-        <div style={{ height:DRUM_H*2 }}/>
-        {items.map((item, i) => (
-          <div key={i}
-            onClick={() => { onSelect(i); ref.current?.scrollTo({ top:i*DRUM_H, behavior:"smooth" }); }}
-            style={{ height:DRUM_H, display:"flex", alignItems:"center", justifyContent:"center",
-              scrollSnapAlign:"center", fontSize:18, fontWeight:i===selectedIdx?700:400,
-              color:i===selectedIdx?C.text:C.muted, cursor:"pointer", userSelect:"none" }}>
-            {format(item)}
-          </div>
-        ))}
-        <div style={{ height:DRUM_H*2 }}/>
-      </div>
-    </div>
-  );
-}
-
-// ━━━ 勤務時間ドラムロール ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const HOURS_LIST = Array.from({length:21}, (_,i) => i);
-const MINS_LIST  = [0, 15, 30, 45];
+// ━━━ 勤務時間ドロップダウン ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const SEL_STYLE = { flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:10, padding:"15px 16px", color:C.text, fontSize:17, outline:"none", appearance:"none", WebkitAppearance:"none" };
 function WorkHoursPicker({ value, onChange }) {
   const totalMin = Math.round((parseFloat(value) || 0) * 60);
-  const selH  = Math.min(20, Math.max(0, Math.floor(totalMin / 60)));
-  const selMI = MINS_LIST.reduce((best,m,i) => Math.abs(m-(totalMin%60)) < Math.abs(MINS_LIST[best]-(totalMin%60)) ? i : best, 0);
-  const select = (h, mi) => onChange(String(parseFloat((h + MINS_LIST[mi]/60).toFixed(4))));
+  const selH = Math.min(20, Math.max(0, Math.floor(totalMin / 60)));
+  const selM = [0,15,30,45].reduce((a,b) => Math.abs(b-(totalMin%60))<Math.abs(a-(totalMin%60))?b:a, 0);
+  const update = (h, m) => onChange(String(parseFloat((h + m/60).toFixed(4))));
   return (
     <div>
       <div style={{ fontSize:13, fontWeight:600, color:C.muted, marginBottom:7 }}>勤務時間</div>
-      <div style={{ display:"flex", backgroundColor:C.surface, borderRadius:12, border:`1px solid ${C.border}`, overflow:"hidden", height:DRUM_H*5 }}>
-        <DrumColumn items={HOURS_LIST} selectedIdx={selH}  onSelect={h  => select(h, selMI)} format={h => `${h}時間`}/>
-        <div style={{ width:1, backgroundColor:C.border }}/>
-        <DrumColumn items={MINS_LIST}  selectedIdx={selMI} onSelect={mi => select(selH, mi)} format={m => `${String(m).padStart(2,"0")}分`}/>
-      </div>
-      <div style={{ textAlign:"center", fontSize:14, color:C.accentLight, fontWeight:700, marginTop:8 }}>
-        {selH}時間{String(MINS_LIST[selMI]).padStart(2,"0")}分
+      <div style={{ display:"flex", gap:8 }}>
+        <select value={selH} onChange={e => update(Number(e.target.value), selM)} style={SEL_STYLE}>
+          {Array.from({length:21},(_,i)=>i).map(h => <option key={h} value={h}>{h}時間</option>)}
+        </select>
+        <select value={selM} onChange={e => update(selH, Number(e.target.value))} style={SEL_STYLE}>
+          {[0,15,30,45].map(m => <option key={m} value={m}>{String(m).padStart(2,"0")}分</option>)}
+        </select>
       </div>
     </div>
   );
