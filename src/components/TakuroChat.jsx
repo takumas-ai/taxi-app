@@ -2,8 +2,9 @@
 // TakuroChat.jsx — タクローとのチャット（ボトムシート）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 import { useState, useRef, useEffect } from "react";
-import { C } from "../lib/constants";
+import { C, loadS, saveS } from "../lib/constants";
 
+const DAILY_LIMIT = 30;
 const SUGGESTIONS = [
   "今日どうだった？",
   "アドバイスほしい",
@@ -14,12 +15,27 @@ const SUGGESTIONS = [
 
 const WELCOME = "お疲れさまです！今日も1日どうでしたか？なんでも話しかけてください 🦉";
 
+// ローカルの日次カウント管理
+function getTodayCount() {
+  const today = new Date().toISOString().slice(0, 10);
+  const saved = loadS("takuro_chat_daily", { date: "", count: 0 });
+  if (saved.date !== today) return 0;
+  return saved.count;
+}
+function incrementTodayCount() {
+  const today = new Date().toISOString().slice(0, 10);
+  const saved = loadS("takuro_chat_daily", { date: "", count: 0 });
+  const count = saved.date === today ? saved.count + 1 : 1;
+  saveS("takuro_chat_daily", { date: today, count });
+  return count;
+}
+
 export default function TakuroChat({ onClose, user, callChat }) {
-  const [messages, setMessages] = useState([
-    { role: "assistant", content: WELCOME },
-  ]);
-  const [input, setInput]     = useState("");
-  const [loading, setLoading] = useState(false);
+  const [messages, setMessages]     = useState([{ role: "assistant", content: WELCOME }]);
+  const [input, setInput]           = useState("");
+  const [loading, setLoading]       = useState(false);
+  const [localCount, setLocalCount] = useState(() => getTodayCount());
+  const [remaining, setRemaining]   = useState(DAILY_LIMIT - getTodayCount());
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
 
@@ -27,17 +43,31 @@ export default function TakuroChat({ onClose, user, callChat }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
+  const isLimitReached = localCount >= DAILY_LIMIT;
+
   const send = async (text) => {
     const t = (text ?? input).trim();
-    if (!t || loading) return;
-    setInput("");
+    if (!t || loading || isLimitReached) return;
 
+    // フロント側カウントチェック
+    if (localCount >= DAILY_LIMIT) {
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: "今日はたくさん話しましたね！また明日話しかけてください 🦉",
+      }]);
+      return;
+    }
+
+    setInput("");
     const newMessages = [...messages, { role: "user", content: t }];
     setMessages(newMessages);
     setLoading(true);
 
+    // フロント側カウントを先にインクリメント
+    const newCount = incrementTodayCount();
+    setLocalCount(newCount);
+
     try {
-      // assistant メッセージを除いた会話履歴をAPIに渡す（最新10件）
       const history = newMessages
         .slice(-10)
         .map(m => ({ role: m.role, content: m.content }));
@@ -52,9 +82,18 @@ export default function TakuroChat({ onClose, user, callChat }) {
         workType:   user?.workType,
       });
 
-      setMessages(prev => [...prev, { role: "assistant", content: reply }]);
-    } catch {
-      setMessages(prev => [...prev, { role: "assistant", content: "ごめんなさい、うまく返事できませんでした。もう一度試してみてください。" }]);
+      // reply はオブジェクト { text, remaining } の場合とstring両対応
+      const text   = typeof reply === "string" ? reply : reply.text;
+      const rem    = typeof reply === "object" && reply.remaining != null ? reply.remaining : DAILY_LIMIT - newCount;
+
+      setMessages(prev => [...prev, { role: "assistant", content: text }]);
+      setRemaining(rem);
+    } catch (err) {
+      // 429 レート制限エラー
+      const msg = err?.message?.includes("rate_limit")
+        ? "今日はたくさん話しましたね！また明日話しかけてください 🦉"
+        : "少し時間をおいてもう一度試してください。";
+      setMessages(prev => [...prev, { role: "assistant", content: msg }]);
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -64,10 +103,8 @@ export default function TakuroChat({ onClose, user, callChat }) {
   return (
     <>
       {/* オーバーレイ */}
-      <div
-        onClick={onClose}
-        style={{ position:"fixed", inset:0, backgroundColor:"#00000055", zIndex:200 }}
-      />
+      <div onClick={onClose}
+        style={{ position:"fixed", inset:0, backgroundColor:"#00000055", zIndex:200 }} />
 
       {/* ボトムシート */}
       <div style={{
@@ -85,7 +122,16 @@ export default function TakuroChat({ onClose, user, callChat }) {
             <div style={{ fontSize:15, fontWeight:800, color:C.text }}>タクロー</div>
             <div style={{ fontSize:11, color:C.muted }}>なんでも話しかけてね</div>
           </div>
-          <div onClick={onClose} style={{ marginLeft:"auto", fontSize:22, color:C.muted, cursor:"pointer", padding:"4px 8px" }}>×</div>
+          {/* 残り件数バッジ */}
+          <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{
+              fontSize:11, color: remaining <= 5 ? C.red : C.muted,
+              fontWeight: remaining <= 5 ? 700 : 400,
+            }}>
+              残り{remaining}件/日
+            </div>
+            <div onClick={onClose} style={{ fontSize:22, color:C.muted, cursor:"pointer", padding:"4px 8px" }}>×</div>
+          </div>
         </div>
 
         {/* メッセージ一覧 */}
@@ -96,7 +142,8 @@ export default function TakuroChat({ onClose, user, callChat }) {
                 <div style={{ fontSize:20, flexShrink:0, marginBottom:2 }}>🦉</div>
               )}
               <div style={{
-                maxWidth:"78%", padding:"10px 13px", borderRadius: m.role==="user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                maxWidth:"78%", padding:"10px 13px",
+                borderRadius: m.role==="user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
                 backgroundColor: m.role==="user" ? C.accentLight : C.card,
                 color: m.role==="user" ? "#fff" : C.text,
                 fontSize:14, lineHeight:1.65,
@@ -122,7 +169,7 @@ export default function TakuroChat({ onClose, user, callChat }) {
         </div>
 
         {/* サジェスト */}
-        {messages.length <= 2 && !loading && (
+        {messages.length <= 2 && !loading && !isLimitReached && (
           <div style={{ display:"flex", gap:6, overflowX:"auto", padding:"0 14px 10px", flexShrink:0 }}>
             {SUGGESTIONS.map(s => (
               <div key={s} onClick={() => send(s)}
@@ -135,6 +182,13 @@ export default function TakuroChat({ onClose, user, callChat }) {
           </div>
         )}
 
+        {/* 上限到達メッセージ */}
+        {isLimitReached && (
+          <div style={{ padding:"12px 16px", textAlign:"center", fontSize:13, color:C.muted, flexShrink:0 }}>
+            今日の上限（30件）に達しました。また明日！
+          </div>
+        )}
+
         {/* 入力欄 */}
         <div style={{ padding:"10px 12px 28px", borderTop:`1px solid ${C.border}`, display:"flex", gap:8, flexShrink:0 }}>
           <input
@@ -142,15 +196,16 @@ export default function TakuroChat({ onClose, user, callChat }) {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
-            placeholder="メッセージを入力…"
-            disabled={loading}
-            style={{ flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:22, padding:"11px 16px", fontSize:14, color:C.text, outline:"none" }}
+            placeholder={isLimitReached ? "今日の上限に達しました" : "メッセージを入力…"}
+            disabled={loading || isLimitReached}
+            style={{ flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:22, padding:"11px 16px", fontSize:14, color:C.text, outline:"none", opacity: isLimitReached ? 0.5 : 1 }}
           />
           <button
             onClick={() => send()}
-            disabled={!input.trim() || loading}
-            style={{ width:44, height:44, borderRadius:"50%", border:"none", cursor: input.trim() && !loading ? "pointer" : "not-allowed",
-              backgroundColor: input.trim() && !loading ? C.accentLight : C.border,
+            disabled={!input.trim() || loading || isLimitReached}
+            style={{ width:44, height:44, borderRadius:"50%", border:"none",
+              cursor: input.trim() && !loading && !isLimitReached ? "pointer" : "not-allowed",
+              backgroundColor: input.trim() && !loading && !isLimitReached ? C.accentLight : C.border,
               color:"#fff", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
             ↑
           </button>

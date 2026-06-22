@@ -85,8 +85,10 @@ export async function callTakuroChat(messages, userContext) {
     body: JSON.stringify({ messages, userContext }),
   });
   const data = await res.json();
+  if (res.status === 429) throw Object.assign(new Error("rate_limit"), { message: "rate_limit" });
   if (data.error) throw new Error(data.error);
-  return data.text || "少し時間をおいてもう一度試してください。";
+  // { text, remaining } をそのまま返す
+  return { text: data.text || "少し時間をおいてもう一度試してください。", remaining: data.remaining ?? null };
 }
 
 /** 現在のセッション取得 */
