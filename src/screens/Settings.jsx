@@ -4,7 +4,7 @@ import { C, FREE_LIMIT, PLAN_OCR_LIMITS, PLAN_LABELS, loadS, saveS } from "../li
 import { Card, Btn, ProgressBar, Toggle } from "../components/UI";
 import { AreaBadges } from "../components/UI";
 import { levelFromXp, getTitle, BADGES } from "../lib/xp";
-import { insertFeedback, fetchReferralCount, fetchMyCoupons, fetchMyReferralStats } from "../lib/supabase";
+import { insertFeedback, fetchReferralCount, fetchMyCoupons, fetchMyReferralStats, signOutOtherDevices } from "../lib/supabase";
 import { downloadCSV, printAsPDF, downloadRideRecordsCSV } from "../lib/export";
 import AvatarPicker from "../components/AvatarPicker";
 
@@ -940,6 +940,7 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
             </div>
           </div>
           {!user?._isGuest && <Btn onClick={save}>{saved?"✓ 保存しました":"設定を保存"}</Btn>}
+          {!user?._isGuest && <Btn onClick={async () => { await signOutOtherDevices(); alert("他のデバイスからログアウトしました"); }} variant="secondary" style={{ marginTop:10 }}>他のデバイスからログアウト</Btn>}
           {!user?._isGuest && <Btn onClick={onLogout} variant="danger" style={{ marginTop:10 }}>ログアウト</Btn>}
           {/* アカウント削除 */}
           <DeleteSection onDeleteAccount={onDeleteAccount} />

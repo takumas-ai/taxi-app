@@ -12,7 +12,13 @@ if (!supabaseUrl || !supabaseKey) {
   console.warn("[supabase] 環境変数が未設定です。.env.example を参照して .env を作成してください。");
 }
 
-export const supabase = createClient(supabaseUrl ?? "", supabaseKey ?? "");
+export const supabase = createClient(supabaseUrl ?? "", supabaseKey ?? "", {
+  auth: {
+    persistSession: true,       // localStorageにセッションを保持
+    autoRefreshToken: true,     // トークンを自動更新
+    storageKey: "takuro_auth",  // 他アプリと衝突しないキー名
+  },
+});
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 認証ヘルパー
@@ -47,6 +53,12 @@ export async function resetPasswordForEmail(email) {
 /** サインアウト */
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
+  return { error };
+}
+
+/** 他のデバイスからサインアウト（現在のデバイスはログイン維持） */
+export async function signOutOtherDevices() {
+  const { error } = await supabase.auth.signOut({ scope: "others" });
   return { error };
 }
 
