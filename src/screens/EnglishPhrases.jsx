@@ -7,6 +7,25 @@ import { Card } from "../components/UI";
 
 const CATEGORIES = [
   {
+    id: "passenger",
+    label: "乗客フレーズ",
+    icon: "🙋",
+    phrases: [
+      { jp: "〇〇まで行ってください。", en: "Please take me to [destination].", phonetic: "プリーズ テイク ミー トゥ [デスティネーション]。" },
+      { jp: "急いでいます。", en: "I'm in a hurry.", phonetic: "アイム イン ア ハリー。" },
+      { jp: "まっすぐ進んでください。", en: "Please go straight.", phonetic: "プリーズ ゴー ストレート。" },
+      { jp: "次の角を左に曲がってください。", en: "Please turn left at the next corner.", phonetic: "プリーズ ターン レフト アット ザ ネクスト コーナー。" },
+      { jp: "ここで止めてください。", en: "Please stop here.", phonetic: "プリーズ ストップ ヒア。" },
+      { jp: "いくらかかりますか？", en: "How much will it cost?", phonetic: "ハウ マッチ ウィル イット コスト？" },
+      { jp: "どのくらい時間がかかりますか？", en: "How long will it take?", phonetic: "ハウ ロング ウィル イット テイク？" },
+      { jp: "クレジットカードは使えますか？", en: "Do you accept credit cards?", phonetic: "ドゥー ユー アクセプト クレジット カーズ？" },
+      { jp: "領収書をください。", en: "Can I have a receipt?", phonetic: "キャナイ ハブ ア レシート？" },
+      { jp: "おつりはいりません。", en: "Keep the change.", phonetic: "キープ ザ チェンジ。" },
+      { jp: "英語は話せますか？", en: "Do you speak English?", phonetic: "ドゥー ユー スピーク イングリッシュ？" },
+      { jp: "ナビに従ってください。", en: "Please follow the navigation.", phonetic: "プリーズ フォロー ザ ナビゲーション。" },
+    ],
+  },
+  {
     id: "greeting",
     label: "あいさつ・乗車",
     icon: "👋",
@@ -87,9 +106,10 @@ const CATEGORIES = [
 ];
 
 export default function EnglishPhrases({ onBack }) {
-  const [activeCategory, setActiveCategory] = useState("greeting");
+  const [activeCategory, setActiveCategory] = useState("passenger");
   const [copiedIdx, setCopiedIdx] = useState(null);
   const [showPhonetic, setShowPhonetic] = useState(true);
+  const [speakingIdx, setSpeakingIdx] = useState(null);
 
   const category = CATEGORIES.find(c => c.id === activeCategory);
 
@@ -97,6 +117,18 @@ export default function EnglishPhrases({ onBack }) {
     navigator.clipboard?.writeText(text).catch(() => {});
     setCopiedIdx(idx);
     setTimeout(() => setCopiedIdx(null), 1500);
+  };
+
+  const speak = (text, idx) => {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = "en-US";
+    utter.rate = 0.85;
+    utter.onstart = () => setSpeakingIdx(idx);
+    utter.onend = () => setSpeakingIdx(null);
+    utter.onerror = () => setSpeakingIdx(null);
+    window.speechSynthesis.speak(utter);
   };
 
   return (
@@ -137,31 +169,44 @@ export default function EnglishPhrases({ onBack }) {
 
       {/* フレーズ一覧 */}
       {category?.phrases.map((phrase, idx) => (
-        <Card key={idx} style={{ marginBottom:10, cursor:"pointer", position:"relative" }}
-          onClick={() => copyToClipboard(phrase.en, idx)}>
-          {/* コピー完了表示 */}
-          {copiedIdx === idx && (
-            <div style={{ position:"absolute", top:8, right:10, fontSize:11, color:C.green, fontWeight:700 }}>✓ コピー</div>
-          )}
+        <Card key={idx} style={{ marginBottom:10, position:"relative" }}>
           {/* 日本語 */}
           <div style={{ fontSize:12, color:C.muted, marginBottom:4 }}>{phrase.jp}</div>
-          {/* 英語（メイン） */}
-          <div style={{ fontSize:16, fontWeight:700, color:C.text, marginBottom:showPhonetic?4:0, lineHeight:1.4 }}>
-            {phrase.en}
+          {/* 英語（メイン）＋アクションボタン */}
+          <div style={{ display:"flex", alignItems:"flex-start", gap:8 }}>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:16, fontWeight:700, color:C.text, marginBottom:showPhonetic?4:0, lineHeight:1.4 }}>
+                {phrase.en}
+              </div>
+              {showPhonetic && (
+                <div style={{ fontSize:11, color:C.accentLight, fontWeight:500 }}>{phrase.phonetic}</div>
+              )}
+            </div>
+            {/* ボタン群 */}
+            <div style={{ display:"flex", flexDirection:"column", gap:6, flexShrink:0 }}>
+              {/* 読み上げボタン */}
+              <div onClick={() => speak(phrase.en, idx)}
+                style={{ width:34, height:34, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center",
+                  cursor:"pointer", fontSize:16,
+                  backgroundColor: speakingIdx===idx ? C.accentLight+"33" : C.border+"33",
+                  border:`1.5px solid ${speakingIdx===idx ? C.accentLight : C.border}` }}>
+                {speakingIdx===idx ? "⏸" : "🔊"}
+              </div>
+              {/* コピーボタン */}
+              <div onClick={() => copyToClipboard(phrase.en, idx)}
+                style={{ width:34, height:34, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center",
+                  cursor:"pointer", fontSize:14,
+                  backgroundColor: copiedIdx===idx ? "#22c55e22" : C.border+"33",
+                  border:`1.5px solid ${copiedIdx===idx ? C.green : C.border}` }}>
+                {copiedIdx===idx ? "✓" : "📋"}
+              </div>
+            </div>
           </div>
-          {/* 音読み */}
-          {showPhonetic && (
-            <div style={{ fontSize:11, color:C.accentLight, fontWeight:500 }}>{phrase.phonetic}</div>
-          )}
-          {/* コピーヒント */}
-          {copiedIdx !== idx && (
-            <div style={{ position:"absolute", top:10, right:10, fontSize:11, color:C.border }}>📋</div>
-          )}
         </Card>
       ))}
 
       <div style={{ textAlign:"center", fontSize:12, color:C.muted, marginTop:8 }}>
-        英語部分をタップするとクリップボードにコピーされます
+        🔊 で読み上げ・📋 でコピー
       </div>
     </div>
   );
