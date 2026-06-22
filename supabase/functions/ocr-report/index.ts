@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const OCR_LIMITS: Record<string, number> = {
-  free:     8,
+  free:     30, // βテスト期間中は全プラン30枚
   standard: 30,
   pro:      60,
 };
