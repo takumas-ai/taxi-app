@@ -630,8 +630,10 @@ export default function App() {
             upsertProfile({ id: session.user.id, monthly_upload_count: 0, upload_reset_month: currentMonth });
           }
 
-          localStorage.setItem("taxi_onboarding_done", "true");
-          setOnboardingDone(true);
+          // 既にonboarding済みの場合のみ強制セット（新規登録直後の初回ログインはスキップしない）
+          if (localStorage.getItem("taxi_onboarding_done")) {
+            setOnboardingDone(true);
+          }
           setUser({
             id: session.user.id,
             email: session.user.email,
@@ -940,6 +942,7 @@ export default function App() {
         break_hours:       updated.break_hours,
         trouble_note:      updated.trouble_note,
         work_area:         updated.work_area,
+        rides:             updated.rides ?? null,
       });
     }
   };
@@ -981,11 +984,13 @@ export default function App() {
     // ログアウト後も保持するフラグ
     const consentFlag     = localStorage.getItem("taxi_consent_done");
     const onboardingFlag  = localStorage.getItem("taxi_onboarding_done");
+    const tutorialFlag    = localStorage.getItem("taxi_tutorial_done");
     const closingFlag     = localStorage.getItem("taxi_closing_prompted");
     const themeFlag       = localStorage.getItem("taxi_theme_mode"); // カラーテーマを保持
     localStorage.clear();
     if (consentFlag)    localStorage.setItem("taxi_consent_done", consentFlag);
     if (onboardingFlag) localStorage.setItem("taxi_onboarding_done", onboardingFlag);
+    if (tutorialFlag)   localStorage.setItem("taxi_tutorial_done", tutorialFlag);
     if (closingFlag)    localStorage.setItem("taxi_closing_prompted", closingFlag);
     if (themeFlag)      localStorage.setItem("taxi_theme_mode", themeFlag);
     setUser(null);
