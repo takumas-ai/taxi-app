@@ -254,34 +254,30 @@ function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSet
   return (
     <>
       {/* オーバーレイ */}
-      <div style={{ position:"fixed", inset:0, backgroundColor:"#00000066", zIndex:150 }} onClick={onClose}/>
+      <div style={{ position:"fixed", inset:0, backgroundColor:"#00000066", zIndex:150 }} onClick={onClose} onTouchMove={e=>e.preventDefault()}/>
 
       {/* ドロワー本体 */}
-      <div style={{ position:"fixed", top:0, left:0, bottom:0, width:280, maxWidth:"80vw", backgroundColor:C.surface, zIndex:160, display:"flex", flexDirection:"column", boxShadow:"4px 0 24px #00000033" }}>
+      <div style={{ position:"fixed", top:0, left:0, bottom:0, width:280, maxWidth:"80vw", backgroundColor:C.surface, zIndex:160, display:"flex", flexDirection:"column", boxShadow:"4px 0 24px #00000033", overscrollBehavior:"contain" }}>
 
         {/* ユーザープロフィール */}
-        <div style={{ padding:"52px 20px 20px", backgroundColor:C.card, borderBottom:`1px solid ${C.border}` }}>
-          {/* 画像 */}
-          <div style={{ marginBottom:12 }}>
-            <UserAvatar avatarUrl={user?.avatarUrl} avatarPreset={user?.avatarPreset} size={56} />
-          </div>
-          {/* 名前 */}
-          <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:4 }}>{user?.name || "ゲスト"}</div>
-          {/* 勤務スタイル */}
-          {user?.workType && (
-            <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>{user.workType}</div>
-          )}
-          {/* プロフィールを編集 */}
-          <div
-            onClick={()=>{ onNavigateSettings("profile"); onClose(); }}
-            style={{ display:"block", width:"100%", boxSizing:"border-box", fontSize:13, color:C.accentLight, cursor:"pointer", padding:"9px 14px", borderRadius:10, border:`1px solid ${C.accentLight}44`, backgroundColor:C.accentLight+"11", textAlign:"center", fontWeight:700 }}
-          >
-            ✏️ プロフィールを編集
+        <div style={{ padding:"44px 16px 12px", backgroundColor:C.card, borderBottom:`1px solid ${C.border}` }}>
+          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+            <UserAvatar avatarUrl={user?.avatarUrl} avatarPreset={user?.avatarPreset} size={40} />
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:14, fontWeight:800, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user?.name || "ゲスト"}</div>
+              {user?.workType && <div style={{ fontSize:11, color:C.muted }}>{user.workType}</div>}
+            </div>
+            <div
+              onClick={()=>{ onNavigateSettings("profile"); onClose(); }}
+              style={{ fontSize:11, color:C.accentLight, cursor:"pointer", padding:"6px 10px", borderRadius:8, border:`1px solid ${C.accentLight}44`, backgroundColor:C.accentLight+"11", fontWeight:700, whiteSpace:"nowrap", flexShrink:0 }}
+            >
+              編集
+            </div>
           </div>
         </div>
 
         {/* メニュー項目 */}
-        <div style={{ flex:1, overflowY:"auto", padding:"12px 0" }}>
+        <div style={{ flex:1, overflowY:"auto", padding:"12px 0", overscrollBehavior:"contain" }}>
           {items.map(item => (
             <div key={item.label} onClick={item.action}
               style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 20px", cursor:"pointer", transition:"background 0.1s" }}

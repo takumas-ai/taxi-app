@@ -845,6 +845,12 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
               </Card>
             </div>
           ))}
+          {/* ログアウト */}
+          {!user?._isGuest && (
+            <div style={{ marginTop:8, marginBottom:16 }}>
+              <Btn onClick={onLogout} variant="danger">ログアウト</Btn>
+            </div>
+          )}
         </>
       ) : (
         <>
@@ -896,6 +902,8 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
             <div style={{ fontSize:11, color:C.muted, lineHeight:1.8, backgroundColor:C.bg, borderRadius:10, padding:"10px 14px" }}>
               データはクラウドに安全に保存されています。機種変更時もログインすれば引き継げます。
             </div>
+            {/* アカウント削除 */}
+            <DeleteSection onDeleteAccount={onDeleteAccount} />
           </Card>
         )
       )}
@@ -941,9 +949,6 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
           </div>
           {!user?._isGuest && <Btn onClick={save}>{saved?"✓ 保存しました":"設定を保存"}</Btn>}
           {!user?._isGuest && <Btn onClick={async () => { await signOutOtherDevices(); alert("他のデバイスからログアウトしました"); }} variant="secondary" style={{ marginTop:10 }}>他のデバイスからログアウト</Btn>}
-          {!user?._isGuest && <Btn onClick={onLogout} variant="danger" style={{ marginTop:10 }}>ログアウト</Btn>}
-          {/* アカウント削除 */}
-          <DeleteSection onDeleteAccount={onDeleteAccount} />
         </Card>
       )}
 
