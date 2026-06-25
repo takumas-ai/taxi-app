@@ -127,13 +127,16 @@ export async function upsertProfile(profile) {
   return { error };
 }
 
-/** 新規登録時の初回プロフィール作成（INSERT） */
+/** 新規登録時の初回プロフィール作成（重複キーは無視） */
 export async function insertProfile(profile) {
   const { error } = await supabase
     .from("users")
     .insert(profile);
-  if (error) console.error("[insertProfile] error:", error.message, JSON.stringify(profile));
-  return { error };
+  // 23505 = duplicate key (プロフィール作成済み) → エラーとして扱わない
+  if (error && error.code !== "23505") {
+    console.error("[insertProfile] error:", error.message, JSON.stringify(profile));
+  }
+  return { error: error?.code === "23505" ? null : error };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -396,7 +399,7 @@ export async function deleteRideRecord(id) {
 export async function fetchGuideSpots(area = null) {
   let q = supabase.from("guide_spots").select("*").eq("status", "active");
   if (area) q = q.eq("area", area);
-  const { data, error } = await q.order("demand_score", { ascending: false });
+  const { data, error } = await q.order("created_at", { ascending: false });
   return { data: data ?? [], error };
 }
 
@@ -419,14 +422,35 @@ export async function insertGuideSpot(userId, userName, spot) {
       flow:             spot.flow || [],
       description:      spot.description || null,
       address:          spot.address || null,
-      has_parking:      spot.hasParking || false,
-      open_hours:       spot.openHours || null,
+      open_hours:       spot.open_hours || null,
+      map_url:          spot.map_url || null,
+      wait_times:       Object.keys(spot.wait_times||{}).length ? spot.wait_times : null,
+      facilities:       Object.keys(spot.facilities||{}).length ? spot.facilities : null,
+      price_range:      spot.price_range || null,
       demand_score:     3.0,
+      vote_count:       0,
       contributor_id:   userId,
       contributor_name: userName,
     })
     .select().single();
   return { data, error };
+}
+
+/** 「参考になった」投票（1ユーザー1スポット：UNIQUE制約で重複防止） */
+export async function voteGuideSpot(spotId, userId) {
+  const { error } = await supabase.from("guide_votes").insert({ spot_id: spotId, user_id: userId });
+  if (!error) {
+    const { data } = await supabase.from("guide_spots").select("vote_count").eq("id", spotId).single();
+    if (data) await supabase.from("guide_spots").update({ vote_count: (data.vote_count || 0) + 1 }).eq("id", spotId);
+  }
+  return { error };
+}
+
+/** ユーザーの投票済みスポット一覧取得 */
+export async function fetchUserVotes(userId) {
+  const { data, error } = await supabase
+    .from("guide_votes").select("spot_id").eq("user_id", userId);
+  return { data: data ?? [], error };
 }
 
 /** ガイドスポット更新（編集履歴も記録） */
@@ -491,8 +515,9 @@ export async function fetchGuideReviews(spotId) {
 export async function adminFetchUsers() {
   const { data, error } = await supabase
     .from("users")
-    .select("id, name, email, company_name, plan, xp, monthly_upload_count, referred_by, deletion_requested, created_at, updated_at, areas")
+    .select("*")
     .order("created_at", { ascending: false });
+  if (error) console.error("[adminFetchUsers]", error.message, error.code);
   return { data: data ?? [], error };
 }
 
@@ -568,6 +593,17 @@ export async function adminFetchNotifications() {
   return { data: data ?? [], error };
 }
 
+/** 特定ユーザーの日報一覧（管理者用） */
+export async function adminFetchUserReports(userId) {
+  const { data, error } = await supabase
+    .from("daily_reports")
+    .select("id, report_date, gross_sales, ride_count, work_hours, created_at")
+    .eq("user_id", userId)
+    .order("report_date", { ascending: false })
+    .limit(100);
+  return { data: data ?? [], error };
+}
+
 /** アプリ全体メトリクス */
 export async function adminFetchMetrics() {
   const [usersRes, reportsRes] = await Promise.all([
@@ -582,6 +618,136 @@ export async function adminFetchMetrics() {
     totalReports: reportsRes.count ?? 0,
     mau: mauCount,
     paidUsers: (usersRes.data ?? []).filter(u => u.plan === "paid").length,
+  };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// マイフレンド
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** フレンド追加（QRスキャン後に呼び出す） */
+export async function addFriend(currentUserId, targetUserId) {
+  // 自分自身には送れない
+  if (currentUserId === targetUserId) return { error: new Error("自分自身は追加できません") };
+  // すでにフレンドか確認
+  const { data: existing } = await supabase
+    .from("friendships").select("id").eq("user_id", currentUserId).eq("friend_id", targetUserId).single();
+  if (existing) return { error: null, alreadyFriend: true };
+  // フレンドシップ insert（DBトリガーが相互分を自動作成）
+  const { error: fErr } = await supabase
+    .from("friendships").insert({ user_id: currentUserId, friend_id: targetUserId });
+  if (fErr) return { error: fErr };
+  // 相手への通知を作成
+  const { data: me } = await supabase.from("users").select("name").eq("id", currentUserId).single();
+  await supabase.from("friend_notifications").insert({
+    user_id: targetUserId,
+    from_user_id: currentUserId,
+    from_name: me?.name || "タクドラ",
+  });
+  return { error: null, alreadyFriend: false };
+}
+
+/** フレンド一覧取得 */
+export async function fetchFriends(userId) {
+  const { data: friendships, error } = await supabase
+    .from("friendships").select("friend_id").eq("user_id", userId);
+  if (!friendships?.length) return { data: [], error };
+  const friendIds = friendships.map(f => f.friend_id);
+  const { data: profiles } = await supabase
+    .from("users").select("id, name, avatar_url, avatar_preset, areas").in("id", friendIds);
+  return { data: profiles ?? [], error: null };
+}
+
+/** フレンドを削除（双方向） */
+export async function removeFriend(currentUserId, targetUserId) {
+  await supabase.from("friendships")
+    .delete().eq("user_id", currentUserId).eq("friend_id", targetUserId);
+  await supabase.from("friendships")
+    .delete().eq("user_id", targetUserId).eq("friend_id", currentUserId);
+  return { error: null };
+}
+
+/** 未読フレンド通知数 */
+export async function fetchFriendNotifCount(userId) {
+  const { count, error } = await supabase
+    .from("friend_notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId).eq("read", false);
+  return { count: count ?? 0, error };
+}
+
+/** フレンド通知一覧（最新10件） */
+export async function fetchFriendNotifs(userId) {
+  const { data, error } = await supabase
+    .from("friend_notifications").select("*")
+    .eq("user_id", userId).order("created_at", { ascending: false }).limit(10);
+  return { data: data ?? [], error };
+}
+
+/** 通知を既読にする */
+export async function markFriendNotifsRead(userId) {
+  const { error } = await supabase
+    .from("friend_notifications").update({ read: true }).eq("user_id", userId);
+  return { error };
+}
+
+/** 日報の共有フラグを切り替え */
+export async function toggleShareReport(reportId, isShared) {
+  const { error } = await supabase
+    .from("daily_reports").update({ is_shared: isShared }).eq("id", reportId);
+  return { error };
+}
+
+/** シフトの共有フラグを切り替え（shift_dateで指定） */
+export async function toggleShareShift(userId, shiftDate, isShared) {
+  const { error } = await supabase
+    .from("shifts").update({ is_shared: isShared })
+    .eq("user_id", userId).eq("shift_date", shiftDate);
+  return { error };
+}
+
+/** フレンドの共有シフト一覧（今日以降） */
+export async function fetchFriendsShifts(userId) {
+  const { data: friendships } = await supabase
+    .from("friendships").select("friend_id").eq("user_id", userId);
+  if (!friendships?.length) return { data: [], error: null };
+  const friendIds = friendships.map(f => f.friend_id);
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: shifts, error } = await supabase
+    .from("shifts")
+    .select("id, user_id, shift_date, clock_in, clock_out, note")
+    .in("user_id", friendIds).eq("is_shared", true)
+    .gte("shift_date", today)
+    .order("shift_date", { ascending: true }).limit(50);
+  if (!shifts?.length) return { data: [], error };
+  const { data: profiles } = await supabase
+    .from("users").select("id, name, avatar_preset").in("id", friendIds);
+  const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.id, p]));
+  return {
+    data: shifts.map(s => ({ ...s, userName: profileMap[s.user_id]?.name || "?", avatarPreset: profileMap[s.user_id]?.avatar_preset })),
+    error: null,
+  };
+}
+
+/** フレンドの共有日報一覧 */
+export async function fetchFriendsReports(userId) {
+  const { data: friendships } = await supabase
+    .from("friendships").select("friend_id").eq("user_id", userId);
+  if (!friendships?.length) return { data: [], error: null };
+  const friendIds = friendships.map(f => f.friend_id);
+  const { data: reports, error } = await supabase
+    .from("daily_reports")
+    .select("id, user_id, report_date, gross_sales, ride_count, work_hours, occupied_distance, total_distance")
+    .in("user_id", friendIds).eq("is_shared", true)
+    .order("report_date", { ascending: false }).limit(50);
+  if (!reports?.length) return { data: [], error };
+  // ユーザー名を取得
+  const { data: profiles } = await supabase
+    .from("users").select("id, name, avatar_preset").in("id", friendIds);
+  const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.id, p]));
+  return {
+    data: reports.map(r => ({ ...r, userName: profileMap[r.user_id]?.name || "?", avatarPreset: profileMap[r.user_id]?.avatar_preset })),
+    error: null,
   };
 }
 
@@ -608,6 +774,7 @@ export async function upsertShifts(userId, shifts) {
     clock_out:  s.clockOut || null,
     is_night:   s.isNight  || false,
     note:       s.note     || null,
+    is_shared:  s.isShared ?? false,
   }));
   const { data, error } = await supabase
     .from("shifts")
@@ -638,6 +805,48 @@ export async function fetchSummary(summaryDate) {
     .eq("summary_date", summaryDate)
     .single();
   return { data, error };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// AI分析
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** AI分析一覧を取得（新しい順） */
+export async function fetchAiAnalyses(userId) {
+  const { data, error } = await supabase
+    .from("ai_analyses")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  return { data: data ?? [], error };
+}
+
+/** AI分析を保存 */
+export async function saveAiAnalysis(userId, reportCount, content) {
+  const { error } = await supabase
+    .from("ai_analyses")
+    .insert({ user_id: userId, report_count: reportCount, content });
+  return { error };
+}
+
+/** 未読のAI分析を既読に */
+export async function markAnalysesRead(userId) {
+  const { error } = await supabase
+    .from("ai_analyses")
+    .update({ is_read: true })
+    .eq("user_id", userId)
+    .eq("is_read", false);
+  return { error };
+}
+
+/** 未読のAI分析件数を取得 */
+export async function fetchUnreadAnalysisCount(userId) {
+  const { count, error } = await supabase
+    .from("ai_analyses")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("is_read", false);
+  return { count: count ?? 0, error };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
