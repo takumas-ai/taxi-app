@@ -12,7 +12,6 @@ import { SalesPointCard } from "../components/SalesPointCard";
 import BreakTimeCard from "../components/dashboard/BreakTimeCard";
 import AiAdviceCard from "../components/dashboard/AiAdviceCard";
 import { ShiftSummaryCard } from "../components/dashboard/ShiftCalendar";
-import { fetchShifts } from "../lib/supabase";
 
 const SUPABASE_READY = !!(
   import.meta.env.VITE_SUPABASE_URL &&
@@ -164,7 +163,7 @@ export function RankingNoticeBanner({ onGoRanking }) {
 
 // ━━━ 売上グラフ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function SalesChart({ reports }) {
-  const recent = [...reports].filter(r => r && r.gross_sales && r.date).sort((a,b) => (a.date||"").localeCompare(b.date||"")).slice(-7);
+  const recent = [...reports].filter(r => r && r.gross_sales).sort((a,b) => a.date.localeCompare(b.date)).slice(-7);
   if (recent.length === 0) return null;
   const maxSales = Math.max(...recent.map(r => r.gross_sales));
   const chartH = 80, barW = 32, gap = 8;
@@ -317,23 +316,16 @@ function AnalysisTodayCard({ reports }) {
   const today = new Date().toISOString().slice(0, 10);
   const todayReport = reports.find(r => r.date === today);
   const todaySales = todayReport?.gross_sales ?? 0;
-  const todayRideCount = todayReport?.ride_count ?? 0;
 
-  // 着地予想：過去の実績（今日除く）から平均単価・平均乗車回数を算出
-  const withSales = reports.filter(r => r.date !== today && r.gross_sales > 0 && r.ride_count > 0);
+  // 着地予想：過去の平均単価 × 想定営業回数
+  const withSales = reports.filter(r => r.gross_sales > 0 && r.ride_count > 0);
   const avgPerRide = withSales.length
     ? Math.round(withSales.reduce((s,r) => s + r.gross_sales / r.ride_count, 0) / withSales.length)
     : 0;
   const avgRideCount = withSales.length
     ? Math.round(withSales.reduce((s,r) => s + r.ride_count, 0) / withSales.length)
     : 0;
-
-  // 今日の実績がある場合：今日の売上 + 残り見込み回数 × 平均単価
-  // 今日の実績がない場合：過去平均（avgPerRide × avgRideCount）
-  const remainingRides = Math.max(0, avgRideCount - todayRideCount);
-  const landingForecast = avgPerRide > 0 && avgRideCount > 0
-    ? (todaySales > 0 ? todaySales + remainingRides * avgPerRide : avgPerRide * avgRideCount)
-    : 0;
+  const landingForecast = avgPerRide > 0 && avgRideCount > 0 ? avgPerRide * avgRideCount : 0;
 
   return (
     <div style={{ marginBottom:14 }}>
@@ -371,9 +363,7 @@ function AnalysisTodayCard({ reports }) {
                   {fmt(landingForecast)}<span style={{ fontSize:11, marginLeft:2 }}>円</span>
                 </div>
                 <div style={{ fontSize:10, color:C.muted, marginTop:4 }}>
-                  {todaySales > 0
-                    ? `現在${fmt(todaySales)}円＋残り${remainingRides}回×単価${fmt(avgPerRide)}`
-                    : `平均単価${fmt(avgPerRide)}×${avgRideCount}回ペース`}
+                  平均単価{fmt(avgPerRide)}×{avgRideCount}回ペース
                 </div>
               </>
             ) : (
@@ -388,7 +378,7 @@ function AnalysisTodayCard({ reports }) {
 
 // ━━━ 月間目標クイック編集モーダル ━━━━━━━━━━━━━━
 function TargetEditModal({ current, onSave, onClose }) {
-  const [val, setVal] = useState(current ? String(current) : "");
+  const [val, setVal] = useState(String(current || 380000));
   return (
     <div style={{ position:"fixed", inset:0, backgroundColor:"#00000099", zIndex:400, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}
       onClick={onClose}>
@@ -424,7 +414,7 @@ function TargetEditModal({ current, onSave, onClose }) {
             style={{ flex:1, padding:"12px 0", borderRadius:10, fontSize:14, fontWeight:600, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.muted }}>
             キャンセル
           </button>
-          <button onClick={()=>{ onSave(parseInt(val,10)||0); onClose(); }}
+          <button onClick={()=>{ onSave(parseInt(val,10)||380000); onClose(); }}
             style={{ flex:2, padding:"12px 0", borderRadius:10, fontSize:14, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:C.accentLight, color:"#fff" }}>
             保存する
           </button>
@@ -440,24 +430,6 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   const monthReports = reports.filter(r => r.date >= periodStart && r.date <= periodEnd);
 
   const [showTargetEdit, setShowTargetEdit] = useState(false);
-  // シフトデータ（localStorage初期値 + Supabaseから非同期同期）
-  const [calShifts, setCalShifts] = useState(() => loadS("taxi_shifts", []));
-  useEffect(() => {
-    if (!SUPABASE_READY || !user?.id) return;
-    fetchShifts(user.id).then(({ data }) => {
-      if (!data?.length) return;
-      const mapped = data.map(s => ({
-        id:       s.id || ("sb_" + s.shift_date),
-        date:     s.shift_date,
-        clockIn:  s.clock_in  || "",
-        clockOut: s.clock_out || "",
-        isNight:  s.is_night  || false,
-        note:     s.note      || "",
-      }));
-      setCalShifts(mapped);
-      saveS("taxi_shifts", mapped);
-    });
-  }, [user?.id]);
 
   const monthTotal    = monthReports.reduce((s,r) => s + (r.gross_sales || 0), 0);
   const monthTarget   = parseInt(user.target) || 0;  // 0 = 未設定
@@ -484,17 +456,8 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
   // periodEnd は "YYYY-MM-DD" 文字列。締日の23:59:59まで残り日数を計算
   const periodEndDate = new Date(periodEnd + "T23:59:59");
   const remainingDays = Math.max(0, Math.ceil((periodEndDate - today) / (1000 * 60 * 60 * 24)));
-  // 今日の日付文字列（ローカル）
-  const _todayYMD = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
-  // カレンダーに登録されたシフトから残り出番を計算。未登録時は従来の推定式にフォールバック
-  const _periodShifts = calShifts.filter(s => s.date >= periodStart && s.date <= periodEnd);
-  // 今日の日報がまだない場合は今日も残り出番に含める（日報保存後は今日を除外）
-  const _hasTodayReport = monthReports.some(r => r.date === _todayYMD);
-  const _remainingCalShifts = _periodShifts.filter(s => _hasTodayReport ? s.date > _todayYMD : s.date >= _todayYMD).length;
   const shiftsPerDay  = (user.workType === "隔日勤務") ? 0.5 : 0.75;
-  const remainingShifts = _periodShifts.length > 0
-    ? _remainingCalShifts
-    : Math.round(remainingDays * shiftsPerDay);
+  const remainingShifts = Math.round(remainingDays * shiftsPerDay);
   const remainingAmount = Math.max(0, monthTarget - monthTotal);
   // 今日必要な売上 = 残り目標額 ÷ 残り出番日数（税抜き表示）
   const neededPerShift  = remainingShifts > 0 ? Math.round(remainingAmount / remainingShifts) : 0;
@@ -631,7 +594,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
 
         {/* 売上メインカード（大きな文字） */}
         <Card style={{ marginBottom:14, padding:"24px 20px", borderColor:C.gold+"33" }}>
-          <div style={{ fontSize:13, color:C.muted, marginBottom:6 }}>今月の総売上（税抜）</div>
+          <div style={{ fontSize:13, color:C.muted, marginBottom:6 }}>今月の総売上</div>
           <div style={{ fontSize:52, fontWeight:900, color:C.text, lineHeight:1.1 }}>
             {fmt(monthTotal)}<span style={{ fontSize:20, color:C.muted, marginLeft:6 }}>円</span>
           </div>
@@ -661,8 +624,8 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
                   <div style={{ fontSize:22, fontWeight:900, color:C.text }}>{remainingShifts}<span style={{ fontSize:12, marginLeft:2 }}>回</span></div>
                 </div>
                 <div style={{ flex:1, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}33`, borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
-                  <div style={{ fontSize:10, color:C.muted, marginBottom:3 }}>目標まで1出番あたり<span style={{ fontSize:8, marginLeft:2 }}>(税抜)</span></div>
-                  <div style={{ fontSize:22, fontWeight:900, color:C.accentLight }}>{fmt(neededPerShift)}<span style={{ fontSize:12, marginLeft:2 }}>円</span></div>
+                  <div style={{ fontSize:10, color:C.muted, marginBottom:3 }}>今日必要な売上<span style={{ fontSize:8, marginLeft:2 }}>(税抜)</span></div>
+                  <div style={{ fontSize:22, fontWeight:900, color:C.accentLight }}>{fmt(neededToday)}<span style={{ fontSize:12, marginLeft:2 }}>円</span></div>
                 </div>
               </div>
             )}
@@ -692,7 +655,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
       <WeatherWidget />
 
       {/* 営業ポイント記録 */}
-      <SalesPointCard user={user} />
+      <SalesPointCard />
 
       {/* 休憩時間 */}
       <BreakTimeCard reports={reports} onUpdateReport={onUpdateReport} />
@@ -701,7 +664,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
       <Card style={{ marginBottom:14, borderColor:C.gold+"33" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
           <div>
-            <div style={{ fontSize:11, color:C.muted, marginBottom:3 }}>今月の総売上（税抜）</div>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:3 }}>今月の総売上</div>
             <div style={{ fontSize:32, fontWeight:900, color:C.text }}>
               {fmt(monthTotal)}<span style={{ fontSize:13, color:C.muted, marginLeft:4 }}>円</span>
             </div>
@@ -726,7 +689,7 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
         {hasTarget && <>
           <ProgressBar value={Math.min(achievement, 100)} max={100} color={achColor} height={8} />
           <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:C.muted, marginTop:5 }}>
-            <span>{new Date().getMonth()+1}月 {monthReports.length}件入力済み</span>
+            <span>{THIS_MONTH}月 {monthReports.length}件入力済み</span>
             <span>{achievement}%</span>
           </div>
         </>}
@@ -739,8 +702,12 @@ export default function Dashboard({ reports, user, onOpenReport, onManageArea, r
               <div style={{ fontSize:18, fontWeight:900, color:C.text }}>{remainingShifts}<span style={{ fontSize:10, marginLeft:2 }}>回</span></div>
             </div>
             <div style={{ flex:1, backgroundColor:C.accentGlow, border:`1px solid ${C.accentLight}33`, borderRadius:9, padding:"8px 10px", textAlign:"center" }}>
-              <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>目標まで1出番あたり<span style={{ fontSize:7, marginLeft:1 }}>(税抜)</span></div>
-              <div style={{ fontSize:18, fontWeight:900, color:C.accentLight }}>{fmt(neededPerShift)}<span style={{ fontSize:10, marginLeft:2 }}>円</span></div>
+              <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>今日必要な売上<span style={{ fontSize:7, marginLeft:1 }}>(税抜)</span></div>
+              <div style={{ fontSize:18, fontWeight:900, color:C.accentLight }}>{fmt(neededToday)}<span style={{ fontSize:10, marginLeft:2 }}>円</span></div>
+            </div>
+            <div style={{ flex:1, backgroundColor:C.surface, borderRadius:9, padding:"8px 10px", textAlign:"center" }}>
+              <div style={{ fontSize:9, color:C.muted, marginBottom:2 }}>残り日数</div>
+              <div style={{ fontSize:18, fontWeight:900, color:C.sub }}>{remainingDays}<span style={{ fontSize:10, marginLeft:2 }}>日</span></div>
             </div>
           </div>
         )}

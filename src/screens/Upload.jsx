@@ -1,14 +1,14 @@
 import { useState, useRef, useEffect } from "react";
-import { C, fmt, occ, dow, hourly, PLAN_OCR_LIMITS, PLAN_LABELS } from "../lib/constants";
+import { C, fmt, occ, dow, hourly, FREE_LIMIT } from "../lib/constants";
 import { generateReportComment, runReportOCR, runReportOCRP2 } from "../lib/ai";
 import { Card, Btn, ProgressBar } from "../components/UI";
 import { RideMatchModal } from "../components/RideMatchModal";
 import { ZONE_AREAS } from "../data/trafficZones";
-import { supabase, uploadReportImage } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { validateImageFile, validateReportForm, sanitizeReportData } from "../lib/validate";
 
 const OCR_SEQ = ["画像を解析中...","日付・勤務時間を読み取り中...","売上データを抽出中...","営業回数・走行距離を確認中...","フォーマット差異を吸収中...","読み取り完了 ✓"];
-const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", emoney_sales:"", ticket_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"", highway_fee:"", adjustment:"", tip_amount:"", trouble_note:"", work_area:"", rides:[], break_times:[] };
+const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"", highway_fee:"", trouble_note:"", work_area:"", rides:[], break_times:[] };
 
 // HEIC/HEIFをJPEG Blobに変換（heic2any CDN経由）
 async function convertHeicToJpeg(file) {
@@ -58,55 +58,6 @@ async function imageToBase64(file) {
   });
 }
 
-// ━━━ 調整欄（±切替） ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function AdjustmentInput({ value, onChange }) {
-  const num = parseInt(value) || 0;
-  const isNeg = num < 0;
-  const absVal = Math.abs(num);
-  return (
-    <div>
-      <div style={{ fontSize:13, fontWeight:600, color:C.muted, marginBottom:7 }}>調整（±円）</div>
-      <div style={{ display:"flex", gap:8 }}>
-        <div style={{ display:"flex", borderRadius:10, border:`1px solid ${C.border}`, overflow:"hidden", flexShrink:0 }}>
-          <button onClick={() => onChange(String(absVal))} style={{ padding:"0 22px", fontSize:20, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:!isNeg?C.accentLight+"33":"transparent", color:!isNeg?C.accentLight:C.muted }}>＋</button>
-          <button onClick={() => onChange(String(-absVal))} style={{ padding:"0 22px", fontSize:20, fontWeight:700, cursor:"pointer", border:"none", borderLeft:`1px solid ${C.border}`, backgroundColor:isNeg?C.red+"33":"transparent", color:isNeg?C.red:C.muted }}>－</button>
-        </div>
-        <input type="number" value={absVal} min="0" placeholder="0" onChange={e=>onChange(String(isNeg?-(parseInt(e.target.value)||0):(parseInt(e.target.value)||0)))}
-          style={{ flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:10, padding:"15px 16px", color:C.text, fontSize:17, outline:"none", boxSizing:"border-box" }}/>
-      </div>
-      {num!==0&&<div style={{ fontSize:13, color:num>0?C.green:C.red, marginTop:6, textAlign:"right", fontWeight:700 }}>{num>0?"+":""}{num.toLocaleString()}円</div>}
-    </div>
-  );
-}
-
-// ━━━ 勤務時間ドラムロール ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ━━━ 勤務時間ドロップダウン ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function WorkHoursPicker({ value, onChange }) {
-  const totalMin = Math.round((parseFloat(value) || 0) * 60);
-  const selH = Math.min(20, Math.max(0, Math.floor(totalMin / 60)));
-  const selM = [0,15,30,45].reduce((a,b) => Math.abs(b-(totalMin%60))<Math.abs(a-(totalMin%60))?b:a, 0);
-  const update = (h, m) => onChange(String(parseFloat((h + m/60).toFixed(4))));
-  const wrap = { flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden" };
-  const sel  = { width:"100%", backgroundColor:"transparent", border:"none", padding:"15px 16px", color:C.text, fontSize:17, outline:"none" };
-  return (
-    <div>
-      <div style={{ fontSize:13, fontWeight:600, color:C.muted, marginBottom:7 }}>勤務時間</div>
-      <div style={{ display:"flex", gap:8 }}>
-        <div style={wrap}>
-          <select value={selH} onChange={e => update(Number(e.target.value), selM)} style={sel}>
-            {Array.from({length:21},(_,i)=>i).map(h => <option key={h} value={h}>{h}時間</option>)}
-          </select>
-        </div>
-        <div style={wrap}>
-          <select value={selM} onChange={e => update(selH, Number(e.target.value))} style={sel}>
-            {[0,15,30,45].map(m => <option key={m} value={m}>{String(m).padStart(2,"0")}分</option>)}
-          </select>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // break_times から break_hours を計算
 function calcBreakHours(breakTimes) {
   if (!breakTimes || breakTimes.length === 0) return "1.0";
@@ -118,72 +69,6 @@ function calcBreakHours(breakTimes) {
     return sum + diff;
   }, 0);
   return String(Math.round(total / 60 * 10) / 10);
-}
-
-// ━━━ 備考略語辞書 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const MEMO_MEANING_OPTIONS = [
-  { value: "電子マネー", label: "電子マネー（交通系等）" },
-  { value: "クレジット", label: "クレジットカード" },
-  { value: "QR",        label: "QRコード決済" },
-  { value: "ネット",    label: "ネット決済" },
-  { value: "現金",      label: "現金" },
-  { value: "高速",      label: "高速利用（現金）" },
-  { value: "無線",      label: "無線配車" },
-  { value: "skip",      label: "スキップ（変更しない）" },
-];
-
-const PAYMENT_FROM_MEANING = {
-  "電子マネー": "電子マネー",
-  "クレジット": "カード",
-  "QR":        "QR",
-  "ネット":    "ネット決済",
-  "現金":      "現金",
-  "高速":      "現金",
-  "無線":      "現金",
-};
-
-function applyMemoDict(rides, dict) {
-  return rides.map(r => {
-    const raw = r.note?.trim();
-    if (!raw || !dict[raw] || dict[raw] === "skip") return r;
-    const payment = PAYMENT_FROM_MEANING[dict[raw]] || r.payment || "現金";
-    return { ...r, payment };
-  });
-}
-
-function MemoDictModal({ unknownMemos, onSave, onSkip }) {
-  const [mappings, setMappings] = useState(() => {
-    const init = {};
-    unknownMemos.forEach(m => { init[m] = "skip"; });
-    return init;
-  });
-  return (
-    <div style={{ position:"fixed", inset:0, backgroundColor:"#000000bb", zIndex:300, display:"flex", alignItems:"flex-end" }}>
-      <div style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:"24px 20px 40px", maxHeight:"85vh", overflowY:"auto" }}>
-        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 16px" }}/>
-        <div style={{ fontSize:16, fontWeight:800, marginBottom:4 }}>📝 備考の略語を登録</div>
-        <div style={{ fontSize:12, color:C.muted, marginBottom:20, lineHeight:1.6 }}>日報に使われている略語の意味を教えてください。次回から自動で適用されます。</div>
-        {unknownMemos.map(memo => (
-          <div key={memo} style={{ marginBottom:20, padding:16, backgroundColor:C.bg, borderRadius:12 }}>
-            <div style={{ fontSize:17, fontWeight:900, color:C.accentLight, marginBottom:12 }}>「{memo}」の意味は？</div>
-            <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-              {MEMO_MEANING_OPTIONS.map(({ value, label }) => (
-                <div key={value} onClick={() => setMappings(p => ({ ...p, [memo]: value }))}
-                  style={{ padding:"8px 14px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer",
-                    border:`1.5px solid ${mappings[memo]===value?C.accentLight:C.border}`,
-                    backgroundColor:mappings[memo]===value?C.accentLight+"22":"transparent",
-                    color:mappings[memo]===value?C.accentLight:C.muted }}>
-                  {label}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-        <Btn onClick={() => onSave(mappings)} style={{ marginBottom:10 }}>登録して続ける</Btn>
-        <Btn onClick={onSkip} variant="ghost">後で登録する（スキップ）</Btn>
-      </div>
-    </div>
-  );
 }
 
 // ━━━ 乗車記録編集モーダル ━━━━━━━━━━━━━━━━━━━━━━━━
@@ -346,13 +231,10 @@ function loadDraft() {
   try { return JSON.parse(localStorage.getItem(OCR_DRAFT_KEY) || "null"); } catch { return null; }
 }
 
-const SKIP_CONFIRM_KEY = "taxi_skip_confirm";
-
-export default function UploadScreen({ uploadCount, onSave, reports, user, onSaveMemoDict }) {
+export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   const draft = loadDraft();
   const [step, setStep]     = useState(draft?.step || "select");
   const [isManual, setIsManual] = useState(false);
-  const [skipConfirm, setSkipConfirm] = useState(() => localStorage.getItem(SKIP_CONFIRM_KEY) === "1");
   const [isClosure, setIsClosure] = useState(false);
   const [closureDate, setClosureDate] = useState(() => new Date().toISOString().slice(0,10));
   const [closureCount, setClosureCount] = useState(0);
@@ -367,19 +249,13 @@ export default function UploadScreen({ uploadCount, onSave, reports, user, onSav
   const [isDragOver, setIsDragOver] = useState(false);
   const [matchData, setMatchData] = useState(null); // { ocrRides, manualRecords }
   const [ocrImageUrl, setOcrImageUrl] = useState(null); // OCR後の画像プレビュー用URL
-  const [ocrFile, setOcrFile]         = useState(null); // Storageアップロード用ファイル
   const [ocrConfidence, setOcrConfidence] = useState(null); // OCR全体の信頼度(0-100)
   const [imgExpanded, setImgExpanded] = useState(false); // 画像拡大表示
-  const [unknownMemos, setUnknownMemos] = useState([]); // 未登録の備考略語
-  const [pendingFormData, setPendingFormData] = useState(null); // 略語登録待ちのフォームデータ
 
   // step/form/ocrLines が変わったらlocalStorageに保存
   useEffect(() => { saveDraft(step, form, ocrLines); }, [step, form, ocrLines]);
   const fileInputRef = useRef(null);
-  const planKey = user?.plan || "free";
-  const planLimit = PLAN_OCR_LIMITS[planKey] ?? PLAN_OCR_LIMITS.free;
-  const planLabel = PLAN_LABELS[planKey] ?? "無料プラン";
-  const remaining = planLimit - uploadCount;
+  const remaining = FREE_LIMIT - uploadCount;
 
   // ━━ ドラッグ＆ドロップ: window レベルで直接拾う（React合成イベントを迂回）━━
   const stepRef = useRef(step);
@@ -452,7 +328,6 @@ export default function UploadScreen({ uploadCount, onSave, reports, user, onSav
 
       // 画像プレビュー用URLを生成（確認画面で日報を見ながら修正できるように）
       setOcrImageUrl(URL.createObjectURL(files[0]));
-      setOcrFile(files[0]); // Storageアップロード用に保持
 
       const result1 = await runReportOCR(base64_1, "image/jpeg");
       if (result1?.error === "monthly_limit_exceeded") {
@@ -503,7 +378,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user, onSav
       } catch { /* ignore */ }
 
       const pos = (v) => (v != null && Number(v) >= 0) ? String(v) : ""; // マイナス値は除去
-      const baseForm = {
+      setForm({
         date:               reportDate,
         gross_sales:        pos(f.gross_sales),
         cash_sales:         pos(f.cash_sales),
@@ -521,41 +396,8 @@ export default function UploadScreen({ uploadCount, onSave, reports, user, onSav
         work_area:          f.work_area          ?? "",
         rides,
         break_times:        breakTimes,
-      };
-
-      // 未登録の備考略語を検出
-      const existingDict = user?.memoDict || {};
-      const allNotes = rides.flatMap(r => r.note?.trim() ? [r.note.trim()] : []).filter(Boolean);
-      const uniqueNotes = [...new Set(allNotes)];
-      const unknown = uniqueNotes.filter(n => !(n in existingDict));
-
-      if (unknown.length > 0 && !hasMatch) {
-        // 略語登録モーダルへ
-        setPendingFormData(baseForm);
-        setUnknownMemos(unknown);
-        setStep("memo_map");
-      } else {
-        // 既存辞書で変換
-        const finalForm = { ...baseForm, rides: applyMemoDict(rides, existingDict) };
-        setForm(finalForm);
-        if (hasMatch) {
-          setStep("select");
-        } else if (skipConfirm) {
-          // 確認スキップ：直接保存
-          setStep("auto_saving");
-          const data = { id: Date.now(), ...sanitizeReportData(finalForm), rides: finalForm.rides ?? [], break_times: finalForm.break_times ?? [], ai_comment: "" };
-          if (ocrFile && user?.id) {
-            const { url } = await uploadReportImage(ocrFile, user.id);
-            if (url) data.image_url = url;
-          }
-          onSave(data);
-          setForm(EMPTY); setOcrFile(null);
-          localStorage.removeItem(OCR_DRAFT_KEY);
-          setStep("done");
-        } else {
-          setStep("confirm");
-        }
-      }
+      });
+      setStep(hasMatch ? "select" : "confirm");
     } catch (err) {
       console.error("[OCR]", err);
       setOcrError(err.message || "読み取りに失敗しました");
@@ -620,80 +462,41 @@ export default function UploadScreen({ uploadCount, onSave, reports, user, onSav
     // ユーザーがリクエストした場合のみAIコメント生成
     const comment = wantAiAdvice ? await generateReportComment(data, reports) : "";
     data.ai_comment = comment;
-    // OCR画像をSupabase Storageに保存
-    if (ocrFile && user?.id) {
-      const { url } = await uploadReportImage(ocrFile, user.id);
-      if (url) data.image_url = url;
-    }
     setSaving(false); onSave(data); setForm(EMPTY); setIsManual(false); setWantAiAdvice(false);
-    setOcrFile(null);
     localStorage.removeItem(OCR_DRAFT_KEY); // 保存完了でdraftクリア
     setStep("done");
   };
 
   const isOcrMode = !isManual && !isClosure && ocrImageUrl !== null;
-  // 統一スタイル定数
-  const FLD_LBL = { fontSize:13, fontWeight:600, marginBottom:7 };
-  const FLD_INP = { width:"100%", boxSizing:"border-box", borderRadius:10, padding:"15px 16px", color:C.text, fontSize:17, outline:"none" };
-  const F = ({label,fk,type="number",ph="",required=false}) => {
+  const F = ({label,fk,type="number",ph="",required=false,span=1}) => {
     const uncertain = isOcrMode && form[fk] === "";
     const borderColor = errors[fk] ? C.red : uncertain ? "#f5a623" : C.border;
     const bgColor = uncertain ? "#f5a62318" : C.bg;
     const labelColor = errors[fk] ? C.red : uncertain ? "#f5a623" : C.muted;
     return (
-      <div>
-        <div style={{ ...FLD_LBL, color:labelColor }}>
+      <div style={{ gridColumn:`span ${span}` }}>
+        <div style={{ fontSize:11, color:labelColor, marginBottom:5 }}>
           {label}{required&&<span style={{color:C.red}}> *</span>}
           {errors[fk]&&<span style={{marginLeft:4}}>{errors[fk]}</span>}
           {uncertain&&<span style={{marginLeft:4}}>要確認</span>}
         </div>
         <input type={type} value={form[fk]} placeholder={ph} onChange={e=>{
+          // コンマ（全角・半角）をドットに正規化
           const v = type === "number" ? e.target.value.replace(/[,，、]/g, ".") : e.target.value;
           setForm(p=>({...p,[fk]:v}));setErrors(p=>({...p,[fk]:""}));
-        }} style={{ ...FLD_INP, backgroundColor:bgColor, border:`1px solid ${borderColor}` }}/>
+        }} style={{ width:"100%", boxSizing:"border-box", backgroundColor:bgColor, border:`1px solid ${borderColor}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:15, outline:"none" }}/>
       </div>
     );
   };
 
   if (remaining <= 0) {
-    const upgradeMsg = planKey === "free"
-      ? "スタンダードプランにアップグレードすると月30回まで使えます"
-      : planKey === "standard"
-      ? "プロプランにアップグレードすると月60回まで使えます"
-      : "今月のOCR上限（60回）に達しました。来月また使えます";
     return (
       <div style={{ maxWidth:480, margin:"0 auto", padding:"20px 16px 100px" }}>
         <Card style={{ textAlign:"center", padding:32 }}>
           <div style={{ fontSize:36, marginBottom:12 }}>📊</div>
-          <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>今月のOCR上限に達しました</div>
-          <div style={{ fontSize:13, color:C.muted, marginBottom:16, lineHeight:1.6 }}>{upgradeMsg}</div>
-          {planKey !== "pro" && <Btn variant="gold">プランをアップグレード</Btn>}
+          <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>今月の無料枠を使い切りました</div>
+          <Btn variant="gold">月額480円で続ける</Btn>
         </Card>
-      </div>
-    );
-  }
-
-  if (step === "memo_map") {
-    return (
-      <div style={{ maxWidth:480, margin:"0 auto", padding:"20px 16px 100px" }}>
-        <MemoDictModal
-          unknownMemos={unknownMemos}
-          onSave={async (mappings) => {
-            const existingDict = user?.memoDict || {};
-            const newDict = { ...existingDict, ...mappings };
-            await onSaveMemoDict?.(newDict);
-            setForm({ ...pendingFormData, rides: applyMemoDict(pendingFormData.rides, newDict) });
-            setPendingFormData(null);
-            setUnknownMemos([]);
-            setStep("confirm");
-          }}
-          onSkip={() => {
-            setForm({ ...pendingFormData, rides: applyMemoDict(pendingFormData.rides, user?.memoDict || {}) });
-            setPendingFormData(null);
-            setUnknownMemos([]);
-            setStep("confirm");
-          }}
-        />
       </div>
     );
   }
@@ -781,28 +584,18 @@ export default function UploadScreen({ uploadCount, onSave, reports, user, onSav
         )}
 
         <Card>
-          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-            {F({label:"日付", fk:"date", type:"date", required:true})}
-            {F({label:"営業回数（回）", fk:"ride_count"})}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            {F({label:"日付", fk:"date", type:"date", required:true, span:2})}
             {F({label:"売上（税込）（円）", fk:"gross_sales", required:true})}
-            {/* 売上（税抜）: 自動計算・読み取り専用 */}
-            <div>
-              <div style={{ fontSize:13, fontWeight:600, color:C.muted, marginBottom:7 }}>売上（税抜）（自動計算）</div>
-              <div style={{ backgroundColor:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"15px 16px", color:C.muted, fontSize:17 }}>
-                {form.gross_sales ? Math.round(parseInt(form.gross_sales) / 1.1).toLocaleString() : "—"} 円
-              </div>
-            </div>
-            {F({label:"高速料金（円）", fk:"highway_fee"})}
-            <AdjustmentInput value={form.adjustment} onChange={v=>setForm(p=>({...p,adjustment:v}))} />
-            {F({label:"現金売上（円）", fk:"cash_sales"})}
-            {F({label:"アプリ決済（円）", fk:"app_sales"})}
-            {F({label:"クレジットカード（円）", fk:"card_sales"})}
-            {F({label:"電子マネー（円）", fk:"emoney_sales"})}
-            {F({label:"タクシーチケット（円）", fk:"ticket_sales"})}
+            {F({label:"営業回数（回）", fk:"ride_count"})}
+            {F({label:"売上（税抜）（円）", fk:"cash_sales"})}
+            {F({label:"カード売上（円）", fk:"card_sales"})}
+            {F({label:"配車アプリ（円）", fk:"app_sales", span:2})}
             {F({label:"走行距離（km）", fk:"total_distance"})}
             {F({label:"実車距離（km）", fk:"occupied_distance"})}
-            <WorkHoursPicker value={form.work_hours} onChange={v=>setForm(p=>({...p,work_hours:v}))} />
-            {F({label:"チップ（円）", fk:"tip_amount"})}
+            {F({label:"勤務時間（h）", fk:"work_hours"})}
+            {F({label:"休憩時間（h）", fk:"break_hours"})}
+            {F({label:"高速料金（円）", fk:"highway_fee", span:2})}
           </div>
           <div style={{ marginTop:12 }}>
             <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>事故・トラブル備考</div>
@@ -889,25 +682,6 @@ export default function UploadScreen({ uploadCount, onSave, reports, user, onSav
           </div>
         </div>
         <Btn onClick={handleSave} disabled={saving}>{saving ? (wantAiAdvice ? "AI分析中..." : "保存中...") : "保存する"}</Btn>
-        {/* 次回から確認スキップ */}
-        {!isManual && !isClosure && (
-          <div
-            onClick={() => {
-              const next = !skipConfirm;
-              setSkipConfirm(next);
-              localStorage.setItem(SKIP_CONFIRM_KEY, next ? "1" : "0");
-            }}
-            style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", marginTop:10, borderRadius:10, border:`1px solid ${C.border}`, cursor:"pointer" }}
-          >
-            <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${skipConfirm ? C.accentLight : C.border}`, backgroundColor: skipConfirm ? C.accentLight : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-              {skipConfirm && <span style={{ color:"#fff", fontSize:11, fontWeight:900 }}>✓</span>}
-            </div>
-            <div>
-              <div style={{ fontSize:13, fontWeight:600, color: skipConfirm ? C.accentLight : C.text }}>次回から確認画面を省略する</div>
-              <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>OCR後に自動で保存されます（いつでも解除可）</div>
-            </div>
-          </div>
-        )}
         <Btn onClick={()=>{ setIsManual(false); setIsClosure(false); setStep("select"); }} variant="ghost" style={{ marginTop:10 }}>戻る</Btn>
       </div>
     );
@@ -946,7 +720,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user, onSav
         </div>
       )}
       <div style={{ backgroundColor:C.goldGlow, border:`1px solid ${C.gold}44`, borderRadius:12, padding:"10px 14px", marginBottom:14 }}>
-        <span style={{ fontSize:13, color:C.sub }}>{planLabel}｜今月残り <strong style={{ color:C.gold }}>{remaining}件</strong>（上限{planLimit}回）</span>
+        <span style={{ fontSize:13, color:C.sub }}>今月残り <strong style={{ color:C.gold }}>{remaining}件</strong> 無料</span>
       </div>
 
       {/* 撮影ガイドの簡易プレビュー（常時表示） */}

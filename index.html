@@ -9,8 +9,8 @@
         default-src 'self';
         script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net;
         style-src 'self' 'unsafe-inline';
-        connect-src 'self' https://*.supabase.co https://api.anthropic.com https://nominatim.openstreetmap.org;
-        img-src 'self' data: blob: https://*.supabase.co https://*.tile.openstreetmap.org https://*.openstreetmap.org https://*.basemaps.cartocdn.com;
+        connect-src 'self' https://*.supabase.co https://api.anthropic.com https://nominatim.openstreetmap.org https://tile.openstreetmap.org https://*.tile.openstreetmap.org;
+        img-src 'self' data: blob: https://*.supabase.co https://*.tile.openstreetmap.org https://*.openstreetmap.org https://*.basemaps.cartocdn.com https://cyberjapandata.gsi.go.jp;
         font-src 'self' data:;
         frame-src 'none';
         object-src 'none';
@@ -18,7 +18,8 @@
       " />
 <title>タクロー — 勘と経験を、データに変える。</title>
     <link rel="manifest" href="/manifest.json" />
-    <!-- iOS PWA サポート -->
+    <!-- PWA サポート -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="タクロー" />

@@ -8,7 +8,7 @@ import {
   adminCreateNotification, adminFetchNotifications, adminFetchMetrics,
 } from "../lib/supabase";
 
-const ADMIN_EMAIL = "yoshito.takeuchi@gmail.com";
+const ADMIN_EMAIL = "white-t@hotmail.co.jp";
 
 const card = { backgroundColor:"#1a1a2e", border:"1px solid #2a2a4a", borderRadius:12, padding:"16px 18px", marginBottom:12 };
 const badge = (color) => ({ display:"inline-block", padding:"2px 10px", borderRadius:99, fontSize:11, fontWeight:700, backgroundColor:color+"22", color });

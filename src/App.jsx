@@ -3,30 +3,7 @@
 // React Native 移行時: この App.jsx を App.js にリネームし
 //   <div> → <View>、inline style → StyleSheet に置換する
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-import { useState, useEffect, useRef, Component } from "react";
-
-// ━━━ ErrorBoundary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-class ErrorBoundary extends Component {
-  constructor(props) { super(props); this.state = { error: null }; }
-  static getDerivedStateFromError(e) { return { error: e }; }
-  componentDidCatch(e, info) { console.error("[ErrorBoundary]", e, info); }
-  render() {
-    if (this.state.error) {
-      const msg = String(this.state.error?.message || this.state.error);
-      return (
-        <div style={{ padding:24, fontFamily:"monospace", fontSize:13, color:"#f87171", backgroundColor:"#1a0000", minHeight:"50vh" }}>
-          <div style={{ fontWeight:700, marginBottom:8 }}>⚠️ 画面描画エラー</div>
-          <div style={{ whiteSpace:"pre-wrap", wordBreak:"break-all", marginBottom:16 }}>{msg}</div>
-          <button onClick={()=>this.setState({error:null})}
-            style={{ padding:"8px 16px", backgroundColor:"#ef4444", color:"#fff", border:"none", borderRadius:8, cursor:"pointer" }}>
-            リトライ
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
+import { useState, useEffect, useRef } from "react";
 import { C, loadS, saveS, applyTheme, computeIsDark } from "./lib/constants";
 import { sanitizeProfile, isValidEmail, isValidPassword } from "./lib/validate";
 import { INITIAL_REPORTS, ALL_AREAS, AREA_MASTER } from "./data/mockData";
@@ -49,16 +26,12 @@ import {
   resetPasswordForEmail,
   ensureReferralCode,
   registerWithReferral,
-  saveMemoDict,
-  callTakuroChat,
 } from "./lib/supabase";
 
 // Screens
 import Dashboard          from "./screens/Dashboard";
 import ReportList, { ReportModal } from "./screens/ReportList";
 import UploadScreen       from "./screens/Upload";
-import EnglishPhrases     from "./screens/EnglishPhrases";
-import NewbieGuide        from "./screens/NewbieGuide";
 import InfoCenter         from "./screens/InfoCenter";
 import GuideScreen        from "./screens/Guide";
 import ShiftScreen        from "./screens/Shift";
@@ -68,13 +41,9 @@ import CommunityScreen    from "./screens/Community";
 import AdminScreen        from "./screens/Admin";
 import RankingScreen, { hasUnseenRanking } from "./screens/Ranking";
 import StatsScreen      from "./screens/Stats";
-import EventsScreen     from "./screens/EventsScreen";
-import MapScreen        from "./screens/MapScreen";
-import { registerServiceWorker } from "./lib/push";
 
 // Components
 import { BottomNav, Header, TakuroFAB } from "./components/Navigation";
-import TakuroChat from "./components/TakuroChat";
 import { AreaSettingModal }  from "./components/AreaFilter";
 import Tutorial from "./components/Tutorial";
 
@@ -162,19 +131,10 @@ function PWAInstallBanner() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function LoginScreen({ onLogin, onGuestLogin }) {
   const [step, setStep]   = useState("top");
-  const [form, setForm]   = useState({ name:"", email:"", password:"", company:"", workType:"隔日勤務", target:"" });
+  const [form, setForm]   = useState({ name:"", email:"", password:"", company:"", workType:"隔日勤務", target:"380000" });
   const [areas, setAreas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
-
-  const ua = navigator.userAgent;
-  const isAndroid = /Android/.test(ua);
-  const isWebView = (() => {
-    if (/FBAN|FBAV|Instagram|Line\/|Twitter/.test(ua)) return true;
-    if (/iPhone|iPad|iPod/.test(ua) && /AppleWebKit/.test(ua) && !/Safari/.test(ua)) return true;
-    if (isAndroid && /wv\)/.test(ua)) return true;
-    return false;
-  })();
 
   const toggleArea = a => setAreas(prev => prev.includes(a) ? prev.filter(x=>x!==a) : [...prev,a]);
 
@@ -197,7 +157,7 @@ function LoginScreen({ onLogin, onGuestLogin }) {
           ...sanitizeProfile({
             name: form.name, company_name: form.company,
             work_type: form.workType, areas,
-            monthly_target: parseInt(form.target) || null,
+            monthly_target: parseInt(form.target) || 380000,
           }),
         };
         await insertProfile(profileData);
@@ -239,12 +199,11 @@ function LoginScreen({ onLogin, onGuestLogin }) {
         name: profile?.name || data.user.email,
         company: profile?.company_name || "",
         workType: profile?.work_type || "隔日勤務",
-        target: profile?.monthly_target != null ? String(profile.monthly_target) : "",
+        target: String(profile?.monthly_target || 380000),
         plan: profile?.plan || "free",
         uploadCount: profile?.monthly_upload_count || 0,
         areas: profile?.areas || [],
         closing_day: profile?.closing_day ?? null,
-        memoDict: profile?.memo_dict || {},
         _returningUser: true,
       });
     }
@@ -278,21 +237,6 @@ function LoginScreen({ onLogin, onGuestLogin }) {
       </div>
 
       {error && <div style={{ backgroundColor:C.redGlow, border:`1px solid ${C.red}44`, borderRadius:10, padding:"10px 14px", marginBottom:14, fontSize:13, color:C.red, maxWidth:360, width:"100%" }}>{error}</div>}
-
-      {/* WebViewバナー */}
-      {isWebView && (
-        <div style={{ width:"100%", maxWidth:360, marginBottom:14, backgroundColor:"#FAEEDA", border:"1px solid #EF9F27", borderRadius:10, padding:"12px 14px", display:"flex", gap:10, alignItems:"flex-start" }}>
-          <span style={{ fontSize:18, flexShrink:0 }}>⚠️</span>
-          <div>
-            <div style={{ fontSize:13, fontWeight:700, color:"#633806", marginBottom:4 }}>アプリ内ブラウザではGoogleログインができません</div>
-            <div style={{ fontSize:12, color:"#854F0B", lineHeight:1.7, marginBottom:6 }}>LINEやSNSのリンクから開いている場合は、ブラウザで開き直してください。</div>
-            {isAndroid
-              ? <div style={{ fontSize:12, color:"#633806" }}>🤖 右上「⋮」→「他のアプリで開く」→ Chrome</div>
-              : <div style={{ fontSize:12, color:"#633806" }}>🍎 右下「…」→「ブラウザで開く」</div>
-            }
-          </div>
-        </div>
-      )}
 
       {/* トップ */}
       {step === "top" && (
@@ -575,8 +519,7 @@ export default function App() {
   const [appMode, setAppMode]   = useState(() => { const m = loadS("taxi_app_mode","simple"); return m === "standard" ? "simple" : m; });
   const [themeMode, setThemeMode] = useState(() => loadS("taxi_theme_mode","light"));
   const [themeVer, setThemeVer] = useState(0); // テーマ変更時に全体を再描画させるカウンター
-  // 規約確認は初回登録時のみ（ログイン前のブロッカーとして使わない）
-  const [consentDone, setConsentDone]       = useState(true);
+  const [consentDone, setConsentDone]       = useState(() => !!loadS("taxi_consent_done", false));
   const [onboardingDone, setOnboardingDone] = useState(() => !!loadS("taxi_onboarding_done", false));
   const [showTutorial,  setShowTutorial]  = useState(false);
   const [reports, setReports]   = useState(() => {
@@ -597,7 +540,6 @@ export default function App() {
   const [selectedForEdit, setSelectedForEdit] = useState(false);
   const [notif, setNotif]       = useState(() => loadS("taxi_notif", { delays:true, events:false, traffic:false, dailyTip:false, achievement:true, dailyResult:false }));
   const [showAreaModal, setShowAreaModal] = useState(false);
-  const [showTakuroChat, setShowTakuroChat] = useState(false);
   const [showAccountLink, setShowAccountLink] = useState(false);
   const [showClosingPrompt, setShowClosingPrompt] = useState(false);
   const [closingDayPick, setClosingDayPick] = useState(15);
@@ -638,7 +580,6 @@ export default function App() {
             upsertProfile({ id: session.user.id, monthly_upload_count: 0, upload_reset_month: currentMonth });
           }
 
-          // プロフィールがDBに存在 = 既存ユーザー → 必ずオンボーディングをスキップ
           localStorage.setItem("taxi_onboarding_done", "true");
           setOnboardingDone(true);
           setUser({
@@ -657,12 +598,10 @@ export default function App() {
             avatarUrl: profile.avatar_url || null,
             avatarPreset: profile.avatar_preset || null,
             closing_day: profile.closing_day ?? null,
-            memoDict: profile.memo_dict || {},
           });
-          const { data: reps, error: repsError } = await fetchReports(session.user.id);
-          if (!repsError && reps?.length) setReports(reps.map(r => ({ ...r, date: r.report_date })));
-          else if (!repsError) setReports([]);
-          // repsError時はキャッシュを保持（ネットワークエラー等で消えないように）
+          const { data: reps } = await fetchReports(session.user.id);
+          if (reps?.length) setReports(reps.map(r => ({ ...r, date: r.report_date })));
+          else setReports([]);
         } else {
           // Google/Apple OAuth 新規ユーザー → プロフィール作成してオンボーディングへ
           const oauthName = session.user.user_metadata?.full_name
@@ -673,7 +612,7 @@ export default function App() {
             id: session.user.id,
             name: oauthName,
             work_type: "隔日勤務",
-            monthly_target: null,
+            monthly_target: 380000,
             areas: [],
           });
           // ゲストデータの移行
@@ -715,7 +654,7 @@ export default function App() {
             name: oauthName,
             company: "",
             workType: "隔日勤務",
-            target: "",
+            target: "380000",
             plan: "free",
             uploadCount: 0,
             areas: [],
@@ -726,10 +665,8 @@ export default function App() {
     });
 
     // 認証状態の変化を監視
-    // SIGNED_OUT イベントのときだけログアウト処理する
-    // （TOKEN_REFRESHED などで一瞬 session が null になっても弾かないようにする）
-    const { data: { subscription } } = onAuthStateChange((session, event) => {
-      if (event === "SIGNED_OUT") { setUser(null); setReports([]); }
+    const { data: { subscription } } = onAuthStateChange(session => {
+      if (!session) { setUser(null); setReports([]); }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -787,9 +724,6 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // Service Worker 登録（プッシュ通知の前提）
-  useEffect(() => { registerServiceWorker(); }, []);
-
   if (!authReady) {
     return <div style={{ minHeight:"100vh", backgroundColor:C.bg, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted, fontFamily:"'Inter','Hiragino Sans',sans-serif" }}>読み込み中...</div>;
   }
@@ -814,13 +748,6 @@ export default function App() {
         // 再ログイン時は利用規約・締日モーダルをスキップ
         localStorage.setItem("taxi_consent_done", "true");
         saveS("taxi_closing_prompted", true);
-        // 再ログイン時にレポートをSupabaseから取得（getSessionは初回マウント時のみ走るため）
-        if (SUPABASE_READY && u.id) {
-          fetchReports(u.id).then(({ data: reps, error }) => {
-            if (!error && reps?.length) setReports(reps.map(r => ({ ...r, date: r.report_date })));
-            else if (!error) setReports([]);
-          });
-        }
       }
       // メール登録でゲストデータがある場合は移行
       if (u._migrationUserId && SUPABASE_READY) {
@@ -960,7 +887,6 @@ export default function App() {
         break_hours:       updated.break_hours,
         trouble_note:      updated.trouble_note,
         work_area:         updated.work_area,
-        rides:             updated.rides ?? null,
       });
     }
   };
@@ -999,18 +925,14 @@ export default function App() {
 
   const handleLogout = async () => {
     if (SUPABASE_READY) await signOut();
-    // ログアウト後も保持するフラグ
+    // 同意・オンボーディング・締日フラグはログアウト後も保持
     const consentFlag     = localStorage.getItem("taxi_consent_done");
     const onboardingFlag  = localStorage.getItem("taxi_onboarding_done");
-    const tutorialFlag    = localStorage.getItem("taxi_tutorial_done");
     const closingFlag     = localStorage.getItem("taxi_closing_prompted");
-    const themeFlag       = localStorage.getItem("taxi_theme_mode"); // カラーテーマを保持
     localStorage.clear();
     if (consentFlag)    localStorage.setItem("taxi_consent_done", consentFlag);
     if (onboardingFlag) localStorage.setItem("taxi_onboarding_done", onboardingFlag);
-    if (tutorialFlag)   localStorage.setItem("taxi_tutorial_done", tutorialFlag);
     if (closingFlag)    localStorage.setItem("taxi_closing_prompted", closingFlag);
-    if (themeFlag)      localStorage.setItem("taxi_theme_mode", themeFlag);
     setUser(null);
     setReports(INITIAL_REPORTS);
   };
@@ -1028,16 +950,12 @@ export default function App() {
     switch (tab) {
       case "dashboard": return <Dashboard reports={reports} user={user} onOpenReport={setSelected} onManageArea={()=>setShowAreaModal(true)} rankPrefs={rankPrefs} appMode={appMode} onGoShift={()=>handleSetTab("shift")} onUpdateReport={handleUpdateReport} onGoRanking={notif.dailyResult && hasNewRanking ? ()=>handleSetTab("ranking") : null} onUpdateUser={u=>setUser(u)}/>;
       case "list":      return <ReportList reports={reports} onSelect={r=>{setSelectedForEdit(false);setSelected(r);}} onEdit={r=>{setSelectedForEdit(true);setSelected(r);}}/>;
-      case "upload":    return <UploadScreen uploadCount={user.uploadCount||0} onSave={handleSave} reports={reports} user={user} onSaveMemoDict={async (dict) => { setUser(p=>({...p,memoDict:dict})); if(user?.id&&SUPABASE_READY)await saveMemoDict(user.id,dict); }}/>;
+      case "upload":    return <UploadScreen uploadCount={user.uploadCount||0} onSave={handleSave} reports={reports} user={user}/>;
       case "info":      return <InfoCenter notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} userAreas={userAreas} onManageArea={()=>setShowAreaModal(true)}/>;
       case "guide":     return <GuideScreen userAreas={userAreas} user={user}/>;
       case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")} user={user} onBack={()=>handleSetTab("dashboard")}/>;
-      case "settings":  return <Settings key={settingsSection||"settings"} appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={async u=>{ setUser(prev=>({...prev,...u})); if(SUPABASE_READY&&user?.id&&!user?._isGuest){const p={id:user.id};if(u.name!==undefined)p.name=u.name;if(u.workType!==undefined)p.work_type=u.workType;if(u.company!==undefined)p.company_name=u.company;if(u.target!==undefined)p.monthly_target=Number(u.target);if(u.closing_day!==undefined)p.closing_day=u.closing_day;if("avatar_url"in u)p.avatar_url=u.avatar_url;if("avatar_preset"in u)p.avatar_preset=u.avatar_preset;if(Object.keys(p).length>1)await upsertProfile(p);}}} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined} onOpenAdmin={()=>handleSetTab("admin")} onAccountLink={user?._isGuest ? ()=>setShowAccountLink(true) : undefined}/>;
-      case "events":    return <EventsScreen user={user} onBack={() => handleSetTab("dashboard")} />;
+      case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={async u=>{ setUser(prev=>({...prev,...u})); if(SUPABASE_READY&&user?.id&&!user?._isGuest){const p={id:user.id};if(u.name!==undefined)p.name=u.name;if(u.workType!==undefined)p.work_type=u.workType;if(u.company!==undefined)p.company_name=u.company;if(u.target!==undefined)p.monthly_target=Number(u.target);if(u.closing_day!==undefined)p.closing_day=u.closing_day;if("avatar_url"in u)p.avatar_url=u.avatar_url;if("avatar_preset"in u)p.avatar_preset=u.avatar_preset;if(Object.keys(p).length>1)await upsertProfile(p);}}} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined} onOpenAdmin={()=>handleSetTab("admin")} onAccountLink={user?._isGuest ? ()=>setShowAccountLink(true) : undefined}/>;
       case "community": return <CommunityScreen />;
-      case "english":   return <EnglishPhrases onBack={() => handleSetTab("dashboard")} />;
-      case "newbie":    return <NewbieGuide    onBack={() => handleSetTab("dashboard")} />;
-      case "map":       return <MapScreen reports={reports} user={user} />;
       case "ranking":   return <RankingScreen user={user} rankPrefs={rankPrefs} />;
       case "stats":     return <StatsScreen reports={reports} />;
       case "admin":     return <AdminScreen user={{ ...user, email: user.email || "" }} onExit={() => handleSetTab("dashboard")}/>;
@@ -1049,18 +967,9 @@ export default function App() {
   return (
     <div key={themeVer} style={{ minHeight:"100vh", backgroundColor:C.bg, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text, overflowX:"hidden" }}>
       <Header user={user} tab={tab} setTab={handleSetTab} appMode={appMode} onModeChange={setAppMode} alertsSeen={alertsSeen} onNavigateSettings={handleNavigateSettings} onManageArea={()=>setShowAreaModal(true)} hasNewRanking={hasNewRanking && notif.dailyResult} />
-      <div style={{ paddingTop:52 }}>
-        <ErrorBoundary key={`${tab}-${appMode}`}>{renderScreen()}</ErrorBoundary>
-      </div>
+      {renderScreen()}
       <ReportModal key={selected ? `${selected.id}-${selectedForEdit}` : "none"} report={selected} onClose={()=>{setSelected(null);setSelectedForEdit(false);}} onUpdate={handleUpdateReport} onDelete={handleDeleteReport} startInEdit={selectedForEdit}/>
-      <TakuroFAB onOpenChat={() => setShowTakuroChat(true)} />
-      {showTakuroChat && (
-        <TakuroChat
-          onClose={() => setShowTakuroChat(false)}
-          user={user}
-          callChat={callTakuroChat}
-        />
-      )}
+      <TakuroFAB setTab={handleSetTab} />
       <BottomNav tab={tab} setTab={handleSetTab} userAreas={userAreas} alertsSeen={alertsSeen}/>
       {showAreaModal && <AreaSettingModal userAreas={userAreas} onSave={areas=>{
         setUser(u=>({...u,areas}));

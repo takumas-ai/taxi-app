@@ -146,7 +146,7 @@ function DayDetailModal({ dateStr, shift, report, onClose, onDeleteShift, onGoUp
           <div style={{ backgroundColor:C.goldGlow, border:`1px solid ${C.gold}44`, borderRadius:10, padding:14, marginBottom:12 }}>
             <div style={{ fontSize:12, color:C.gold, fontWeight:700, marginBottom:6 }}>💴 日報入力済み</div>
             <div style={{ display:"flex", justifyContent:"space-between" }}>
-              <div><div style={{ fontSize:10, color:C.muted }}>総売上（税抜）</div><div style={{ fontSize:18, fontWeight:800, color:C.gold }}>{fmt(report.gross_sales)}円</div></div>
+              <div><div style={{ fontSize:10, color:C.muted }}>総売上</div><div style={{ fontSize:18, fontWeight:800, color:C.gold }}>{fmt(report.gross_sales)}円</div></div>
               <div><div style={{ fontSize:10, color:C.muted }}>営業回数</div><div style={{ fontSize:18, fontWeight:800 }}>{report.ride_count}回</div></div>
             </div>
           </div>

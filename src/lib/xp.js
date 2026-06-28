@@ -109,7 +109,7 @@ export function processReport(uploadCount, earnedBadges) {
 
 export const MISSIONS = [
   { id: "daily_report",  icon: "📝", name: "今日の日報を投稿する",      xp: 15, type: "daily",  check: (r) => !!r },
-  { id: "target_hit",    icon: "💰", name: "売上目標を達成する",         xp: 30, type: "daily",  check: (r, user) => r && parseInt(user.target) > 0 && parseInt(r.gross_sales) >= parseInt(user.target) },
+  { id: "target_hit",    icon: "💰", name: "売上目標を達成する",         xp: 30, type: "daily",  check: (r, user) => r && parseInt(r.gross_sales) >= parseInt(user.target || 380000) },
   { id: "ride_20",       icon: "🚗", name: "乗車20回以上を記録する",     xp: 20, type: "daily",  check: (r) => r && (r.ride_count || 0) >= 20 },
   { id: "streak_3",      icon: "🔥", name: "3日連続でログインする",      xp: 50, type: "weekly", check: (_, user) => (user.streakDays || 0) >= 3 },
 ];

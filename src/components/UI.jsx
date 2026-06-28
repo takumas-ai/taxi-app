@@ -3,7 +3,6 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 import { useState } from "react";
 import { C } from "../lib/constants";
-import { AREA_MASTER } from "../data/mockData";
 
 export function Card({ children, style={}, onClick }) {
   const [h, setH] = useState(false);
@@ -76,6 +75,7 @@ export function Divider({ label }) {
 }
 
 export function AreaBadges({ areas=[] }) {
+  const { AREA_MASTER } = require("../data/mockData");
   return (
     <span style={{ display:"inline-flex", gap:4, flexWrap:"wrap" }}>
       {areas.map(a => (

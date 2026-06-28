@@ -1,7 +1,7 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ナビゲーションコンポーネント
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { C, loadS, saveS } from "../lib/constants";
 import { MOCK_DELAYS } from "../data/mockData";
 import { ZONE_META } from "../data/trafficZones";
@@ -19,7 +19,7 @@ export function BottomNav({ tab, setTab, userAreas=[], alertsSeen=false }) {
     { id:"list",       icon:"📋", label:"日報"     },
     { id:"upload",     icon:"＋", label:"記録",  special:true },
     { id:"guide",      icon:"📍", label:"ガイド"   },
-    { id:"map",        icon:"🗺️", label:"マップ" },
+    { id:"community",  icon:"💬", label:"コミュニティ" },
   ];
 
   const isActive = id => {
@@ -240,51 +240,36 @@ function BusinessPointModal({ onClose }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ハンバーガーメニュー（左ドロワー）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSettings, onManageArea, hasNewRanking, eventCount = 0 }) {
-  // ドロワー表示中はbodyスクロールをロック（iOS対応）
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
-  }, []);
-
+function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSettings, onManageArea, hasNewRanking }) {
   const items = [
-    { icon:"📣", label:"イベント",    action:()=>{ setTab("events"); onClose(); }, badge: eventCount > 0 ? eventCount : null },
-    { icon:"📈", label:"統計",        action:()=>{ setTab("stats"); onClose(); } },
-    { icon:"🏆", label:"ランキング",  action:()=>{ setTab("ranking"); onClose(); }, badge: hasNewRanking ? "NEW" : null },
-    { icon:"📍", label:"マイポイント",action:()=>{ onOpenBizPoints(); onClose(); } },
-    { icon:"🎓", label:"新人コース",  action:()=>{ setTab("newbie"); onClose(); } },
-    { icon:"🌏", label:"英語フレーズ",action:()=>{ setTab("english"); onClose(); } },
-    { icon:"💬", label:"コミュニティ",action:()=>{ setTab("community"); onClose(); } },
+    { icon:"📈", label:"統計",             action:()=>{ setTab("stats"); onClose(); } },
+    { icon:"🏆", label:"ランキング",       action:()=>{ setTab("ranking"); onClose(); }, badge: hasNewRanking },
+    { icon:"🗺️", label:"エリア設定",       action:()=>{ onManageArea?.(); onClose(); } },
+    { icon:"📍", label:"マイポイント",       action:()=>{ onOpenBizPoints(); onClose(); } },
+    { icon:"💴", label:"手取り設定",       action:()=>{ onNavigateSettings("takepay"); onClose(); } },
   ];
 
   return (
     <>
       {/* オーバーレイ */}
-      <div style={{ position:"fixed", inset:0, backgroundColor:"#00000066", zIndex:150 }} onClick={onClose} onTouchMove={e=>e.preventDefault()}/>
+      <div style={{ position:"fixed", inset:0, backgroundColor:"#00000066", zIndex:150 }} onClick={onClose}/>
 
       {/* ドロワー本体 */}
-      <div style={{ position:"fixed", top:0, left:0, bottom:0, width:280, maxWidth:"80vw", backgroundColor:C.surface, zIndex:160, display:"flex", flexDirection:"column", boxShadow:"4px 0 24px #00000033", overscrollBehavior:"contain" }}>
+      <div style={{ position:"fixed", top:0, left:0, bottom:0, width:280, maxWidth:"80vw", backgroundColor:C.surface, zIndex:160, display:"flex", flexDirection:"column", boxShadow:"4px 0 24px #00000033" }}>
 
         {/* ユーザープロフィール */}
-        <div style={{ padding:"44px 16px 12px", backgroundColor:C.card, borderBottom:`1px solid ${C.border}` }}>
-          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <UserAvatar avatarUrl={user?.avatarUrl} avatarPreset={user?.avatarPreset} size={40} />
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:14, fontWeight:800, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user?.name || "ゲスト"}</div>
-              {user?.workType && <div style={{ fontSize:11, color:C.muted }}>{user.workType}</div>}
-            </div>
-            <div
-              onClick={()=>{ onNavigateSettings("profile"); onClose(); }}
-              style={{ fontSize:11, color:C.accentLight, cursor:"pointer", padding:"6px 10px", borderRadius:8, border:`1px solid ${C.accentLight}44`, backgroundColor:C.accentLight+"11", fontWeight:700, whiteSpace:"nowrap", flexShrink:0 }}
-            >
-              編集
-            </div>
+        <div style={{ padding:"52px 20px 20px", backgroundColor:C.card, borderBottom:`1px solid ${C.border}` }}>
+          <div style={{ marginBottom:10 }}>
+            <UserAvatar avatarUrl={user?.avatarUrl} avatarPreset={user?.avatarPreset} size={48} />
           </div>
+          <div style={{ fontSize:15, fontWeight:800, color:C.text }}>{user?.name || "ゲスト"}</div>
+          <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{user?.company || ""}</div>
+          {user?.workType && <div style={{ display:"inline-block", marginTop:6, fontSize:10, backgroundColor:C.accentGlow, color:C.accentLight, border:`1px solid ${C.accentLight}44`, borderRadius:99, padding:"2px 10px", fontWeight:700 }}>{user.workType}</div>}
+          <div onClick={()=>{ onNavigateSettings("profile"); onClose(); }} style={{ marginTop:10, display:"inline-block", fontSize:12, color:C.accentLight, cursor:"pointer", padding:"5px 12px", borderRadius:8, border:`1px solid ${C.accentLight}44`, backgroundColor:C.accentLight+"11" }}>✏️ プロフィールを編集</div>
         </div>
 
         {/* メニュー項目 */}
-        <div style={{ flex:1, overflowY:"auto", padding:"12px 0", overscrollBehavior:"contain" }}>
+        <div style={{ flex:1, overflowY:"auto", padding:"12px 0" }}>
           {items.map(item => (
             <div key={item.label} onClick={item.action}
               style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 20px", cursor:"pointer", transition:"background 0.1s" }}
@@ -293,10 +278,8 @@ function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSet
             >
               <span style={{ fontSize:18, width:24, textAlign:"center" }}>{item.icon}</span>
               <span style={{ fontSize:14, color:C.text, fontWeight:500 }}>{item.label}</span>
-              {item.badge != null && (
-                <span style={{ marginLeft:"auto", backgroundColor:C.red, color:"#fff", fontSize:9, fontWeight:700, borderRadius:99, padding:"2px 7px", minWidth:18, textAlign:"center" }}>
-                  {item.badge}
-                </span>
+              {item.badge && (
+                <span style={{ marginLeft:"auto", backgroundColor:C.red, color:"#fff", fontSize:9, fontWeight:700, borderRadius:99, padding:"2px 7px" }}>NEW</span>
               )}
             </div>
           ))}
@@ -330,11 +313,24 @@ function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSet
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // タクロー浮遊ボタン（右下常時表示）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-export function TakuroFAB({ onOpenChat }) {
+export function TakuroFAB({ setTab }) {
+  const [visible, setVisible] = useState(() => loadS("taxi_takuro_fab", true));
+
+  const hide = (e) => {
+    e.stopPropagation();
+    setVisible(false);
+    saveS("taxi_takuro_fab", false);
+  };
+
+  if (!visible) return null;
+
   return (
     <div style={{ position:"fixed", bottom:90, right:16, zIndex:49 }}>
+      {/* ×ボタン */}
+      <button onClick={hide} style={{ position:"absolute", top:-6, right:-6, width:18, height:18, borderRadius:"50%", backgroundColor:C.muted, border:"none", color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, zIndex:1 }}>×</button>
+
       {/* フクロウアイコン */}
-      <div onClick={onOpenChat}
+      <div onClick={()=>setTab("feedback")}
         style={{ width:52, height:52, borderRadius:"50%", backgroundColor:C.surface, border:`2px solid ${C.accentLight}66`, boxShadow:`0 4px 20px ${C.accentLight}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, cursor:"pointer", transition:"transform 0.2s" }}
         onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"}
         onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
@@ -351,10 +347,6 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
   const [showModeSheet, setShowModeSheet] = useState(false);
   const [showBizPoints, setShowBizPoints] = useState(false);
 
-  // 今日チェック済みイベント数（バッジ表示用）
-  const eventChecks = loadS("taxi_event_checks", {});
-  const checkedEventCount = Object.values(eventChecks).filter(Boolean).length;
-
   const userAreas = user?.areas || [];
   const alertCount = MOCK_DELAYS.filter(d =>
     d.status !== "normal" && d.opportunity && d.severity === "high" &&
@@ -365,7 +357,7 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
 
   return (
     <>
-      <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 14px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between", position:"fixed", top:0, left:0, right:0, zIndex:40, maxWidth:"100vw" }}>
+      <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 14px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:40 }}>
 
         {/* 左：ハンバーガーメニュー ＋ エリアチップ */}
         <div style={{ display:"flex", alignItems:"center", gap:6, flex:1, minWidth:0 }}>
@@ -411,6 +403,12 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
             <span style={{ fontSize:9, color:C.muted }}>▾</span>
           </div>
 
+          {/* 強制リロード */}
+          <div onClick={() => window.location.reload()} title="最新版に更新"
+            style={{ cursor:"pointer", padding:"5px 6px", borderRadius:10, fontSize:15, opacity:0.55, lineHeight:1, flexShrink:0 }}>
+            🔄
+          </div>
+
           {/* 通知 */}
           <div onClick={() => setTab("info")} style={{ position:"relative", cursor:"pointer", padding:"5px 6px", borderRadius:10, backgroundColor:tab==="info"?C.accentGlow:"transparent", flexShrink:0 }}>
             <span style={{ fontSize:18, opacity:tab==="info"?1:0.6 }}>🔔</span>
@@ -429,7 +427,6 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
           onNavigateSettings={onNavigateSettings}
           onManageArea={onManageArea}
           hasNewRanking={hasNewRanking}
-          eventCount={checkedEventCount}
         />
       )}
 

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { C, fmt, occ, dow, hourly } from "../lib/constants";
 import { Card, Badge, Btn } from "../components/UI";
 import { WORK_AREAS_BY_PARENT } from "../data/mockData";
@@ -8,7 +8,7 @@ import { validateReportForm, sanitizeReportData } from "../lib/validate";
 function Field({ label, fk, form, setForm, errors, type="number", ph="", span=1 }) {
   return (
     <div style={{ gridColumn:`span ${span}` }}>
-      <div style={{ fontSize:13, fontWeight:600, color:errors[fk]?C.red:C.muted, marginBottom:7 }}>
+      <div style={{ fontSize:11, color:errors[fk]?C.red:C.muted, marginBottom:4 }}>
         {label}{errors[fk]&&<span style={{ marginLeft:4, color:C.red }}>{errors[fk]}</span>}
       </div>
       <input
@@ -16,56 +16,8 @@ function Field({ label, fk, form, setForm, errors, type="number", ph="", span=1 
         value={form[fk]}
         placeholder={ph}
         onChange={e => { setForm(p=>({...p,[fk]:e.target.value})); }}
-        style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${errors[fk]?C.red:C.border}`, borderRadius:10, padding:"15px 16px", color:C.text, fontSize:17, outline:"none" }}
+        style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${errors[fk]?C.red:C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:14, outline:"none" }}
       />
-    </div>
-  );
-}
-
-// ━━━ 調整欄（±切替） ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function AdjustmentInput({ value, onChange }) {
-  const num = parseInt(value) || 0;
-  const isNeg = num < 0;
-  const absVal = Math.abs(num);
-  return (
-    <div>
-      <div style={{ fontSize:13, fontWeight:600, color:C.muted, marginBottom:7 }}>調整（±円）</div>
-      <div style={{ display:"flex", gap:8 }}>
-        <div style={{ display:"flex", borderRadius:10, border:`1px solid ${C.border}`, overflow:"hidden", flexShrink:0 }}>
-          <button onClick={() => onChange(String(absVal))} style={{ padding:"0 22px", fontSize:20, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:!isNeg?C.accentLight+"33":"transparent", color:!isNeg?C.accentLight:C.muted }}>＋</button>
-          <button onClick={() => onChange(String(-absVal))} style={{ padding:"0 22px", fontSize:20, fontWeight:700, cursor:"pointer", border:"none", borderLeft:`1px solid ${C.border}`, backgroundColor:isNeg?C.red+"33":"transparent", color:isNeg?C.red:C.muted }}>－</button>
-        </div>
-        <input type="number" value={absVal} min="0" placeholder="0" onChange={e=>onChange(String(isNeg?-(parseInt(e.target.value)||0):(parseInt(e.target.value)||0)))}
-          style={{ flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:10, padding:"15px 16px", color:C.text, fontSize:17, outline:"none", boxSizing:"border-box" }}/>
-      </div>
-      {num!==0&&<div style={{ fontSize:13, color:num>0?C.green:C.red, marginTop:6, textAlign:"right", fontWeight:700 }}>{num>0?"+":""}{num.toLocaleString()}円</div>}
-    </div>
-  );
-}
-
-// ━━━ 勤務時間ドロップダウン ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function WorkHoursPicker({ value, onChange }) {
-  const totalMin = Math.round((parseFloat(value) || 0) * 60);
-  const selH = Math.min(20, Math.max(0, Math.floor(totalMin / 60)));
-  const selM = [0,15,30,45].reduce((a,b) => Math.abs(b-(totalMin%60))<Math.abs(a-(totalMin%60))?b:a, 0);
-  const update = (h, m) => onChange(String(parseFloat((h + m/60).toFixed(4))));
-  const wrap = { flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden" };
-  const sel  = { width:"100%", backgroundColor:"transparent", border:"none", padding:"15px 16px", color:C.text, fontSize:17, outline:"none" };
-  return (
-    <div>
-      <div style={{ fontSize:13, fontWeight:600, color:C.muted, marginBottom:7 }}>勤務時間</div>
-      <div style={{ display:"flex", gap:8 }}>
-        <div style={wrap}>
-          <select value={selH} onChange={e => update(Number(e.target.value), selM)} style={sel}>
-            {Array.from({length:21},(_,i)=>i).map(h => <option key={h} value={h}>{h}時間</option>)}
-          </select>
-        </div>
-        <div style={wrap}>
-          <select value={selM} onChange={e => update(selH, Number(e.target.value))} style={sel}>
-            {[0,15,30,45].map(m => <option key={m} value={m}>{String(m).padStart(2,"0")}分</option>)}
-          </select>
-        </div>
-      </div>
     </div>
   );
 }
@@ -78,16 +30,12 @@ function buildForm(report) {
     cash_sales:         report.cash_sales         != null ? String(report.cash_sales)         : "",
     card_sales:         report.card_sales         != null ? String(report.card_sales)         : "",
     app_sales:          report.app_sales          != null ? String(report.app_sales)          : "",
-    emoney_sales:       report.emoney_sales       != null ? String(report.emoney_sales)       : "",
-    ticket_sales:       report.ticket_sales       != null ? String(report.ticket_sales)       : "",
     highway_fee:        report.highway_fee        != null ? String(report.highway_fee)        : "0",
-    adjustment:         report.adjustment         != null ? String(report.adjustment)         : "0",
     ride_count:         report.ride_count         != null ? String(report.ride_count)         : "",
     total_distance:     report.total_distance     != null ? String(report.total_distance)     : "",
     occupied_distance:  report.occupied_distance  != null ? String(report.occupied_distance)  : "",
     work_hours:         report.work_hours         != null ? String(report.work_hours)         : "",
     break_hours:        report.break_hours        != null ? String(report.break_hours)        : "",
-    tip_amount:         report.tip_amount         != null ? String(report.tip_amount)         : "",
     trouble_note:       report.trouble_note || "",
     work_area:          report.work_area   || "",
     dispatch_type:      report.dispatch_type || "",
@@ -350,38 +298,63 @@ export function ReportModal({ report, onClose, onUpdate, onDelete, startInEdit =
           <div style={{ fontSize:16, fontWeight:800 }}>日報を編集</div>
         </div>
 
-        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-          <Field label="日付" fk="date" form={form} setForm={setForm} errors={errors} type="date"/>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+          <Field label="日付" fk="date" form={form} setForm={setForm} errors={errors} type="date" span={2}/>
+          <Field label="総売上（円）" fk="gross_sales" form={form} setForm={setForm} errors={errors} ph="62000"/>
           <Field label="営業回数（回）" fk="ride_count" form={form} setForm={setForm} errors={errors} ph="30"/>
-          <Field label="売上（税込）（円）" fk="gross_sales" form={form} setForm={setForm} errors={errors} ph="62000"/>
-          <div>
-            <div style={{ fontSize:13, fontWeight:600, color:C.muted, marginBottom:7 }}>売上（税抜）（自動計算）</div>
-            <div style={{ backgroundColor:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"15px 16px", color:C.muted, fontSize:17 }}>
-              {form.gross_sales ? Math.round(parseInt(form.gross_sales) / 1.1).toLocaleString() : "—"} 円
-            </div>
-          </div>
-          <Field label="高速料金（円）" fk="highway_fee" form={form} setForm={setForm} errors={errors} ph="800"/>
-          <AdjustmentInput value={form.adjustment} onChange={v=>setForm(p=>({...p,adjustment:v}))} />
           <Field label="現金売上（円）" fk="cash_sales" form={form} setForm={setForm} errors={errors} ph="37000"/>
-          <Field label="アプリ決済（円）" fk="app_sales" form={form} setForm={setForm} errors={errors} ph="7000"/>
-          <Field label="クレジットカード（円）" fk="card_sales" form={form} setForm={setForm} errors={errors} ph="18000"/>
-          <Field label="電子マネー（円）" fk="emoney_sales" form={form} setForm={setForm} errors={errors} ph="0"/>
-          <Field label="タクシーチケット（円）" fk="ticket_sales" form={form} setForm={setForm} errors={errors} ph="0"/>
+          <Field label="カード売上（円）" fk="card_sales" form={form} setForm={setForm} errors={errors} ph="18000"/>
+          <Field label="配車アプリ（円）" fk="app_sales" form={form} setForm={setForm} errors={errors} ph="7000" span={2}/>
+        </div>
+
+        {/* 配車アプリ・無線の種類 */}
+        <div style={{ marginTop:12 }}>
+          <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>配車アプリ・無線の種類 <span style={{ fontSize:10, backgroundColor:"#2a2a4a", color:C.muted, borderRadius:4, padding:"1px 5px", marginLeft:4 }}>任意</span></div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+            {["GO（ゴー）","S.RIDE（エスライド）","DiDi（ディディ）","Uber Taxi","NearMe","全日本無線","東京無線","その他"].map(opt => (
+              <button key={opt} type="button"
+                onClick={() => setForm(p => ({ ...p, dispatch_type: p.dispatch_type === opt ? "" : opt }))}
+                style={{ padding:"7px 14px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer", border:`1.5px solid ${form.dispatch_type === opt ? C.accentLight : C.border}`, backgroundColor: form.dispatch_type === opt ? C.accentLight+"22" : "transparent", color: form.dispatch_type === opt ? C.accentLight : C.muted }}>
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:12 }}>
           <Field label="走行距離（km）" fk="total_distance" form={form} setForm={setForm} errors={errors} ph="300"/>
           <Field label="実車距離（km）" fk="occupied_distance" form={form} setForm={setForm} errors={errors} ph="155"/>
-          <WorkHoursPicker value={form.work_hours} onChange={v=>setForm(p=>({...p,work_hours:v}))} />
-          <Field label="チップ（円）" fk="tip_amount" form={form} setForm={setForm} errors={errors} ph="0"/>
+          <Field label="勤務時間（h）" fk="work_hours" form={form} setForm={setForm} errors={errors} ph="13.5"/>
+          <Field label="休憩時間（h）" fk="break_hours" form={form} setForm={setForm} errors={errors} ph="1.0"/>
+          <Field label="高速料金（円）" fk="highway_fee" form={form} setForm={setForm} errors={errors} ph="800" span={2}/>
+        </div>
+
+        {/* エリア */}
+        <div style={{ marginTop:12 }}>
+          <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>📍 メインエリア</div>
+          <select
+            value={form.work_area}
+            onChange={e=>setForm(p=>({...p,work_area:e.target.value}))}
+            style={{ width:"100%", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:form.work_area?C.text:C.muted, fontSize:14, outline:"none" }}
+          >
+            <option value="">選択してください（任意）</option>
+            {Object.entries(WORK_AREAS_BY_PARENT).map(([parent, areas]) => (
+              <optgroup key={parent} label={parent}>
+                {areas.map(a => <option key={a} value={a}>{a}</option>)}
+              </optgroup>
+            ))}
+          </select>
         </div>
 
         {/* 備考 */}
         <div style={{ marginTop:12 }}>
-          <div style={{ fontSize:13, fontWeight:600, color:C.muted, marginBottom:7 }}>事故・トラブル備考</div>
+          <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>事故・トラブル備考</div>
           <textarea
             value={form.trouble_note}
             onChange={e=>setForm(p=>({...p,trouble_note:e.target.value}))}
             placeholder="特記事項があれば（任意）"
             rows={2}
-            style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:10, padding:"15px 16px", color:C.text, fontSize:17, outline:"none", resize:"none" }}
+            style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:13, outline:"none", resize:"none" }}
           />
         </div>
 
@@ -610,79 +583,17 @@ function SalesPointAnalysis() {
   );
 }
 
-const DISPATCH_OPTIONS = ["GO（ゴー）","S.RIDE（エスライド）","DiDi（ディディ）","Uber Taxi","NearMe","全日本無線","東京無線","その他"];
-
 export default function ReportList({ reports, onSelect, onEdit }) {
-  const [view, setView]   = useState("list");
+  const [view, setView]   = useState("list"); // "list" | "monthly" | "spotAnalysis"
   const [filter, setFilter] = useState("all");
   const [sort, setSort] = useState("date");
-
-  // ─── 一括選択・編集 ────────────────────────────────
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState(new Set());
-  const [bulkDispatch, setBulkDispatch] = useState("");
-  const [bulkArea, setBulkArea] = useState("");
-  const [undoStack, setUndoStack] = useState([]); // [{ ids, prevReports }]
-  const [undoMsg, setUndoMsg] = useState("");
-
   const avg = reports.length ? Math.round(reports.reduce((s,r)=>s+r.gross_sales,0)/reports.length) : 0;
   const filtered = reports
     .filter(r => r && r.gross_sales)
     .filter(r => filter==="high"?r.gross_sales>=65000:filter==="low"?r.gross_sales<58000:true)
     .sort((a,b) => sort==="sales"?b.gross_sales-a.gross_sales:sort==="occ"?occ(b)-occ(a):b.date.localeCompare(a.date));
-
-  function toggleSelect(id) {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-  function toggleSelectAll() {
-    if (selectedIds.size === filtered.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filtered.map(r => r.id)));
-    }
-  }
-
-  function applyBulk() {
-    if (selectedIds.size === 0 || (!bulkDispatch && !bulkArea)) return;
-    // undoスタックに現在の状態を積む
-    const targets = reports.filter(r => selectedIds.has(r.id));
-    setUndoStack(prev => [...prev.slice(-4), { ids: [...selectedIds], prevReports: targets.map(r => ({ ...r })) }]);
-    // 一括更新
-    targets.forEach(r => {
-      const updated = { ...r };
-      if (bulkDispatch) updated.dispatch_type = bulkDispatch;
-      if (bulkArea)     updated.work_area     = bulkArea;
-      onEdit?.(updated);
-    });
-    setUndoMsg(`${targets.length}件を更新しました`);
-    setTimeout(() => setUndoMsg(""), 4000);
-    setSelectedIds(new Set());
-    setBulkDispatch("");
-    setBulkArea("");
-  }
-
-  function handleUndo() {
-    const last = undoStack[undoStack.length - 1];
-    if (!last) return;
-    last.prevReports.forEach(r => onEdit?.(r));
-    setUndoStack(prev => prev.slice(0, -1));
-    setUndoMsg("変更を元に戻しました");
-    setTimeout(() => setUndoMsg(""), 3000);
-  }
-
-  function exitSelectMode() {
-    setSelectMode(false);
-    setSelectedIds(new Set());
-    setBulkDispatch("");
-    setBulkArea("");
-  }
-
   return (
-    <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 140px" }}>
+    <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
       {/* ビュー切り替えタブ */}
       <div style={{ display:"flex", gap:6, marginBottom:14, backgroundColor:C.card, borderRadius:12, padding:4, border:`1px solid ${C.border}` }}>
         {[["list","📋 日報一覧"],["monthly","📅 月別統計"],["spotAnalysis","📊 分析"]].map(([v,l])=>(
@@ -690,159 +601,60 @@ export default function ReportList({ reports, onSelect, onEdit }) {
         ))}
       </div>
 
+      {/* 月別統計ビュー */}
       {view === "monthly" && <MonthlyStats reports={reports}/>}
+
+      {/* 営業ポイント分析ビュー */}
       {view === "spotAnalysis" && <SalesPointAnalysis />}
 
+      {/* 日報一覧ビュー */}
       {view === "list" && <>
-        {/* フィルター行 + 選択ボタン */}
-        <div style={{ display:"flex", gap:8, marginBottom:10, alignItems:"center" }}>
-          {!selectMode ? (
-            <>
-              {[["all","すべて"],["high","高売上"],["low","要改善"]].map(([v,l])=>(
-                <div key={v} onClick={()=>setFilter(v)} style={{ padding:"6px 12px", borderRadius:99, fontSize:12, fontWeight:filter===v?700:400, backgroundColor:filter===v?C.accentLight+"22":C.card, color:filter===v?C.accentLight:C.muted, border:`1px solid ${filter===v?C.accentLight+"44":C.border}`, cursor:"pointer" }}>{l}</div>
-              ))}
-              <div style={{ flex:1 }}/>
-              <select value={sort} onChange={e=>setSort(e.target.value)} style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:8, padding:"6px 10px", color:C.sub, fontSize:12, outline:"none" }}>
-                <option value="date">日付順</option><option value="sales">売上順</option><option value="occ">実車率順</option>
-              </select>
-              {onEdit && (
-                <button onClick={() => setSelectMode(true)}
-                  style={{ padding:"6px 12px", borderRadius:8, fontSize:12, fontWeight:700, border:`1px solid ${C.border}`, backgroundColor:C.card, color:C.muted, cursor:"pointer" }}>
-                  選択
-                </button>
-              )}
-            </>
-          ) : (
-            <>
-              <button onClick={toggleSelectAll}
-                style={{ padding:"6px 12px", borderRadius:8, fontSize:12, fontWeight:700, border:`1px solid ${C.accentLight}`, backgroundColor:C.accentGlow, color:C.accentLight, cursor:"pointer" }}>
-                {selectedIds.size === filtered.length ? "全解除" : "全選択"}
-              </button>
-              <span style={{ fontSize:12, color:C.muted }}>{selectedIds.size}件選択</span>
-              <div style={{ flex:1 }}/>
-              <button onClick={exitSelectMode}
-                style={{ padding:"6px 12px", borderRadius:8, fontSize:12, border:"none", backgroundColor:"transparent", color:C.muted, cursor:"pointer" }}>
-                ✕ キャンセル
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* 一括設定パネル（選択モード時） */}
-        {selectMode && (
-          <div style={{ backgroundColor:C.card, border:`1px solid ${C.accentLight}44`, borderRadius:12, padding:"14px", marginBottom:12 }}>
-            <div style={{ fontSize:12, fontWeight:800, color:C.accentLight, marginBottom:10 }}>✏️ 一括設定（選択した{selectedIds.size}件）</div>
-            {/* 配車アプリ */}
-            <div style={{ marginBottom:10 }}>
-              <div style={{ fontSize:11, color:C.muted, marginBottom:6 }}>配車アプリ・無線</div>
-              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                {DISPATCH_OPTIONS.map(opt => (
-                  <button key={opt} onClick={() => setBulkDispatch(d => d === opt ? "" : opt)}
-                    style={{ padding:"5px 10px", borderRadius:20, fontSize:11, fontWeight:600, cursor:"pointer",
-                      border:`1.5px solid ${bulkDispatch === opt ? C.accentLight : C.border}`,
-                      backgroundColor: bulkDispatch === opt ? C.accentLight+"22" : "transparent",
-                      color: bulkDispatch === opt ? C.accentLight : C.muted }}>
-                    {opt}
-                  </button>
-                ))}
+      <div style={{ display:"flex", gap:8, marginBottom:10, alignItems:"center" }}>
+        {[["all","すべて"],["high","高売上"],["low","要改善"]].map(([v,l])=>(
+          <div key={v} onClick={()=>setFilter(v)} style={{ padding:"6px 12px", borderRadius:99, fontSize:12, fontWeight:filter===v?700:400, backgroundColor:filter===v?C.accentLight+"22":C.card, color:filter===v?C.accentLight:C.muted, border:`1px solid ${filter===v?C.accentLight+"44":C.border}`, cursor:"pointer" }}>{l}</div>
+        ))}
+        <div style={{ flex:1 }}/>
+        <select value={sort} onChange={e=>setSort(e.target.value)} style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:8, padding:"6px 10px", color:C.sub, fontSize:12, outline:"none" }}>
+          <option value="date">日付順</option><option value="sales">売上順</option><option value="occ">実車率順</option>
+        </select>
+      </div>
+      <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>{filtered.length}件</div>
+      {filtered.map(r => {
+        const or=occ(r), oc=or>=55?C.green:or>=45?C.gold:C.red, diff=r.gross_sales-avg;
+        return (
+          <Card key={r.id} onClick={()=>onSelect(r)} style={{ padding:"14px" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+              <div>
+                <div style={{ fontSize:11, color:C.muted }}>{r.date}（{dow(r.date)}）</div>
+                <div style={{ fontSize:22, fontWeight:800, marginTop:2 }}>{fmt(r.gross_sales)}<span style={{ fontSize:11, color:C.muted, marginLeft:3 }}>円</span></div>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
+                <Badge color={oc}>実車率 {or}%</Badge>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <div style={{ fontSize:11, color:diff>=0?C.green:C.red, fontWeight:700 }}>{diff>=0?"+":""}{fmt(diff)}円</div>
+                  {onEdit && (
+                    <button
+                      onClick={e=>{ e.stopPropagation(); onEdit(r); }}
+                      style={{ fontSize:11, color:C.accentLight, background:"none", border:`1px solid ${C.accentLight}44`, borderRadius:6, padding:"2px 8px", cursor:"pointer" }}
+                    >✏️</button>
+                  )}
+                </div>
               </div>
             </div>
-            {/* エリア */}
-            <div style={{ marginBottom:12 }}>
-              <div style={{ fontSize:11, color:C.muted, marginBottom:6 }}>エリア</div>
-              <select value={bulkArea} onChange={e => setBulkArea(e.target.value)}
-                style={{ width:"100%", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"9px 12px", color:bulkArea?C.text:C.muted, fontSize:13, outline:"none" }}>
-                <option value="">（変更しない）</option>
-                {Object.entries(WORK_AREAS_BY_PARENT).map(([parent, areas]) => (
-                  <optgroup key={parent} label={parent}>
-                    {areas.map(a => <option key={a} value={a}>{a}</option>)}
-                  </optgroup>
-                ))}
-              </select>
+            <div style={{ display:"flex", gap:12, fontSize:11, color:C.muted }}>
+              <span>🚗 {r.ride_count}回</span>
+              <span>📍 {r.total_distance}km</span>
+              <span>⏱ {fmt(hourly(r))}円/h</span>
+              {r.trouble_note&&<span style={{ color:C.red }}>⚠️</span>}
             </div>
-            <div style={{ display:"flex", gap:8 }}>
-              <button onClick={applyBulk} disabled={selectedIds.size === 0 || (!bulkDispatch && !bulkArea)}
-                style={{ flex:2, padding:"11px 0", borderRadius:10, fontSize:13, fontWeight:800, cursor:selectedIds.size > 0 && (bulkDispatch || bulkArea)?"pointer":"not-allowed",
-                  border:"none", backgroundColor: selectedIds.size > 0 && (bulkDispatch || bulkArea) ? C.accentLight : C.border,
-                  color:"#fff", opacity: selectedIds.size > 0 && (bulkDispatch || bulkArea) ? 1 : 0.5 }}>
-                {selectedIds.size > 0 ? `${selectedIds.size}件に適用` : "日報を選択してください"}
-              </button>
-              {undoStack.length > 0 && (
-                <button onClick={handleUndo}
-                  style={{ flex:1, padding:"11px 0", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer", border:`1px solid ${C.orange}`, backgroundColor:"transparent", color:C.orange }}>
-                  ↩ 戻す
-                </button>
-              )}
-            </div>
-            {undoMsg && (
-              <div style={{ marginTop:8, fontSize:12, color: undoMsg.includes("戻") ? C.orange : C.green, textAlign:"center" }}>
-                {undoMsg}
+            {r.ai_comment && (
+              <div style={{ marginTop:10, fontSize:12, color:C.sub, backgroundColor:C.bg, borderRadius:8, padding:"8px 10px", borderLeft:`3px solid ${C.accentLight}`, lineHeight:1.6 }}>
+                💬 {r.ai_comment.slice(0,70)}...
               </div>
             )}
-          </div>
-        )}
-
-        <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>{filtered.length}件</div>
-
-        {filtered.map(r => {
-          const or=occ(r), oc=or>=55?C.green:or>=45?C.gold:C.red, diff=r.gross_sales-avg;
-          const isSelected = selectedIds.has(r.id);
-          return (
-            <div key={r.id} style={{ position:"relative" }}>
-              {/* チェックボックス */}
-              {selectMode && (
-                <div
-                  onClick={() => toggleSelect(r.id)}
-                  style={{
-                    position:"absolute", left:-4, top:"50%", transform:"translateY(-50%)", zIndex:10,
-                    width:22, height:22, borderRadius:6,
-                    border:`2px solid ${isSelected ? C.accentLight : C.border}`,
-                    backgroundColor: isSelected ? C.accentLight : C.bg,
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                    cursor:"pointer", flexShrink:0,
-                  }}>
-                  {isSelected && <span style={{ color:"#fff", fontSize:13, fontWeight:900, lineHeight:1 }}>✓</span>}
-                </div>
-              )}
-              <Card onClick={() => selectMode ? toggleSelect(r.id) : onSelect(r)}
-                style={{ padding:"14px", marginLeft: selectMode ? 26 : 0,
-                  border: isSelected ? `1.5px solid ${C.accentLight}` : undefined,
-                  backgroundColor: isSelected ? C.accentGlow : undefined }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
-                  <div>
-                    <div style={{ fontSize:11, color:C.muted }}>{r.date}（{dow(r.date)}）</div>
-                    <div style={{ fontSize:22, fontWeight:800, marginTop:2 }}>{fmt(r.gross_sales)}<span style={{ fontSize:11, color:C.muted, marginLeft:3 }}>円</span></div>
-                  </div>
-                  <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
-                    <Badge color={oc}>実車率 {or}%</Badge>
-                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                      <div style={{ fontSize:11, color:diff>=0?C.green:C.red, fontWeight:700 }}>{diff>=0?"+":""}{fmt(diff)}円</div>
-                      {onEdit && !selectMode && (
-                        <button
-                          onClick={e=>{ e.stopPropagation(); onEdit(r); }}
-                          style={{ fontSize:11, color:C.accentLight, background:"none", border:`1px solid ${C.accentLight}44`, borderRadius:6, padding:"2px 8px", cursor:"pointer" }}
-                        >✏️</button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display:"flex", gap:12, fontSize:11, color:C.muted, flexWrap:"wrap" }}>
-                  <span>🚗 {r.ride_count}回</span>
-                  <span>📍 {r.total_distance}km</span>
-                  <span>⏱ {fmt(hourly(r))}円/h</span>
-                  {r.dispatch_type && <span>📱 {r.dispatch_type}</span>}
-                  {r.work_area && <span>📌 {r.work_area}</span>}
-                  {r.trouble_note&&<span style={{ color:C.red }}>⚠️</span>}
-                </div>
-                {r.ai_comment && (
-                  <div style={{ marginTop:10, fontSize:12, color:C.sub, backgroundColor:C.bg, borderRadius:8, padding:"8px 10px", borderLeft:`3px solid ${C.accentLight}`, lineHeight:1.6 }}>
-                    💬 {r.ai_comment.slice(0,70)}...
-                  </div>
-                )}
-              </Card>
-            </div>
-          );
-        })}
+          </Card>
+        );
+      })}
       </>}
     </div>
   );
