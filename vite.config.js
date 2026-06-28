@@ -102,8 +102,18 @@ self.addEventListener('fetch', e => {
     return;
   }
 
+  // Nominatim（ジオコーディング）: SWを素通り（CORSを壊さないため）
+  if (url.hostname === 'nominatim.openstreetmap.org') {
+    return; // SW介入しない → ブラウザが直接fetch
+  }
+
   // その他: ネットワーク優先
-  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+  e.respondWith(
+    fetch(e.request).catch(async () => {
+      const cached = await caches.match(e.request);
+      return cached || new Response('', { status: 503 });
+    })
+  );
 });
 `;
         const distDir = process.cwd() + '/dist';
