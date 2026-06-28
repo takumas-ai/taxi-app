@@ -80,24 +80,46 @@ function matchesDay(dateStr, selectedDays) {
 // ──────────────────────────────────────
 // ジオコーディング
 // ──────────────────────────────────────
-async function geocodeAddress(address) {
-  const cache = loadS(GEO_CACHE_KEY, {});
-  if (cache[address]) return cache[address];
-  const query = address.startsWith("東京") ? address : `東京都${address}`;
-  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=jp&limit=1&accept-language=ja`;
+// ジオコーディングをEdge Function経由で一括実行
+// - localStorageキャッシュ（即時）→ DBキャッシュ（全ユーザー共有）→ Nominatim の順で解決
+async function geocodeBatch(addresses) {
+  const localCache = loadS(GEO_CACHE_KEY, {});
+  const result = {};
+  const misses = [];
+
+  // 1. localStorageキャッシュで解決
+  for (const addr of addresses) {
+    if (localCache[addr]) result[addr] = localCache[addr];
+    else misses.push(addr);
+  }
+  if (misses.length === 0) return result;
+
+  // 2. Edge Function（DBキャッシュ or Nominatim）
   try {
-    const res = await fetch(url, { headers: { "User-Agent": "TakuroApp/1.0" } });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.length > 0) {
-      const result = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const res = await fetch(`${supabaseUrl}/functions/v1/geocode`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseKey}`,
+        "apikey": supabaseKey,
+      },
+      body: JSON.stringify({ addresses: misses }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      // localStorageキャッシュを更新
       const updated = loadS(GEO_CACHE_KEY, {});
-      updated[address] = result;
+      for (const [addr, coords] of Object.entries(data)) {
+        result[addr] = coords;
+        updated[addr] = coords;
+      }
       saveS(GEO_CACHE_KEY, updated);
-      return result;
     }
   } catch { /* ignore */ }
-  return null;
+
+  return result;
 }
 
 // ──────────────────────────────────────
@@ -283,19 +305,16 @@ export default function MapScreen({ reports, user }) {
   // ──────────────────────────────────────
   const startGeocoding = useCallback(async () => {
     if (allStats.length === 0) return;
-    const cache    = loadS(GEO_CACHE_KEY, {});
     const topItems = allStats.slice(0, 20);
-    const result   = [];
     setProgress({ done: 0, total: topItems.length });
 
-    for (let i = 0; i < topItems.length; i++) {
-      const item   = topItems[i];
-      const coords = await geocodeAddress(item.address);
-      if (coords) result.push({ ...item, ...coords });
-      setProgress({ done: i + 1, total: topItems.length });
-      if (!cache[topItems[i + 1]?.address]) {
-        await new Promise(r => setTimeout(r, 1100));
-      }
+    // 住所リストを一括でEdge Functionに投げる（内部でレート制限管理）
+    const addresses = topItems.map(i => i.address);
+    const coordsMap = await geocodeBatch(addresses);
+
+    const result = [];
+    for (const item of topItems) {
+      if (coordsMap[item.address]) result.push({ ...item, ...coordsMap[item.address] });
     }
     setMapStats(result);
     setProgress(null);
