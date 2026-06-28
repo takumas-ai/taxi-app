@@ -10,15 +10,32 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    // anonキーまたはBearerトークンがあればOK（デモユーザーも利用可）
-    const apiKey = req.headers.get("apikey") || req.headers.get("Authorization");
-    if (!apiKey) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+    // ログイン済みユーザーのJWTのみ許可
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+    }
 
-    const { messages, system, max_tokens = 1024, model = "claude-haiku-4-5-20251001" } = await req.json();
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+    }
+
+    const { messages, system, max_tokens, model } = await req.json();
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: "messages is required" }), { status: 400, headers: corsHeaders });
     }
+
+    // サーバー側でコスト上限を強制（クライアント指定値を信用しない）
+    const ALLOWED_MODELS = ["claude-haiku-4-5-20251001", "claude-sonnet-4-6"];
+    const safeModel = ALLOWED_MODELS.includes(model) ? model : "claude-haiku-4-5-20251001";
+    const safeMaxTokens = Math.min(typeof max_tokens === "number" ? max_tokens : 1500, 2000);
 
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!anthropicKey) {
@@ -33,8 +50,8 @@ serve(async (req) => {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model,
-        max_tokens,
+        model: safeModel,
+        max_tokens: safeMaxTokens,
         ...(system ? { system } : {}),
         messages,
       }),

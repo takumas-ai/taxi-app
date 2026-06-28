@@ -12,7 +12,13 @@ if (!supabaseUrl || !supabaseKey) {
   console.warn("[supabase] 環境変数が未設定です。.env.example を参照して .env を作成してください。");
 }
 
-export const supabase = createClient(supabaseUrl ?? "", supabaseKey ?? "");
+export const supabase = createClient(supabaseUrl ?? "", supabaseKey ?? "", {
+  auth: {
+    persistSession: true,       // localStorageにセッションを保持
+    autoRefreshToken: true,     // トークンを自動更新
+    storageKey: "takuro_auth",  // 他アプリと衝突しないキー名
+  },
+});
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 認証ヘルパー
@@ -27,6 +33,18 @@ export async function signUpWithEmail(email, password) {
 /** メールアドレスでサインイン */
 export async function signInWithEmail(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  return { data, error };
+}
+
+/** メールアドレス変更 */
+export async function updateEmail(newEmail) {
+  const { data, error } = await supabase.auth.updateUser({ email: newEmail });
+  return { data, error };
+}
+
+/** パスワード変更 */
+export async function updatePassword(newPassword) {
+  const { data, error } = await supabase.auth.updateUser({ password: newPassword });
   return { data, error };
 }
 
@@ -50,15 +68,50 @@ export async function signOut() {
   return { error };
 }
 
+/** 他のデバイスからサインアウト（現在のデバイスはログイン維持） */
+export async function signOutOtherDevices() {
+  const { error } = await supabase.auth.signOut({ scope: "others" });
+  return { error };
+}
+
+/** 備考略語辞書を保存（memo_dict: { "電": "電子マネー", ... }） */
+export async function saveMemoDict(userId, dict) {
+  const { error } = await supabase
+    .from("users")
+    .update({ memo_dict: dict })
+    .eq("id", userId);
+  return { error };
+}
+
+/** タクローチャット：Edge Functionを呼び出してAI返答を取得 */
+export async function callTakuroChat(messages, userContext) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/takuro-chat`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ messages, userContext }),
+  });
+  const data = await res.json();
+  if (res.status === 429) throw Object.assign(new Error("rate_limit"), { message: "rate_limit" });
+  if (data.error) throw new Error(data.error);
+  // { text, remaining } をそのまま返す
+  return { text: data.text || "少し時間をおいてもう一度試してください。", remaining: data.remaining ?? null };
+}
+
 /** 現在のセッション取得 */
 export async function getSession() {
   const { data: { session } } = await supabase.auth.getSession();
   return session;
 }
 
-/** 認証状態の変化を監視 */
+/** 認証状態の変化を監視（event と session を両方渡す） */
 export function onAuthStateChange(callback) {
-  return supabase.auth.onAuthStateChange((_event, session) => callback(session));
+  return supabase.auth.onAuthStateChange((event, session) => callback(session, event));
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -78,21 +131,31 @@ export async function fetchProfile(userId) {
 /** ユーザープロフィールを作成 or 更新（upsert） */
 export async function upsertProfile(profile) {
   const { id, ...fields } = profile;
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .update(fields)
-    .eq("id", id);
-  if (error) console.error("[upsertProfile] error:", error.message, JSON.stringify(profile));
+    .eq("id", id)
+    .select("id, name");
+  if (error) {
+    console.error("[upsertProfile] error:", error.message, error.code, JSON.stringify(profile));
+  } else if (!data || data.length === 0) {
+    console.warn("[upsertProfile] 0件更新 — IDが一致するrowなし:", id);
+  } else {
+    console.log("[upsertProfile] 更新成功:", data[0]);
+  }
   return { error };
 }
 
-/** 新規登録時の初回プロフィール作成（INSERT） */
+/** 新規登録時の初回プロフィール作成（重複キーは無視） */
 export async function insertProfile(profile) {
   const { error } = await supabase
     .from("users")
     .insert(profile);
-  if (error) console.error("[insertProfile] error:", error.message, JSON.stringify(profile));
-  return { error };
+  // 23505 = duplicate key (プロフィール作成済み) → エラーとして扱わない
+  if (error && error.code !== "23505") {
+    console.error("[insertProfile] error:", error.message, JSON.stringify(profile));
+  }
+  return { error: error?.code === "23505" ? null : error };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -120,22 +183,24 @@ export async function insertReport(report) {
 }
 
 /** 日報を更新 */
-export async function updateReport(id, updates) {
-  const { data, error } = await supabase
+export async function updateReport(id, updates, userId) {
+  const query = supabase
     .from("daily_reports")
     .update(updates)
-    .eq("id", id)
-    .select()
-    .single();
+    .eq("id", id);
+  if (userId) query.eq("user_id", userId);
+  const { data, error } = await query.select().single();
   return { data, error };
 }
 
 /** 日報を削除 */
-export async function deleteReport(id) {
-  const { error } = await supabase
+export async function deleteReport(id, userId) {
+  const query = supabase
     .from("daily_reports")
     .delete()
     .eq("id", id);
+  if (userId) query.eq("user_id", userId);
+  const { error } = await query;
   return { error };
 }
 
@@ -355,7 +420,7 @@ export async function deleteRideRecord(id) {
 export async function fetchGuideSpots(area = null) {
   let q = supabase.from("guide_spots").select("*").eq("status", "active");
   if (area) q = q.eq("area", area);
-  const { data, error } = await q.order("demand_score", { ascending: false });
+  const { data, error } = await q.order("created_at", { ascending: false });
   return { data: data ?? [], error };
 }
 
@@ -378,14 +443,36 @@ export async function insertGuideSpot(userId, userName, spot) {
       flow:             spot.flow || [],
       description:      spot.description || null,
       address:          spot.address || null,
-      has_parking:      spot.hasParking || false,
-      open_hours:       spot.openHours || null,
+      open_hours:       spot.open_hours || null,
+      map_url:          spot.map_url || null,
+      wait_times:       Object.keys(spot.wait_times||{}).length ? spot.wait_times : null,
+      facilities:       Object.keys(spot.facilities||{}).length ? spot.facilities : null,
+      price_range:      spot.price_range || null,
       demand_score:     3.0,
+      vote_count:       0,
       contributor_id:   userId,
       contributor_name: userName,
     })
     .select().single();
   return { data, error };
+}
+
+/** 「参考になった」投票（1ユーザー1スポット：UNIQUE制約で重複防止） */
+export async function voteGuideSpot(spotId, userId) {
+  const { error } = await supabase.from("guide_votes").insert({ spot_id: spotId, user_id: userId });
+  if (!error) {
+    // SELECT→UPDATEの競合を避けるため実票数から再集計
+    const { count } = await supabase.from("guide_votes").select("*", { count: "exact", head: true }).eq("spot_id", spotId);
+    await supabase.from("guide_spots").update({ vote_count: count ?? 0 }).eq("id", spotId);
+  }
+  return { error };
+}
+
+/** ユーザーの投票済みスポット一覧取得 */
+export async function fetchUserVotes(userId) {
+  const { data, error } = await supabase
+    .from("guide_votes").select("spot_id").eq("user_id", userId);
+  return { data: data ?? [], error };
 }
 
 /** ガイドスポット更新（編集履歴も記録） */
@@ -420,8 +507,8 @@ export async function insertGuideReview(spotId, userId, userName, rating, body) 
 export async function flagGuideSpot(spotId, userId, reason) {
   const { error } = await supabase.from("guide_flags").insert({ spot_id: spotId, user_id: userId, reason });
   if (!error) {
-    const { data } = await supabase.from("guide_spots").select("flag_count").eq("id", spotId).single();
-    if (data) await supabase.from("guide_spots").update({ flag_count: (data.flag_count || 0) + 1 }).eq("id", spotId);
+    const { count } = await supabase.from("guide_flags").select("*", { count: "exact", head: true }).eq("spot_id", spotId);
+    await supabase.from("guide_spots").update({ flag_count: count ?? 0 }).eq("id", spotId);
   }
   return { error };
 }
@@ -446,12 +533,43 @@ export async function fetchGuideReviews(spotId) {
 // 管理画面用（service role 不要・RLS対応）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+/** ユーザーを停止／解除 */
+export async function adminSetSuspended(userId, suspended) {
+  const { error } = await supabase
+    .from("users")
+    .update({ suspended })
+    .eq("id", userId);
+  if (error) console.error("[adminSetSuspended]", error.message);
+  return { error };
+}
+
+/** ユーザーを削除（Edge Function 経由で auth.users も削除） */
+export async function adminDeleteUser(userId) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { error: new Error("Not authenticated") };
+  const edgeUrl = import.meta.env.VITE_EDGE_FUNCTIONS_URL;
+  const res = await fetch(`${edgeUrl}/delete-account`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ target_user_id: userId }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    return { error: new Error(body.error || `HTTP ${res.status}`) };
+  }
+  return { error: null };
+}
+
 /** 全ユーザー一覧（管理者のみ：RLSポリシーで admin ユーザーのみ許可） */
 export async function adminFetchUsers() {
   const { data, error } = await supabase
     .from("users")
-    .select("id, name, email, company_name, plan, xp, monthly_upload_count, referred_by, deletion_requested, created_at, updated_at, areas")
+    .select("*")
     .order("created_at", { ascending: false });
+  if (error) console.error("[adminFetchUsers]", error.message, error.code);
   return { data: data ?? [], error };
 }
 
@@ -527,6 +645,17 @@ export async function adminFetchNotifications() {
   return { data: data ?? [], error };
 }
 
+/** 特定ユーザーの日報一覧（管理者用） */
+export async function adminFetchUserReports(userId) {
+  const { data, error } = await supabase
+    .from("daily_reports")
+    .select("id, report_date, gross_sales, ride_count, work_hours, created_at")
+    .eq("user_id", userId)
+    .order("report_date", { ascending: false })
+    .limit(100);
+  return { data: data ?? [], error };
+}
+
 /** アプリ全体メトリクス */
 export async function adminFetchMetrics() {
   const [usersRes, reportsRes] = await Promise.all([
@@ -541,6 +670,292 @@ export async function adminFetchMetrics() {
     totalReports: reportsRes.count ?? 0,
     mau: mauCount,
     paidUsers: (usersRes.data ?? []).filter(u => u.plan === "paid").length,
+  };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// マイフレンド
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** フレンド申請を送る（QRスキャン後・ID検索後に呼び出す） */
+export async function addFriend(currentUserId, targetUserId) {
+  // 自分自身には送れない
+  if (currentUserId === targetUserId) return { error: new Error("自分自身は追加できません") };
+  // すでにフレンドか確認
+  const { data: existing } = await supabase
+    .from("friendships").select("id").eq("user_id", currentUserId).eq("friend_id", targetUserId).maybeSingle();
+  if (existing) return { error: null, alreadyFriend: true };
+  // すでに申請済みか確認
+  const { data: existingReq } = await supabase
+    .from("friend_requests")
+    .select("id, status")
+    .or(`and(from_user_id.eq.${currentUserId},to_user_id.eq.${targetUserId}),and(from_user_id.eq.${targetUserId},to_user_id.eq.${currentUserId})`)
+    .maybeSingle();
+  if (existingReq) return { error: null, requested: true, status: existingReq.status };
+  // 申請を作成
+  const { error: reqErr } = await supabase
+    .from("friend_requests").insert({ from_user_id: currentUserId, to_user_id: targetUserId });
+  if (reqErr) return { error: reqErr };
+  // 相手への通知
+  const { data: me } = await supabase.from("users").select("name").eq("id", currentUserId).maybeSingle();
+  await supabase.from("friend_notifications").insert({
+    user_id: targetUserId,
+    from_user_id: currentUserId,
+    from_name: me?.name || "タクドラ",
+    type: "friend_request",
+  });
+  return { error: null, requested: true };
+}
+
+/** フレンド申請を承認・拒否する */
+export async function respondFriendRequest(requestId, status, fromUserId, toUserId, toName) {
+  const { error } = await supabase
+    .from("friend_requests").update({ status }).eq("id", requestId);
+  if (error) return { error };
+  if (status === "accepted") {
+    await supabase.from("friendships").insert([
+      { user_id: fromUserId, friend_id: toUserId },
+      { user_id: toUserId, friend_id: fromUserId },
+    ]);
+    await supabase.from("friend_notifications").insert({
+      user_id: fromUserId,
+      from_user_id: toUserId,
+      from_name: toName || "タクドラ",
+      type: "friend_accepted",
+    });
+  }
+  return { error: null };
+}
+
+/** 受信したフレンド申請一覧 */
+export async function fetchIncomingFriendRequests(userId) {
+  const { data, error } = await supabase
+    .from("friend_requests")
+    .select("id, from_user_id, created_at")
+    .eq("to_user_id", userId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+  if (!data?.length) return { data: [], error };
+  const fromIds = data.map(r => r.from_user_id);
+  const { data: profiles } = await supabase
+    .from("users").select("id, name, display_id, avatar_preset").in("id", fromIds);
+  const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.id, p]));
+  return {
+    data: data.map(r => ({ ...r, fromName: profileMap[r.from_user_id]?.name || "?", fromDisplayId: profileMap[r.from_user_id]?.display_id })),
+    error: null,
+  };
+}
+
+/** フレンド一覧取得 */
+export async function fetchFriends(userId) {
+  const { data: friendships, error } = await supabase
+    .from("friendships").select("friend_id").eq("user_id", userId);
+  if (!friendships?.length) return { data: [], error };
+  const friendIds = friendships.map(f => f.friend_id);
+  const { data: profiles } = await supabase
+    .from("users").select("id, name, avatar_url, avatar_preset, areas").in("id", friendIds);
+  return { data: profiles ?? [], error: null };
+}
+
+/** フレンドを削除（双方向） */
+export async function removeFriend(currentUserId, targetUserId) {
+  await supabase.from("friendships")
+    .delete().eq("user_id", currentUserId).eq("friend_id", targetUserId);
+  await supabase.from("friendships")
+    .delete().eq("user_id", targetUserId).eq("friend_id", currentUserId);
+  return { error: null };
+}
+
+/** 未読フレンド通知数 */
+export async function fetchFriendNotifCount(userId) {
+  const { count, error } = await supabase
+    .from("friend_notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId).eq("read", false);
+  return { count: count ?? 0, error };
+}
+
+/** フレンド通知一覧（最新10件） */
+export async function fetchFriendNotifs(userId) {
+  const { data, error } = await supabase
+    .from("friend_notifications").select("*")
+    .eq("user_id", userId).order("created_at", { ascending: false }).limit(10);
+  return { data: data ?? [], error };
+}
+
+/** 通知を既読にする */
+export async function markFriendNotifsRead(userId) {
+  const { error } = await supabase
+    .from("friend_notifications").update({ read: true }).eq("user_id", userId);
+  return { error };
+}
+
+/** 日報の共有フラグを切り替え */
+export async function toggleShareReport(reportId, isShared) {
+  const { error } = await supabase
+    .from("daily_reports").update({ is_shared: isShared }).eq("id", reportId);
+  return { error };
+}
+
+/** シフトの共有フラグを切り替え（shift_dateで指定） */
+export async function toggleShareShift(userId, shiftDate, isShared) {
+  const { error } = await supabase
+    .from("shifts").update({ is_shared: isShared })
+    .eq("user_id", userId).eq("shift_date", shiftDate);
+  return { error };
+}
+
+/** フレンドの共有シフト一覧（シフト共有が承認済みのフレンドのみ・今日以降） */
+export async function fetchFriendsShifts(userId) {
+  // 承認済みのシフト共有ペアを取得
+  const { data: accepted } = await supabase
+    .from("shift_share_requests")
+    .select("from_user_id, to_user_id")
+    .eq("status", "accepted")
+    .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`);
+  if (!accepted?.length) return { data: [], error: null };
+  const sharedFriendIds = accepted.map(r =>
+    r.from_user_id === userId ? r.to_user_id : r.from_user_id
+  );
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: shifts, error } = await supabase
+    .from("shifts")
+    .select("id, user_id, shift_date, clock_in, clock_out, note")
+    .in("user_id", sharedFriendIds).eq("is_shared", true)
+    .gte("shift_date", today)
+    .order("shift_date", { ascending: true }).limit(50);
+  if (!shifts?.length) return { data: [], error };
+  const { data: profiles } = await supabase
+    .from("users").select("id, name, avatar_preset").in("id", sharedFriendIds);
+  const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.id, p]));
+  return {
+    data: shifts.map(s => ({ ...s, userName: profileMap[s.user_id]?.name || "?", avatarPreset: profileMap[s.user_id]?.avatar_preset })),
+    error: null,
+  };
+}
+
+/** display_idでユーザー検索（英数字、大文字小文字無視） */
+export async function searchUserByDisplayId(displayId) {
+  const { data, error } = await supabase
+    .from("users").select("id, name, display_id, avatar_preset, areas")
+    .ilike("display_id", displayId.trim())
+    .maybeSingle();
+  return { data, error };
+}
+
+/** 自分のdisplay_idを変更（英数字4〜12文字、重複チェック込み） */
+export async function updateDisplayId(userId, newId) {
+  const clean = newId.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (clean.length < 4 || clean.length > 12) return { error: { message: "IDは4〜12文字の英数字で入力してください" } };
+  // 重複チェック
+  const { data: existing } = await supabase
+    .from("users").select("id").eq("display_id", clean).neq("id", userId).maybeSingle();
+  if (existing) return { error: { message: "このIDはすでに使われています" } };
+  const { error } = await supabase.from("users").update({ display_id: clean }).eq("id", userId);
+  return { error, clean };
+}
+
+/** シフト共有申請を送る */
+export async function sendShiftShareRequest(fromUserId, toUserId, fromName) {
+  // 既存の申請チェック
+  const { data: existing } = await supabase
+    .from("shift_share_requests")
+    .select("id, status")
+    .or(`and(from_user_id.eq.${fromUserId},to_user_id.eq.${toUserId}),and(from_user_id.eq.${toUserId},to_user_id.eq.${fromUserId})`)
+    .maybeSingle();
+  if (existing) return { error: null, existing };
+
+  const { error } = await supabase
+    .from("shift_share_requests")
+    .insert({ from_user_id: fromUserId, to_user_id: toUserId });
+  if (error) return { error };
+
+  // 相手に通知（typeカラムがなくてもエラーを無視）
+  await supabase.from("friend_notifications").insert({
+    user_id: toUserId,
+    from_user_id: fromUserId,
+    from_name: fromName,
+    type: "shift_share_request",
+  }).then(({ error: e }) => { if (e) console.warn("[shift_share notif]", e.message); });
+  return { error: null };
+}
+
+/** シフト共有申請に応答（accepted / rejected） */
+export async function respondShiftShareRequest(requestId, status, toUserId, fromUserId, toName) {
+  const { error } = await supabase
+    .from("shift_share_requests")
+    .update({ status })
+    .eq("id", requestId)
+    .eq("to_user_id", toUserId);
+  if (error) return { error };
+
+  // 承認の場合は送信者に通知
+  if (status === "accepted") {
+    await supabase.from("friend_notifications").insert({
+      user_id: fromUserId,
+      from_user_id: toUserId,
+      from_name: toName,
+      type: "shift_share_accepted",
+    }).then(({ error: e }) => { if (e) console.warn("[shift_share_accepted notif]", e.message); });
+  }
+  return { error: null };
+}
+
+/** 自分宛のシフト共有申請一覧（pending） */
+export async function fetchIncomingShiftShareRequests(userId) {
+  const { data, error } = await supabase
+    .from("shift_share_requests")
+    .select("id, from_user_id, status, created_at")
+    .eq("to_user_id", userId).eq("status", "pending")
+    .order("created_at", { ascending: false });
+  if (!data?.length) return { data: [], error };
+  const fromIds = data.map(r => r.from_user_id);
+  const { data: profiles } = await supabase
+    .from("users").select("id, name, display_id, avatar_preset").in("id", fromIds);
+  const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.id, p]));
+  return {
+    data: data.map(r => ({ ...r, fromName: profileMap[r.from_user_id]?.name || "?", fromDisplayId: profileMap[r.from_user_id]?.display_id })),
+    error: null,
+  };
+}
+
+/** フレンドとのシフト共有ステータスを取得 */
+export async function fetchShiftShareStatuses(userId, friendIds) {
+  if (!friendIds?.length) return {};
+  const { data } = await supabase
+    .from("shift_share_requests")
+    .select("id, from_user_id, to_user_id, status")
+    .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`)
+    .in("from_user_id", [...friendIds, userId])
+    .in("to_user_id", [...friendIds, userId]);
+  const map = {};
+  (data ?? []).forEach(r => {
+    const friendId = r.from_user_id === userId ? r.to_user_id : r.from_user_id;
+    const isSender = r.from_user_id === userId;
+    map[friendId] = { id: r.id, status: r.status, isSender };
+  });
+  return map;
+}
+
+/** フレンドの共有日報一覧 */
+export async function fetchFriendsReports(userId) {
+  const { data: friendships } = await supabase
+    .from("friendships").select("friend_id").eq("user_id", userId);
+  if (!friendships?.length) return { data: [], error: null };
+  const friendIds = friendships.map(f => f.friend_id);
+  const { data: reports, error } = await supabase
+    .from("daily_reports")
+    .select("id, user_id, report_date, gross_sales, ride_count, work_hours, occupied_distance, total_distance")
+    .in("user_id", friendIds).eq("is_shared", true)
+    .order("report_date", { ascending: false }).limit(50);
+  if (!reports?.length) return { data: [], error };
+  // ユーザー名を取得
+  const { data: profiles } = await supabase
+    .from("users").select("id, name, avatar_preset").in("id", friendIds);
+  const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.id, p]));
+  return {
+    data: reports.map(r => ({ ...r, userName: profileMap[r.user_id]?.name || "?", avatarPreset: profileMap[r.user_id]?.avatar_preset })),
+    error: null,
   };
 }
 
@@ -567,6 +982,7 @@ export async function upsertShifts(userId, shifts) {
     clock_out:  s.clockOut || null,
     is_night:   s.isNight  || false,
     note:       s.note     || null,
+    is_shared:  s.isShared ?? false,
   }));
   const { data, error } = await supabase
     .from("shifts")
@@ -597,4 +1013,61 @@ export async function fetchSummary(summaryDate) {
     .eq("summary_date", summaryDate)
     .single();
   return { data, error };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// AI分析
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** AI分析一覧を取得（新しい順） */
+export async function fetchAiAnalyses(userId) {
+  const { data, error } = await supabase
+    .from("ai_analyses")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  return { data: data ?? [], error };
+}
+
+/** AI分析を保存 */
+export async function saveAiAnalysis(userId, reportCount, content) {
+  const { error } = await supabase
+    .from("ai_analyses")
+    .insert({ user_id: userId, report_count: reportCount, content });
+  return { error };
+}
+
+/** 未読のAI分析を既読に */
+export async function markAnalysesRead(userId) {
+  const { error } = await supabase
+    .from("ai_analyses")
+    .update({ is_read: true })
+    .eq("user_id", userId)
+    .eq("is_read", false);
+  return { error };
+}
+
+/** 未読のAI分析件数を取得 */
+export async function fetchUnreadAnalysisCount(userId) {
+  const { count, error } = await supabase
+    .from("ai_analyses")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("is_read", false);
+  return { count: count ?? 0, error };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 東京イベント
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** 指定日の東京イベントを優先度降順で取得 */
+export async function fetchTodayEvents(eventDate) {
+  const { data, error } = await supabase
+    .from("events")
+    .select("*")
+    .eq("event_date", eventDate)
+    .order("priority", { ascending: false })
+    .order("estimated_capacity", { ascending: false });
+  return { data: data ?? [], error };
 }

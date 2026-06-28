@@ -6,9 +6,10 @@ import {
   adminFetchUsers, adminFetchFeedback, adminMarkFeedbackRead,
   adminFetchReferrals, adminFetchCoupons, adminGrantXP, adminResolveDeleteRequest,
   adminCreateNotification, adminFetchNotifications, adminFetchMetrics,
+  adminFetchUserReports, adminSetSuspended, adminDeleteUser,
 } from "../lib/supabase";
 
-const ADMIN_EMAIL = "white-t@hotmail.co.jp";
+const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL ?? "";
 
 const card = { backgroundColor:"#1a1a2e", border:"1px solid #2a2a4a", borderRadius:12, padding:"16px 18px", marginBottom:12 };
 const badge = (color) => ({ display:"inline-block", padding:"2px 10px", borderRadius:99, fontSize:11, fontWeight:700, backgroundColor:color+"22", color });
@@ -119,6 +120,13 @@ function UsersTab() {
   const [grantXp, setGrantXp] = useState("100");
   const [granting, setGranting] = useState(false);
   const [msg, setMsg] = useState("");
+  const [reportTarget, setReportTarget] = useState(null);
+  const [userReports, setUserReports] = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [suspending, setSuspending] = useState(null);
+  const [fullImage, setFullImage] = useState(null);
 
   useEffect(() => {
     adminFetchUsers().then(({ data }) => { setUsers(data); setLoading(false); });
@@ -138,6 +146,38 @@ function UsersTab() {
     setTimeout(() => setMsg(""), 3000);
   };
 
+  const handleViewReports = async (u) => {
+    setReportTarget(u);
+    setReportsLoading(true);
+    setUserReports([]);
+    const { data, error } = await adminFetchUserReports(u.id);
+    setReportsLoading(false);
+    if (error) { setUserReports([]); }
+    else { setUserReports(data); }
+  };
+
+  const handleToggleSuspend = async (u) => {
+    setSuspending(u.id);
+    const { error } = await adminSetSuspended(u.id, !u.suspended);
+    setSuspending(null);
+    if (error) { setMsg("エラー: " + error.message); return; }
+    setUsers(prev => prev.map(x => x.id === u.id ? { ...x, suspended: !u.suspended } : x));
+    setMsg(`✓ ${u.name} を${!u.suspended ? "停止" : "解除"}しました`);
+    setTimeout(() => setMsg(""), 3000);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const { error } = await adminDeleteUser(deleteTarget.id);
+    setDeleting(false);
+    if (error) { setMsg("削除エラー: " + error.message); setDeleteTarget(null); return; }
+    setUsers(prev => prev.filter(x => x.id !== deleteTarget.id));
+    setMsg(`✓ ${deleteTarget.name} を削除しました（日報データは保持）`);
+    setDeleteTarget(null);
+    setTimeout(() => setMsg(""), 5000);
+  };
+
   return (
     <div>
       <div style={{ fontSize:16, fontWeight:800, marginBottom:12 }}>👥 ユーザー一覧（{users.length}人）</div>
@@ -146,21 +186,53 @@ function UsersTab() {
       {loading ? <div style={{ color:"#666", textAlign:"center", padding:40 }}>読み込み中...</div> : (
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
           {filtered.map(u => (
-            <div key={u.id} style={{ ...card, display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+            <div key={u.id} style={{ ...card, display:"flex", alignItems:"center", gap:12, flexWrap:"wrap", opacity: u.suspended ? 0.6 : 1 }}>
               <div style={{ flex:1, minWidth:160 }}>
                 <div style={{ fontSize:14, fontWeight:700 }}>{u.name || "（名前なし）"}</div>
-                <div style={{ fontSize:11, color:"#888" }}>{u.email}</div>
+                <div style={{ fontSize:11, color:"#888" }}>{u.email} {u.display_id && <span style={{ color:"#a78bfa", marginLeft:6 }}>🪪 {u.display_id}</span>}</div>
                 <div style={{ fontSize:11, color:"#666", marginTop:2 }}>{u.company_name || ""} · {(u.areas||[]).join(", ") || "エリア未設定"}</div>
               </div>
               <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
                 <span style={badge(u.plan==="paid"?"#a855f7":"#4f8ef7")}>{u.plan==="paid"?"有料":"無料"}</span>
                 <span style={badge("#f59e0b")}>XP {u.xp ?? 0}</span>
                 <span style={badge("#22c55e")}>{u.monthly_upload_count ?? 0}件</span>
+                {u.suspended && <span style={badge("#ef4444")}>停止中</span>}
                 {u.deletion_requested && <span style={badge("#ef4444")}>削除申請中</span>}
               </div>
-              <button onClick={() => setGrantTarget(u)} style={{ ...btn("#22c55e"), fontSize:11, padding:"5px 12px" }}>XP付与</button>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                <button onClick={() => handleViewReports(u)} style={{ ...btn("#4f8ef7"), fontSize:11, padding:"5px 10px" }}>日報</button>
+                <button onClick={() => setGrantTarget(u)} style={{ ...btn("#22c55e"), fontSize:11, padding:"5px 10px" }}>XP</button>
+                <button
+                  onClick={() => handleToggleSuspend(u)}
+                  disabled={suspending === u.id}
+                  style={{ ...btn(u.suspended ? "#22c55e" : "#f59e0b"), fontSize:11, padding:"5px 10px" }}>
+                  {suspending === u.id ? "..." : u.suspended ? "解除" : "停止"}
+                </button>
+                <button onClick={() => setDeleteTarget(u)} style={{ ...btn("#ef4444"), fontSize:11, padding:"5px 10px" }}>削除</button>
+              </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 削除確認モーダル */}
+      {deleteTarget && (
+        <div style={{ position:"fixed", inset:0, backgroundColor:"#00000090", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div style={{ backgroundColor:"#12122a", border:"1px solid #ef444466", borderRadius:16, padding:24, width:"100%", maxWidth:360 }}>
+            <div style={{ fontSize:15, fontWeight:700, marginBottom:8, color:"#ef4444" }}>🗑️ アカウント削除</div>
+            <div style={{ fontSize:13, color:"#ccc", marginBottom:4 }}><b>{deleteTarget.name}</b>（{deleteTarget.email}）</div>
+            <div style={{ fontSize:12, color:"#888", marginBottom:16, lineHeight:1.6 }}>
+              ログインできなくなります。<br/>
+              日報データは保持されます。<br/>
+              この操作は取り消せません。
+            </div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={() => setDeleteTarget(null)} style={{ ...btn("#333"), flex:1 }}>キャンセル</button>
+              <button onClick={handleDelete} disabled={deleting} style={{ ...btn("#ef4444"), flex:1 }}>
+                {deleting ? "削除中..." : "削除する"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -177,6 +249,81 @@ function UsersTab() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 日報確認モーダル */}
+      {reportTarget && (
+        <div style={{ position:"fixed", inset:0, backgroundColor:"#00000090", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }} onClick={() => { setReportTarget(null); setFullImage(null); }}>
+          <div style={{ backgroundColor:"#12122a", border:"1px solid #2a2a4a", borderRadius:16, padding:24, width:"100%", maxWidth:560, maxHeight:"85vh", overflowY:"auto" }} onClick={e => e.stopPropagation()}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <div>
+                <div style={{ fontSize:15, fontWeight:800 }}>📋 {reportTarget.name} の日報</div>
+                <div style={{ fontSize:11, color:"#888", marginTop:2 }}>{reportTarget.email}</div>
+              </div>
+              <button onClick={() => { setReportTarget(null); setFullImage(null); }} style={{ background:"none", border:"none", color:"#888", fontSize:20, cursor:"pointer" }}>×</button>
+            </div>
+
+            {reportsLoading ? (
+              <div style={{ textAlign:"center", padding:40, color:"#666" }}>読み込み中...</div>
+            ) : userReports.length === 0 ? (
+              <div style={{ textAlign:"center", padding:40 }}>
+                <div style={{ fontSize:32, marginBottom:12 }}>📭</div>
+                <div style={{ color:"#ef4444", fontWeight:700, marginBottom:8 }}>日報データなし</div>
+                <div style={{ fontSize:12, color:"#666", lineHeight:1.8 }}>
+                  このユーザーのdaily_reportsテーブルにデータがありません。<br/>
+                  保存時にエラーが発生していた可能性があります。
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{ backgroundColor:"#22c55e22", border:"1px solid #22c55e44", borderRadius:8, padding:"8px 14px", marginBottom:14, fontSize:13, color:"#22c55e" }}>
+                  ✓ DBに {userReports.length} 件 · 画像あり {userReports.filter(r=>r.image_url).length} 件
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  {userReports.map(r => (
+                    <div key={r.id} style={{ backgroundColor:"#1a1a2e", borderRadius:8, padding:"10px 14px" }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                        <div>
+                          <div style={{ fontSize:13, fontWeight:700 }}>{r.report_date}</div>
+                          <div style={{ fontSize:11, color:"#888", marginTop:2 }}>
+                            売上: {(r.gross_sales||0).toLocaleString()}円 · {r.ride_count||0}件 · {r.work_hours||0}h
+                          </div>
+                        </div>
+                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                          {r.image_url && (
+                            <button onClick={() => setFullImage(r.image_url)}
+                              style={{ padding:"4px 10px", borderRadius:6, fontSize:11, fontWeight:700, border:"1px solid #4f8ef766", backgroundColor:"#4f8ef722", color:"#4f8ef7", cursor:"pointer" }}>
+                              📷 画像
+                            </button>
+                          )}
+                          <div style={{ fontSize:10, color:"#555" }}>{r.created_at?.slice(0,10)}</div>
+                        </div>
+                      </div>
+                      {/* サムネイル */}
+                      {r.image_url && (
+                        <img src={r.image_url} alt="日報画像"
+                          onClick={() => setFullImage(r.image_url)}
+                          style={{ marginTop:8, width:"100%", maxHeight:120, objectFit:"cover", borderRadius:6, cursor:"pointer", opacity:0.85 }} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* フルサイズ画像モーダル */}
+      {fullImage && (
+        <div onClick={() => setFullImage(null)}
+          style={{ position:"fixed", inset:0, backgroundColor:"#000000ee", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <button onClick={() => setFullImage(null)}
+            style={{ position:"absolute", top:16, right:16, background:"none", border:"none", color:"#fff", fontSize:28, cursor:"pointer" }}>×</button>
+          <img src={fullImage} alt="日報画像フルサイズ"
+            style={{ maxWidth:"95vw", maxHeight:"92vh", objectFit:"contain", borderRadius:8 }}
+            onClick={e => e.stopPropagation()} />
         </div>
       )}
     </div>

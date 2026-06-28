@@ -3,8 +3,31 @@
 // React Native 移行時: この App.jsx を App.js にリネームし
 //   <div> → <View>、inline style → StyleSheet に置換する
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-import { useState, useEffect, useRef } from "react";
-import { C, loadS, saveS, applyTheme, computeIsDark } from "./lib/constants";
+import { useState, useEffect, useRef, Component } from "react";
+
+// ━━━ ErrorBoundary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  componentDidCatch(e, info) { console.error("[ErrorBoundary]", e, info); }
+  render() {
+    if (this.state.error) {
+      const msg = String(this.state.error?.message || this.state.error);
+      return (
+        <div style={{ padding:24, fontFamily:"monospace", fontSize:13, color:"#f87171", backgroundColor:"#1a0000", minHeight:"50vh" }}>
+          <div style={{ fontWeight:700, marginBottom:8 }}>⚠️ 画面描画エラー</div>
+          <div style={{ whiteSpace:"pre-wrap", wordBreak:"break-all", marginBottom:16 }}>{msg}</div>
+          <button onClick={()=>this.setState({error:null})}
+            style={{ padding:"8px 16px", backgroundColor:"#ef4444", color:"#fff", border:"none", borderRadius:8, cursor:"pointer" }}>
+            リトライ
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+import { C, loadS, saveS, applyTheme, computeIsDark, getClosingPeriod } from "./lib/constants";
 import { sanitizeProfile, isValidEmail, isValidPassword } from "./lib/validate";
 import { INITIAL_REPORTS, ALL_AREAS, AREA_MASTER } from "./data/mockData";
 import { processLogin, processReport, processAction, levelFromXp, checkMissions, getMissionState, saveMissionState } from "./lib/xp";
@@ -26,12 +49,20 @@ import {
   resetPasswordForEmail,
   ensureReferralCode,
   registerWithReferral,
+  saveMemoDict,
+  callTakuroChat,
+  fetchFriendNotifCount,
+  saveAiAnalysis,
+  fetchUnreadAnalysisCount,
 } from "./lib/supabase";
+import { generateMilestoneAnalysis, generatePeriodSummary } from "./lib/ai";
 
 // Screens
 import Dashboard          from "./screens/Dashboard";
 import ReportList, { ReportModal } from "./screens/ReportList";
 import UploadScreen       from "./screens/Upload";
+import EnglishPhrases     from "./screens/EnglishPhrases";
+import NewbieGuide        from "./screens/NewbieGuide";
 import InfoCenter         from "./screens/InfoCenter";
 import GuideScreen        from "./screens/Guide";
 import ShiftScreen        from "./screens/Shift";
@@ -41,9 +72,16 @@ import CommunityScreen    from "./screens/Community";
 import AdminScreen        from "./screens/Admin";
 import RankingScreen, { hasUnseenRanking } from "./screens/Ranking";
 import StatsScreen      from "./screens/Stats";
+import EventsScreen        from "./screens/EventsScreen";
+import MapScreen           from "./screens/MapScreen";
+import MyPageScreen        from "./screens/MyPage";
+import AiAnalysisScreen    from "./screens/AiAnalysisScreen";
+import SimulationScreen    from "./screens/SimulationScreen";
+import { registerServiceWorker } from "./lib/push";
 
 // Components
 import { BottomNav, Header, TakuroFAB } from "./components/Navigation";
+import TakuroChat from "./components/TakuroChat";
 import { AreaSettingModal }  from "./components/AreaFilter";
 import Tutorial from "./components/Tutorial";
 
@@ -131,10 +169,20 @@ function PWAInstallBanner() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function LoginScreen({ onLogin, onGuestLogin }) {
   const [step, setStep]   = useState("top");
-  const [form, setForm]   = useState({ name:"", email:"", password:"", company:"", workType:"隔日勤務", target:"380000" });
+  const [form, setForm]   = useState({ name:"", email:"", password:"", company:"", workType:"隔日勤務", target:"" });
   const [areas, setAreas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
+  const ua = navigator.userAgent;
+  const isAndroid = /Android/.test(ua);
+  const isWebView = (() => {
+    if (/FBAN|FBAV|Instagram|Line\/|Twitter/.test(ua)) return true;
+    if (/iPhone|iPad|iPod/.test(ua) && /AppleWebKit/.test(ua) && !/Safari/.test(ua)) return true;
+    if (isAndroid && /wv\)/.test(ua)) return true;
+    return false;
+  })();
 
   const toggleArea = a => setAreas(prev => prev.includes(a) ? prev.filter(x=>x!==a) : [...prev,a]);
 
@@ -157,10 +205,12 @@ function LoginScreen({ onLogin, onGuestLogin }) {
           ...sanitizeProfile({
             name: form.name, company_name: form.company,
             work_type: form.workType, areas,
-            monthly_target: parseInt(form.target) || 380000,
+            monthly_target: parseInt(form.target) || null,
           }),
         };
         await insertProfile(profileData);
+        // メール認証フロー用：新規ユーザーフラグ（getSession側でオンボーディングをスキップしないため）
+        localStorage.setItem("taxi_new_user_pending", "true");
         // 招待コードがあれば紹介イベントを記録・クーポン発行
         if (refCode.trim()) {
           await registerWithReferral({
@@ -199,11 +249,12 @@ function LoginScreen({ onLogin, onGuestLogin }) {
         name: profile?.name || data.user.email,
         company: profile?.company_name || "",
         workType: profile?.work_type || "隔日勤務",
-        target: String(profile?.monthly_target || 380000),
+        target: profile?.monthly_target != null ? String(profile.monthly_target) : "",
         plan: profile?.plan || "free",
         uploadCount: profile?.monthly_upload_count || 0,
         areas: profile?.areas || [],
         closing_day: profile?.closing_day ?? null,
+        memoDict: profile?.memo_dict || {},
         _returningUser: true,
       });
     }
@@ -237,6 +288,21 @@ function LoginScreen({ onLogin, onGuestLogin }) {
       </div>
 
       {error && <div style={{ backgroundColor:C.redGlow, border:`1px solid ${C.red}44`, borderRadius:10, padding:"10px 14px", marginBottom:14, fontSize:13, color:C.red, maxWidth:360, width:"100%" }}>{error}</div>}
+
+      {/* WebViewバナー */}
+      {isWebView && (
+        <div style={{ width:"100%", maxWidth:360, marginBottom:14, backgroundColor:"#FAEEDA", border:"1px solid #EF9F27", borderRadius:10, padding:"12px 14px", display:"flex", gap:10, alignItems:"flex-start" }}>
+          <span style={{ fontSize:18, flexShrink:0 }}>⚠️</span>
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, color:"#633806", marginBottom:4 }}>アプリ内ブラウザではGoogleログインができません</div>
+            <div style={{ fontSize:12, color:"#854F0B", lineHeight:1.7, marginBottom:6 }}>LINEやSNSのリンクから開いている場合は、ブラウザで開き直してください。</div>
+            {isAndroid
+              ? <div style={{ fontSize:12, color:"#633806" }}>🤖 右上「⋮」→「他のアプリで開く」→ Chrome</div>
+              : <div style={{ fontSize:12, color:"#633806" }}>🍎 右下「…」→「ブラウザで開く」</div>
+            }
+          </div>
+        </div>
+      )}
 
       {/* トップ */}
       {step === "top" && (
@@ -277,12 +343,30 @@ function LoginScreen({ onLogin, onGuestLogin }) {
       {step === "login" && (
         <div style={{ width:"100%", maxWidth:360 }}>
           <div style={{ fontSize:17, fontWeight:700, marginBottom:18, textAlign:"center" }}>ログイン</div>
-          {[{l:"メールアドレス",k:"email",t:"email",ph:"taxi@example.com"},{l:"パスワード",k:"password",t:"password",ph:""}].map(({l,k,t,ph})=>(
-            <div key={k} style={{ marginBottom:12 }}>
-              <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>{l}</div>
-              <input type={t} value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} placeholder={ph} style={inputStyle}/>
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>メールアドレス</div>
+            <input type="email" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} placeholder="taxi@example.com" style={inputStyle}/>
+          </div>
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>パスワード</div>
+            <div style={{ position:"relative" }}>
+              <input type={showPassword?"text":"password"} value={form.password} onChange={e=>setForm(p=>({...p,password:e.target.value}))} placeholder="" style={{ ...inputStyle, paddingRight:44 }}/>
+              <button type="button" onClick={()=>setShowPassword(p=>!p)} style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", padding:4, lineHeight:1, color:C.muted, display:"flex", alignItems:"center" }}>
+                {showPassword ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/>
+                    <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/>
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                  </svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                )}
+              </button>
             </div>
-          ))}
+          </div>
           <button onClick={doLogin} disabled={loading} style={{ ...btnPrimary, opacity:loading?0.5:1, marginBottom:10 }}>
             {loading ? "ログイン中..." : "ログイン"}
           </button>
@@ -427,7 +511,8 @@ function GuestAccountModal({ onClose, onOAuth, onSwitchToRegister }) {
   };
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, backgroundColor:"#0008", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, padding:"24px 24px 48px" }}>
+      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, padding:"24px 24px 48px", position:"relative" }}>
+        <button onClick={onClose} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", fontSize:28, color:C.muted, cursor:"pointer", lineHeight:1, padding:"8px" }}>×</button>
         {/* 警告バナー */}
         <div style={{ backgroundColor:"#FFF3E0", border:"1px solid #FF980055", borderRadius:12, padding:"12px 14px", marginBottom:20, display:"flex", alignItems:"flex-start", gap:10 }}>
           <span style={{ fontSize:18 }}>⚠️</span>
@@ -519,13 +604,19 @@ export default function App() {
   const [appMode, setAppMode]   = useState(() => { const m = loadS("taxi_app_mode","simple"); return m === "standard" ? "simple" : m; });
   const [themeMode, setThemeMode] = useState(() => loadS("taxi_theme_mode","light"));
   const [themeVer, setThemeVer] = useState(0); // テーマ変更時に全体を再描画させるカウンター
-  const [consentDone, setConsentDone]       = useState(() => !!loadS("taxi_consent_done", false));
+  // 規約確認は初回登録時のみ（ログイン前のブロッカーとして使わない）
+  const [consentDone, setConsentDone]       = useState(true);
   const [onboardingDone, setOnboardingDone] = useState(() => !!loadS("taxi_onboarding_done", false));
   const [showTutorial,  setShowTutorial]  = useState(false);
   const [reports, setReports]   = useState(() => {
     const savedUser = loadS("taxi_user", null);
     // ゲストユーザーまたはSupabase未設定ならlocalStorageから読む
     if (!SUPABASE_READY || savedUser?._isGuest) return loadS("taxi_reports", INITIAL_REPORTS);
+    // 認証済みユーザー: ユーザーIDキーのバックアップキャッシュから読む（Supabase読込前の表示用）
+    if (savedUser?.id) {
+      const backup = loadS(`taxi_reports_bak_${savedUser.id}`, null);
+      if (backup !== null) return backup;
+    }
     return [];
   });
   const [tab, setTab]           = useState(() => {
@@ -534,18 +625,28 @@ export default function App() {
     return ["dashboard","list","upload","info","guide","shift","settings","community","ranking","stats"].includes(saved) ? saved : "dashboard";
   });
   const [hasNewRanking, setHasNewRanking] = useState(() => hasUnseenRanking());
+  const [friendNotifCount, setFriendNotifCount] = useState(0);
+  const [unreadAnalysisCount, setUnreadAnalysisCount] = useState(0);
   const [alertsSeen, setAlertsSeen]   = useState(() => loadS("taxi_alerts_seen", false));
   const [settingsSection, setSettingsSection] = useState("");
   const [selected, setSelected] = useState(null);
   const [selectedForEdit, setSelectedForEdit] = useState(false);
   const [notif, setNotif]       = useState(() => loadS("taxi_notif", { delays:true, events:false, traffic:false, dailyTip:false, achievement:true, dailyResult:false }));
   const [showAreaModal, setShowAreaModal] = useState(false);
+  const [showTakuroChat, setShowTakuroChat] = useState(false);
+  const [showFAB, setShowFAB] = useState(() => loadS("taxi_show_fab", true));
+  const toggleFAB = () => { setShowFAB(p => { saveS("taxi_show_fab", !p); return !p; }); };
+  const [showAiMilestone, setShowAiMilestone] = useState(() => loadS("taxi_ai_milestone", true));
+  const toggleAiMilestone = () => { setShowAiMilestone(p => { saveS("taxi_ai_milestone", !p); return !p; }); };
   const [showAccountLink, setShowAccountLink] = useState(false);
   const [showClosingPrompt, setShowClosingPrompt] = useState(false);
   const [closingDayPick, setClosingDayPick] = useState(15);
   const [closingDaySaving, setClosingDaySaving] = useState(false);
   const [toast, setToast] = useState(null); // { msg, type: "success"|"error"|"info" }
+  const [milestoneSheet, setMilestoneSheet] = useState(null); // { loading: bool, content: string|null, count: number }
+  const [periodSheet, setPeriodSheet] = useState(null); // { loading: bool, content: string|null, periodStart, periodEnd }
   const areaModalShownRef = useRef(false); // セッション中1回だけ表示
+  const sessionHandledRef = useRef(false); // getSession/onAuthStateChange の二重実行防止
   // SUPABASE_READYでもキャッシュユーザーがあればすぐ表示（リフレッシュ対策）
   const [authReady, setAuthReady] = useState(!SUPABASE_READY || !!loadS("taxi_user", null));
 
@@ -555,8 +656,15 @@ export default function App() {
 
     // 既存セッションを確認
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      sessionHandledRef.current = true; // onAuthStateChange の二重実行を防ぐ
       if (session?.user) {
         const { data: profile } = await fetchProfile(session.user.id);
+        if (profile?.suspended) {
+          // 停止済みアカウント → ログアウト
+          await supabase.auth.signOut();
+          showToast("このアカウントは停止されています。お問い合わせください。", "error");
+          return;
+        }
         if (profile) {
           // 既存ユーザー — 再ログイン時に利用規約・締日モーダルをスキップ
           localStorage.setItem("taxi_consent_done", "true");
@@ -580,8 +688,22 @@ export default function App() {
             upsertProfile({ id: session.user.id, monthly_upload_count: 0, upload_reset_month: currentMonth });
           }
 
-          localStorage.setItem("taxi_onboarding_done", "true");
-          setOnboardingDone(true);
+          // プロフィールがDBに存在 = 既存ユーザー → 必ずオンボーディングをスキップ
+          // ただし以下のいずれかは新規ユーザー扱い:
+          //   1. taxi_new_user_pending フラグがある（同一ブラウザのメール登録）
+          //   2. プロフィール作成から30分以内（メール認証リンクを別ブラウザで開いた場合の対策）
+          const isNewUserPending = localStorage.getItem("taxi_new_user_pending") === "true";
+          const profileAgeMin = profile?.created_at
+            ? (Date.now() - new Date(profile.created_at).getTime()) / 60000
+            : 999;
+          const isNewUser = isNewUserPending || profileAgeMin < 30;
+          if (isNewUser) {
+            if (isNewUserPending) localStorage.removeItem("taxi_new_user_pending");
+            // onboarding_done はセットしない → オンボーディング・チュートリアルを表示
+          } else {
+            localStorage.setItem("taxi_onboarding_done", "true");
+            setOnboardingDone(true);
+          }
           setUser({
             id: session.user.id,
             email: session.user.email,
@@ -598,75 +720,186 @@ export default function App() {
             avatarUrl: profile.avatar_url || null,
             avatarPreset: profile.avatar_preset || null,
             closing_day: profile.closing_day ?? null,
+            memoDict: profile.memo_dict || {},
+            display_id: profile.display_id || null,
           });
-          const { data: reps } = await fetchReports(session.user.id);
-          if (reps?.length) setReports(reps.map(r => ({ ...r, date: r.report_date })));
-          else setReports([]);
+          // 未送信データの再送（オフライン時に保存できなかったレポート）
+          const pendingSaves = loadS("taxi_pending_saves", []);
+          if (pendingSaves.length > 0) {
+            console.log(`[pending saves] ${pendingSaves.length}件の未送信データを再送中...`);
+            const failedSaves = [];
+            for (const pendingR of pendingSaves) {
+              try {
+                const { error: pendingErr } = await insertReport({
+                  user_id: session.user.id,
+                  report_date: pendingR.date,
+                  gross_sales: pendingR.gross_sales,
+                  cash_sales: pendingR.cash_sales,
+                  card_sales: pendingR.card_sales,
+                  app_sales: pendingR.app_sales,
+                  highway_fee: pendingR.highway_fee,
+                  ride_count: pendingR.ride_count,
+                  total_distance: pendingR.total_distance,
+                  occupied_distance: pendingR.occupied_distance || null,
+                  work_hours: pendingR.work_hours,
+                  break_hours: pendingR.break_hours,
+                  format_type: pendingR.format_type || "manual",
+                  trouble_note: pendingR.trouble_note,
+                });
+                if (pendingErr) failedSaves.push(pendingR);
+              } catch { failedSaves.push(pendingR); }
+            }
+            saveS("taxi_pending_saves", failedSaves);
+          }
+
+          const { data: reps, error: repsError } = await fetchReports(session.user.id);
+          if (!repsError && reps != null) {
+            const mapped = reps.map(r => ({ ...r, date: r.report_date }));
+            setReports(mapped);
+            // Supabase取得成功 → バックアップを最新データで更新
+            saveS(`taxi_reports_bak_${session.user.id}`, mapped);
+          }
+          // repsError時はinitialStateで読み込んだバックアップキャッシュをそのまま使用（何もしない）
+          if (repsError) {
+            console.warn("[fetchReports] Supabaseエラー。バックアップキャッシュを使用します:", repsError.message);
+          }
         } else {
-          // Google/Apple OAuth 新規ユーザー → プロフィール作成してオンボーディングへ
+          // fetchProfileがnullを返した場合（新規 or 既存だがfetchが失敗）
           const oauthName = session.user.user_metadata?.full_name
             || session.user.user_metadata?.name
             || session.user.email?.split("@")[0]
             || "ドライバー";
+          // upsert（ignoreDuplicates:true）なので既存ユーザーでも安全
           await insertProfile({
             id: session.user.id,
             name: oauthName,
             work_type: "隔日勤務",
-            monthly_target: 380000,
+            monthly_target: null,
             areas: [],
           });
-          // ゲストデータの移行
-          let migratedReports = [];
-          if (localStorage.getItem("taxi_migration_pending")) {
-            localStorage.removeItem("taxi_migration_pending");
-            const localReports = loadS("taxi_reports", []);
-            if (localReports.length > 0) {
-              for (const r of localReports) {
-                await insertReport({
-                  user_id: session.user.id,
-                  report_date: r.date,
-                  gross_sales: r.gross_sales,
-                  cash_sales: r.cash_sales,
-                  card_sales: r.card_sales,
-                  app_sales: r.app_sales,
-                  highway_fee: r.highway_fee,
-                  ride_count: r.ride_count,
-                  total_distance: r.total_distance,
-                  occupied_distance: r.occupied_distance || null,
-                  work_hours: r.work_hours,
-                  break_hours: r.break_hours,
-                  format_type: r.format_type || "manual",
-                  confidence_score: r.confidence_score || null,
-                  raw_ocr_fields: r.raw_ocr_fields || null,
-                  ai_comment: r.ai_comment,
-                  trouble_note: r.trouble_note,
-                });
-              }
-              const { data: reps } = await fetchReports(session.user.id);
-              if (reps?.length) migratedReports = reps.map(r => ({ ...r, date: r.report_date }));
+          // upsert後に再fetch → 既存ユーザーならその設定が戻る
+          const { data: existingProfile } = await fetchProfile(session.user.id);
+          if (existingProfile) {
+            // 既存ユーザーが誤ってここに来た場合 → 既存データで上書き
+            const isNew = (Date.now() - new Date(existingProfile.created_at).getTime()) / 60000 < 30;
+            if (!isNew) {
+              localStorage.setItem("taxi_onboarding_done", "true");
+              setOnboardingDone(true);
             }
+            setUser({
+              id: session.user.id,
+              email: session.user.email,
+              name: existingProfile.name,
+              company: existingProfile.company_name || "",
+              workType: existingProfile.work_type || "隔日勤務",
+              target: existingProfile.monthly_target != null ? String(existingProfile.monthly_target) : "",
+              plan: existingProfile.plan || "free",
+              uploadCount: existingProfile.monthly_upload_count || 0,
+              areas: existingProfile.areas || [],
+              closing_day: existingProfile.closing_day ?? null,
+              memoDict: existingProfile.memo_dict || {},
+              display_id: existingProfile.display_id || null,
+            });
+            const { data: reps } = await fetchReports(session.user.id);
+            if (reps?.length) {
+              const mapped = reps.map(r => ({ ...r, date: r.report_date }));
+              setReports(mapped);
+              saveS(`taxi_reports_bak_${session.user.id}`, mapped);
+            }
+          } else {
+            // 本当の新規ユーザー
+            // ゲストデータの移行
+            let migratedReports = [];
+            if (localStorage.getItem("taxi_migration_pending")) {
+              const localReports = loadS("taxi_reports", []);
+              if (localReports.length > 0) {
+                let allSuccess = true;
+                for (const r of localReports) {
+                  const { error: insertErr } = await insertReport({
+                    user_id: session.user.id,
+                    report_date: r.date,
+                    gross_sales: r.gross_sales,
+                    cash_sales: r.cash_sales,
+                    card_sales: r.card_sales,
+                    app_sales: r.app_sales,
+                    highway_fee: r.highway_fee,
+                    ride_count: r.ride_count,
+                    total_distance: r.total_distance,
+                    occupied_distance: r.occupied_distance || null,
+                    work_hours: r.work_hours,
+                    break_hours: r.break_hours,
+                    format_type: r.format_type || "manual",
+                    confidence_score: r.confidence_score || null,
+                    raw_ocr_fields: r.raw_ocr_fields || null,
+                    ai_comment: r.ai_comment,
+                    trouble_note: r.trouble_note,
+                  });
+                  if (insertErr) { allSuccess = false; console.error("[migration]", insertErr); }
+                }
+                if (allSuccess) localStorage.removeItem("taxi_migration_pending");
+                const { data: reps } = await fetchReports(session.user.id);
+                if (reps?.length) {
+                  migratedReports = reps.map(r => ({ ...r, date: r.report_date }));
+                  saveS(`taxi_reports_bak_${session.user.id}`, migratedReports);
+                }
+              } else {
+                localStorage.removeItem("taxi_migration_pending");
+              }
+            }
+            setReports(migratedReports);
+            // オンボーディングを表示（onboarding_done はセットしない）
+            setUser({
+              id: session.user.id,
+              email: session.user.email,
+              name: oauthName,
+              company: "",
+              workType: "隔日勤務",
+              target: "",
+              plan: "free",
+              uploadCount: 0,
+              areas: [],
+            });
           }
-          setReports(migratedReports);
-          // オンボーディングを表示（onboarding_done はセットしない）
-          setUser({
-            id: session.user.id,
-            email: session.user.email,
-            name: oauthName,
-            company: "",
-            workType: "隔日勤務",
-            target: "380000",
-            plan: "free",
-            uploadCount: 0,
-            areas: [],
-          });
         }
       }
       setAuthReady(true);
     });
 
     // 認証状態の変化を監視
-    const { data: { subscription } } = onAuthStateChange(session => {
-      if (!session) { setUser(null); setReports([]); }
+    // SIGNED_OUT イベントのときだけログアウト処理する
+    // （TOKEN_REFRESHED などで一瞬 session が null になっても弾かないようにする）
+    const { data: { subscription } } = onAuthStateChange(async (session, event) => {
+      if (event === "SIGNED_OUT") { setUser(null); setReports([]); return; }
+      // メール認証完了（EMAIL_CONFIRMED / SIGNED_IN）: 同一ページでセッションが確立した場合
+      // authReady後かつ user がまだセットされていない状態のみ処理（二重実行防止）
+      if ((event === "SIGNED_IN" || event === "EMAIL_CONFIRMED") && session?.user && !sessionHandledRef.current) {
+        const { data: prof } = await fetchProfile(session.user.id);
+        if (!prof) return; // プロフィール未作成なら何もしない（getSession側で処理済み）
+        const isNewUserPending = localStorage.getItem("taxi_new_user_pending") === "true";
+        const profileAgeMin = prof?.created_at
+          ? (Date.now() - new Date(prof.created_at).getTime()) / 60000
+          : 999;
+        const isNew = isNewUserPending || profileAgeMin < 30;
+        if (isNewUserPending) localStorage.removeItem("taxi_new_user_pending");
+        if (!isNew) {
+          localStorage.setItem("taxi_onboarding_done", "true");
+          setOnboardingDone(true);
+        }
+        setUser({
+          id: session.user.id,
+          email: session.user.email,
+          name: prof.name,
+          company: prof.company_name || "",
+          workType: prof.work_type || "隔日勤務",
+          target: prof.monthly_target != null ? String(prof.monthly_target) : "",
+          plan: prof.plan || "free",
+          uploadCount: prof.monthly_upload_count || 0,
+          areas: prof.areas || [],
+          closing_day: prof.closing_day ?? null,
+          memoDict: prof.memo_dict || {},
+          display_id: prof.display_id || null,
+        });
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -702,10 +935,13 @@ export default function App() {
   }, [themeMode]);
   useEffect(() => saveS("taxi_notif", notif), [notif]);
   useEffect(() => {
-    if (user && (!user.areas || user.areas.length === 0) && !areaModalShownRef.current) {
-      areaModalShownRef.current = true;
-      setShowAreaModal(true);
-    }
+    if (!user || user._isGuest) return;
+    if (user.areas && user.areas.length > 0) return; // 設定済み
+    if (areaModalShownRef.current) return; // セッション内で既に表示
+    // ユーザーごとに「一度閉じたら再表示しない」フラグを確認
+    if (loadS(`taxi_area_modal_dismissed_${user.id}`, false)) return;
+    areaModalShownRef.current = true;
+    setShowAreaModal(true);
   }, [user]);
 
   // 締日未設定の新規ユーザーに1度だけ促す
@@ -723,6 +959,120 @@ export default function App() {
     const t = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // Service Worker 登録（プッシュ通知の前提）
+  useEffect(() => { registerServiceWorker(); }, []);
+
+  // 地図タイルのバックグラウンドプリフェッチ（ログイン後・エリア設定済み時）
+  useEffect(() => {
+    if (!user?.id || user?._isGuest || !user?.areas?.length) return;
+    const prefetchTiles = async () => {
+      // エリア名→緯度経度（Nominatim）
+      const area = user.areas[0];
+      const query = area.startsWith("東京") ? area : `東京都${area}`;
+      let lat = 35.6812, lng = 139.7671; // デフォルト: 東京駅
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=jp&limit=1`,
+          { headers: { "User-Agent": "TakuroApp/1.0" } }
+        );
+        const data = await res.json();
+        if (data[0]) { lat = parseFloat(data[0].lat); lng = parseFloat(data[0].lon); }
+      } catch { /* デフォルト座標を使用 */ }
+
+      // ズームレベル12〜15のタイルをプリフェッチ（エリア周辺3×3グリッド）
+      const toTile = (lat, lng, z) => {
+        const n = Math.pow(2, z);
+        return {
+          x: Math.floor((lng + 180) / 360 * n),
+          y: Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n),
+        };
+      };
+      const urls = [];
+      for (const z of [12, 13, 14, 15]) {
+        const { x, y } = toTile(lat, lng, z);
+        const r = z <= 13 ? 2 : 1; // ズームが低いほど広めに取得
+        for (let dx = -r; dx <= r; dx++) {
+          for (let dy = -r; dy <= r; dy++) {
+            urls.push(`https://tile.openstreetmap.org/${z}/${x + dx}/${y + dy}.png`);
+          }
+        }
+      }
+      // 1秒間隔でバックグラウンド取得（サーバー負荷対策）
+      for (const url of urls) {
+        fetch(url, { headers: { "User-Agent": "TakuroApp/1.0" } }).catch(() => {});
+        await new Promise(r => setTimeout(r, 80));
+      }
+    };
+    // アプリ起動5秒後に開始（初期ロードを優先）
+    const t = setTimeout(prefetchTiles, 5000);
+    return () => clearTimeout(t);
+  }, [user?.id, user?.areas?.[0]]);
+
+  // フレンド通知数＆未読AI分析数をポーリング（2分ごと）
+  useEffect(() => {
+    if (!SUPABASE_READY || !user?.id || user?._isGuest) return;
+    const load = async () => {
+      const { count: fc } = await fetchFriendNotifCount(user.id);
+      setFriendNotifCount(fc);
+      const { count: ac } = await fetchUnreadAnalysisCount(user.id);
+      setUnreadAnalysisCount(ac);
+    };
+    load();
+    const timer = setInterval(load, 120000);
+    return () => clearInterval(timer);
+  }, [user?.id]);
+
+  // 締め期間終了後の振り返りAI分析（自動生成）
+  useEffect(() => {
+    if (!SUPABASE_READY || !user?.id || user?._isGuest || !reports.length) return;
+
+    const closingDay = user.closing_day ?? 0;
+    const { start: periodStart } = getClosingPeriod(closingDay);
+
+    // 前期間の終了日 = 今期間の開始日の前日
+    const prevEndDate = new Date(periodStart + "T00:00:00");
+    prevEndDate.setDate(prevEndDate.getDate() - 1);
+    const prevEnd = prevEndDate.toISOString().slice(0, 10);
+
+    const storageKey = `taxi_period_analysis_${user.id}_${prevEnd}`;
+    if (loadS(storageKey, "")) return; // 生成済み or pending
+
+    // 前期間のstartを計算
+    const [ey, em] = prevEnd.split("-").map(Number);
+    let prevStart;
+    if (!closingDay || closingDay === 0) {
+      prevStart = `${ey}-${String(em).padStart(2,"0")}-01`;
+    } else {
+      const pm = em === 1 ? 12 : em - 1;
+      const py = em === 1 ? ey - 1 : ey;
+      const lastDayOfPm = new Date(py, pm, 0).getDate();
+      const sd = Math.min(closingDay + 1, lastDayOfPm);
+      prevStart = `${py}-${String(pm).padStart(2,"0")}-${String(sd).padStart(2,"0")}`;
+    }
+
+    const prevReports = reports.filter(r => r.date >= prevStart && r.date <= prevEnd);
+    if (prevReports.length < 3) return; // 記録が少なすぎる場合はスキップ
+
+    saveS(storageKey, "pending"); // 二重実行防止
+    setPeriodSheet({ loading: true, content: null, periodStart: prevStart, periodEnd: prevEnd });
+
+    generatePeriodSummary(prevReports, prevStart, prevEnd).then(content => {
+      if (content) {
+        saveAiAnalysis(user.id, 0, `[締め期間振り返り ${prevStart}〜${prevEnd}]\n\n${content}`).then(() => {
+          setUnreadAnalysisCount(c => c + 1);
+        });
+        saveS(storageKey, "done");
+        setPeriodSheet(prev => prev ? { ...prev, loading: false, content } : null);
+      } else {
+        saveS(storageKey, "");
+        setPeriodSheet(null);
+      }
+    }).catch(() => {
+      saveS(storageKey, "");
+      setPeriodSheet(null);
+    });
+  }, [user?.id, reports.length]);
 
   if (!authReady) {
     return <div style={{ minHeight:"100vh", backgroundColor:C.bg, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted, fontFamily:"'Inter','Hiragino Sans',sans-serif" }}>読み込み中...</div>;
@@ -748,14 +1098,22 @@ export default function App() {
         // 再ログイン時は利用規約・締日モーダルをスキップ
         localStorage.setItem("taxi_consent_done", "true");
         saveS("taxi_closing_prompted", true);
+        // 再ログイン時にレポートをSupabaseから取得（getSessionは初回マウント時のみ走るため）
+        if (SUPABASE_READY && u.id) {
+          fetchReports(u.id).then(({ data: reps, error }) => {
+            if (!error && reps?.length) setReports(reps.map(r => ({ ...r, date: r.report_date })));
+            else if (!error) setReports([]);
+          });
+        }
       }
       // メール登録でゲストデータがある場合は移行
       if (u._migrationUserId && SUPABASE_READY) {
         const localReports = loadS("taxi_reports", []);
         if (localReports.length > 0) {
           (async () => {
+            let allSuccess = true;
             for (const r of localReports) {
-              await insertReport({
+              const { error: insertErr } = await insertReport({
                 user_id: u._migrationUserId,
                 report_date: r.date,
                 gross_sales: r.gross_sales,
@@ -774,9 +1132,18 @@ export default function App() {
                 ai_comment: r.ai_comment,
                 trouble_note: r.trouble_note,
               });
+              if (insertErr) { allSuccess = false; console.error("[login migration]", insertErr); }
             }
             const { data: reps } = await fetchReports(u._migrationUserId);
-            if (reps?.length) setReports(reps.map(r => ({ ...r, date: r.report_date })));
+            if (reps?.length) {
+              const mapped = reps.map(r => ({ ...r, date: r.report_date }));
+              setReports(mapped);
+              saveS(`taxi_reports_bak_${u._migrationUserId}`, mapped);
+            }
+            // 移行成功したローカルデータを保持（失敗分は次回に備えてキューへ）
+            if (!allSuccess) {
+              console.warn("[login migration] 一部の日報移行に失敗しました。ローカルデータを保持します。");
+            }
           })();
         }
       }
@@ -823,6 +1190,7 @@ export default function App() {
   // 日報保存（Supabase or ローカル）
   const handleSave = async (r) => {
     let savedReport = r;
+    let supabaseFailed = false;
     if (SUPABASE_READY && user.id) {
       try {
       const { data, error: saveErr } = await insertReport({
@@ -844,15 +1212,29 @@ export default function App() {
         image_url: r.image_url || null,
         ai_comment: r.ai_comment,
         trouble_note: r.trouble_note,
+        work_area: r.work_area || null,
+        rides: r.rides?.length ? r.rides : null,
+        break_times: r.break_times?.length ? r.break_times : null,
       });
       if (saveErr) throw saveErr;
       if (data) savedReport = { ...r, id: data.id };
       } catch(e) {
-        showToast("保存に失敗しました。通信状況を確認してください", "error");
+        supabaseFailed = true;
+        showToast("通信エラー: データをローカルに保存しました。次回起動時に自動送信します", "error");
         console.error("[handleSave]", e);
+        // オフライン保存キューに追加（次回起動時に再送）
+        const pending = loadS("taxi_pending_saves", []);
+        saveS("taxi_pending_saves", [...pending, { ...r, _pendingAt: Date.now() }]);
       }
     }
-    setReports(prev => [savedReport, ...prev]);
+    setReports(prev => {
+      const next = [savedReport, ...prev];
+      // 認証済みユーザーもバックアップを更新（Supabase障害時のデータ消失防止）
+      if (SUPABASE_READY && user?.id && !user?._isGuest) {
+        saveS(`taxi_reports_bak_${user.id}`, next);
+      }
+      return next;
+    });
     const { xpGained: reportXp, newBadges } = processReport(user.uploadCount || 0, user.badges || []);
     // ミッションチェック
     const missionState = getMissionState();
@@ -866,14 +1248,58 @@ export default function App() {
       upsertProfile({ id: user.id, monthly_upload_count: newUploadCount, upload_reset_month: currentMonth });
     }
     await awardXP(reportXp + missionXp, newBadges);
+
+    // シフト÷3の間隔でAI分析を自動生成
+    const _allShifts = loadS("taxi_shifts", []);
+    const { start: _ps, end: _pe } = getClosingPeriod(user.closing_day ?? 0);
+    const _periodShifts = _allShifts.filter(s => s.date >= _ps && s.date <= _pe).length;
+    const _analysisInterval = _periodShifts >= 3 ? Math.round(_periodShifts / 3) : 5;
+    if (showAiMilestone && SUPABASE_READY && user?.id && !user?._isGuest && _analysisInterval > 0 && newUploadCount % _analysisInterval === 0) {
+      const allReports = [savedReport, ...reports];
+      setMilestoneSheet({ loading: true, content: null, count: newUploadCount });
+      generateMilestoneAnalysis(allReports, newUploadCount).then(content => {
+        if (content) {
+          saveAiAnalysis(user.id, newUploadCount, content).then(() => {
+            setUnreadAnalysisCount(c => c + 1);
+          });
+          setMilestoneSheet({ loading: false, content, count: newUploadCount });
+        } else {
+          setMilestoneSheet(null);
+        }
+      }).catch(e => {
+        console.warn("[AI分析] 生成エラー:", e);
+        setMilestoneSheet(null);
+      });
+    }
+
+    // タクローからお疲れ様メッセージ
+    if (!supabaseFailed) {
+      const net = r.net_sales || Math.round((r.gross_sales || 0) / 1.1);
+      const msgs = net >= 80000
+        ? ["今日は大台超え！最高の出番でしたね 🦉🎉", "すごい！今日は絶好調でしたね 🦉"]
+        : net >= 60000
+        ? ["今日もしっかり稼ぎましたね。お疲れさまでした 🦉", "いい出番でした！ゆっくり休んでください 🦉"]
+        : net >= 40000
+        ? ["お疲れさまでした。記録が積み重なっていきます 🦉", "今日も1日お疲れさまでした 🦉"]
+        : ["今日も出番お疲れさまでした。また次回 🦉", "お疲れさまでした。体を休めてください 🦉"];
+      showToast(msgs[Math.floor(Math.random() * msgs.length)], "success");
+    }
+
     setTab("list");
   };
 
   // 日報更新（編集後）
   const handleUpdateReport = async (updated) => {
-    setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+    setReports(prev => {
+      const next = prev.map(r => r.id === updated.id ? updated : r);
+      // 認証済みユーザーのバックアップも更新
+      if (SUPABASE_READY && user?.id && !user?._isGuest) {
+        saveS(`taxi_reports_bak_${user.id}`, next);
+      }
+      return next;
+    });
     if (SUPABASE_READY && user.id && updated.id) {
-      await updateReport(updated.id, {
+      const { error: updateErr } = await updateReport(updated.id, {
         report_date:       updated.date,
         gross_sales:       updated.gross_sales,
         cash_sales:        updated.cash_sales,
@@ -887,17 +1313,33 @@ export default function App() {
         break_hours:       updated.break_hours,
         trouble_note:      updated.trouble_note,
         work_area:         updated.work_area,
-      });
+        rides:             updated.rides ?? null,
+      }, user.id);
+      if (updateErr) {
+        console.error("[handleUpdateReport]", updateErr);
+        showToast("更新の保存に失敗しました。再度お試しください", "error");
+      }
     }
   };
 
   // 日報削除
   const handleDeleteReport = async (id) => {
-    setReports(prev => prev.filter(r => r.id !== id));
+    setReports(prev => {
+      const next = prev.filter(r => r.id !== id);
+      // 認証済みユーザーのバックアップも更新
+      if (SUPABASE_READY && user?.id && !user?._isGuest) {
+        saveS(`taxi_reports_bak_${user.id}`, next);
+      }
+      return next;
+    });
     setSelected(null);
     setSelectedForEdit(false);
     if (SUPABASE_READY && id) {
-      await deleteReport(id);
+      const { error: delErr } = await deleteReport(id, user?.id);
+      if (delErr) {
+        console.error("[handleDeleteReport]", delErr);
+        showToast("削除の保存に失敗しました", "error");
+      }
     }
   };
 
@@ -925,22 +1367,48 @@ export default function App() {
 
   const handleLogout = async () => {
     if (SUPABASE_READY) await signOut();
-    // 同意・オンボーディング・締日フラグはログアウト後も保持
-    const consentFlag     = localStorage.getItem("taxi_consent_done");
-    const onboardingFlag  = localStorage.getItem("taxi_onboarding_done");
-    const closingFlag     = localStorage.getItem("taxi_closing_prompted");
+    // ログアウト後も保持するフラグ
+    // ※ taxi_onboarding_done・taxi_tutorial_done は保持しない
+    //   → 同じ端末で別の新規ユーザーが登録した場合にオンボーディングが出ない問題を防ぐ
+    //   → 既存ユーザーが再ログインした場合は getSession() または doLogin() で再セットされる
+    const consentFlag = localStorage.getItem("taxi_consent_done");
+    const closingFlag = localStorage.getItem("taxi_closing_prompted");
+    const themeFlag   = localStorage.getItem("taxi_theme_mode"); // カラーテーマを保持
+    const pwaFlag     = localStorage.getItem("taxi_pwa_dismissed"); // PWAバナーを保持
     localStorage.clear();
-    if (consentFlag)    localStorage.setItem("taxi_consent_done", consentFlag);
-    if (onboardingFlag) localStorage.setItem("taxi_onboarding_done", onboardingFlag);
-    if (closingFlag)    localStorage.setItem("taxi_closing_prompted", closingFlag);
+    if (consentFlag) localStorage.setItem("taxi_consent_done", consentFlag);
+    if (closingFlag) localStorage.setItem("taxi_closing_prompted", closingFlag);
+    if (themeFlag)   localStorage.setItem("taxi_theme_mode", themeFlag);
+    if (pwaFlag)     localStorage.setItem("taxi_pwa_dismissed", pwaFlag);
+    setOnboardingDone(false);
     setUser(null);
     setReports(INITIAL_REPORTS);
   };
 
   const handleDeleteAccount = async () => {
-    // Supabaseからサインアウト（アカウント本体の削除は管理者が30日以内に実施）
-    if (SUPABASE_READY) await signOut();
-    // すべてのローカルデータを消去（同意・オンボーディングフラグも含む）
+    if (!SUPABASE_READY) {
+      localStorage.clear();
+      setUser(null);
+      setReports(INITIAL_REPORTS);
+      return;
+    }
+    try {
+      // Edge Function でアカウントを即時削除（daily_reports等のデータは残る）
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const EDGE_BASE = import.meta.env.VITE_EDGE_FUNCTIONS_URL ?? "";
+      if (token && EDGE_BASE) {
+        await fetch(`${EDGE_BASE}/delete-account`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        });
+      } else {
+        await signOut();
+      }
+    } catch (e) {
+      console.error("[handleDeleteAccount]", e);
+      await signOut();
+    }
     localStorage.clear();
     setUser(null);
     setReports(INITIAL_REPORTS);
@@ -949,15 +1417,22 @@ export default function App() {
   const renderScreen = () => {
     switch (tab) {
       case "dashboard": return <Dashboard reports={reports} user={user} onOpenReport={setSelected} onManageArea={()=>setShowAreaModal(true)} rankPrefs={rankPrefs} appMode={appMode} onGoShift={()=>handleSetTab("shift")} onUpdateReport={handleUpdateReport} onGoRanking={notif.dailyResult && hasNewRanking ? ()=>handleSetTab("ranking") : null} onUpdateUser={u=>setUser(u)}/>;
-      case "list":      return <ReportList reports={reports} onSelect={r=>{setSelectedForEdit(false);setSelected(r);}} onEdit={r=>{setSelectedForEdit(true);setSelected(r);}}/>;
-      case "upload":    return <UploadScreen uploadCount={user.uploadCount||0} onSave={handleSave} reports={reports} user={user}/>;
+      case "list":      return <ReportList reports={reports} onSelect={r=>{setSelectedForEdit(false);setSelected(r);}} onEdit={r=>{setSelectedForEdit(true);setSelected(r);}} onUpdate={handleUpdateReport} user={user}/>;
+      case "upload":    return <UploadScreen uploadCount={user.uploadCount||0} onSave={handleSave} reports={reports} user={user} onSaveMemoDict={async (dict) => { setUser(p=>({...p,memoDict:dict})); if(user?.id&&SUPABASE_READY)await saveMemoDict(user.id,dict); }}/>;
       case "info":      return <InfoCenter notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} userAreas={userAreas} onManageArea={()=>setShowAreaModal(true)}/>;
-      case "guide":     return <GuideScreen userAreas={userAreas} user={user}/>;
+      case "guide":     return <GuideScreen key={userAreas[0] || ""} userAreas={userAreas} user={user}/>;
       case "shift":     return <ShiftScreen reports={reports} onGoUpload={()=>setTab("upload")} user={user} onBack={()=>handleSetTab("dashboard")}/>;
-      case "settings":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={async u=>{ setUser(prev=>({...prev,...u})); if(SUPABASE_READY&&user?.id&&!user?._isGuest){const p={id:user.id};if(u.name!==undefined)p.name=u.name;if(u.workType!==undefined)p.work_type=u.workType;if(u.company!==undefined)p.company_name=u.company;if(u.target!==undefined)p.monthly_target=Number(u.target);if(u.closing_day!==undefined)p.closing_day=u.closing_day;if("avatar_url"in u)p.avatar_url=u.avatar_url;if("avatar_preset"in u)p.avatar_preset=u.avatar_preset;if(Object.keys(p).length>1)await upsertProfile(p);}}} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined} onOpenAdmin={()=>handleSetTab("admin")} onAccountLink={user?._isGuest ? ()=>setShowAccountLink(true) : undefined}/>;
+      case "settings":  return <Settings key={settingsSection||"settings"} appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} showFAB={showFAB} onToggleFAB={toggleFAB} showAiMilestone={showAiMilestone} onToggleAiMilestone={toggleAiMilestone} user={user} onUpdate={async u=>{ setUser(prev=>({...prev,...u,...("avatar_url"in u?{avatarUrl:u.avatar_url}:{}),...("avatar_preset"in u?{avatarPreset:u.avatar_preset}:{})})); if(SUPABASE_READY&&user?.id&&!user?._isGuest){const p={id:user.id};if(u.name!==undefined)p.name=u.name;if(u.workType!==undefined)p.work_type=u.workType;if(u.company!==undefined)p.company_name=u.company;if(u.target!==undefined)p.monthly_target=Number(u.target);if(u.closing_day!==undefined)p.closing_day=u.closing_day;if("avatar_url"in u)p.avatar_url=u.avatar_url;if("avatar_preset"in u)p.avatar_preset=u.avatar_preset;if(Object.keys(p).length>1)await upsertProfile(p);}}} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection={settingsSection} onBack={settingsSection ? ()=>{ setSettingsSection(""); handleSetTab("dashboard"); } : undefined} onOpenAdmin={()=>handleSetTab("admin")} onAccountLink={user?._isGuest ? ()=>setShowAccountLink(true) : undefined}/>;
+      case "mypage":    return <MyPageScreen user={user} reports={reports} onBack={() => handleSetTab("dashboard")} onMarkNotifsRead={() => setFriendNotifCount(0)}/>;
+      case "events":       return <EventsScreen user={user} onBack={() => handleSetTab("dashboard")} />;
+      case "ai_analysis":  return <AiAnalysisScreen user={user} onBack={() => handleSetTab("dashboard")} onMarkRead={() => setUnreadAnalysisCount(0)} />;
       case "community": return <CommunityScreen />;
+      case "english":   return <EnglishPhrases onBack={() => handleSetTab("dashboard")} />;
+      case "newbie":    return <NewbieGuide    onBack={() => handleSetTab("dashboard")} />;
+      case "map":       return <MapScreen reports={reports} user={user} />;
       case "ranking":   return <RankingScreen user={user} rankPrefs={rankPrefs} />;
       case "stats":     return <StatsScreen reports={reports} />;
+      case "simulation": return <SimulationScreen reports={reports} user={user} onBack={() => handleSetTab("dashboard")} />;
       case "admin":     return <AdminScreen user={{ ...user, email: user.email || "" }} onExit={() => handleSetTab("dashboard")}/>;
       case "feedback":  return <Settings appMode={appMode} onModeChange={setAppMode} themeMode={themeMode} onThemeChange={setThemeMode} user={user} onUpdate={async u=>{ setUser(prev=>({...prev,...u})); if(SUPABASE_READY&&user?.id&&!user?._isGuest){const p={id:user.id};if(u.name!==undefined)p.name=u.name;if(Object.keys(p).length>1)await upsertProfile(p);}}} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onManageArea={()=>setShowAreaModal(true)} notifSettings={notif} onUpdateNotif={(k,v)=>setNotif(p=>({...p,[k]:v}))} reports={reports} initialSection="feedback" onBack={()=>handleSetTab("dashboard")}/>;
       default:          return null;
@@ -966,21 +1441,39 @@ export default function App() {
 
   return (
     <div key={themeVer} style={{ minHeight:"100vh", backgroundColor:C.bg, fontFamily:"'Inter','Hiragino Sans',sans-serif", color:C.text, overflowX:"hidden" }}>
-      <Header user={user} tab={tab} setTab={handleSetTab} appMode={appMode} onModeChange={setAppMode} alertsSeen={alertsSeen} onNavigateSettings={handleNavigateSettings} onManageArea={()=>setShowAreaModal(true)} hasNewRanking={hasNewRanking && notif.dailyResult} />
-      {renderScreen()}
+      <Header user={user} tab={tab} setTab={handleSetTab} appMode={appMode} onModeChange={setAppMode} alertsSeen={alertsSeen} onNavigateSettings={handleNavigateSettings} onManageArea={()=>setShowAreaModal(true)} hasNewRanking={hasNewRanking && notif.dailyResult} friendNotifCount={friendNotifCount} onMarkNotifsRead={()=>setFriendNotifCount(0)} unreadAnalysisCount={unreadAnalysisCount}/>
+      <div style={{ paddingTop:52 }}>
+        <ErrorBoundary key={`${tab}-${appMode}`}>{renderScreen()}</ErrorBoundary>
+      </div>
       <ReportModal key={selected ? `${selected.id}-${selectedForEdit}` : "none"} report={selected} onClose={()=>{setSelected(null);setSelectedForEdit(false);}} onUpdate={handleUpdateReport} onDelete={handleDeleteReport} startInEdit={selectedForEdit}/>
-      <TakuroFAB setTab={handleSetTab} />
+      {showFAB && <TakuroFAB onOpenChat={() => setShowTakuroChat(true)} />}
+      {showTakuroChat && (
+        <TakuroChat
+          onClose={() => setShowTakuroChat(false)}
+          user={user}
+          callChat={callTakuroChat}
+          showFAB={showFAB}
+          onToggleFAB={toggleFAB}
+        />
+      )}
       <BottomNav tab={tab} setTab={handleSetTab} userAreas={userAreas} alertsSeen={alertsSeen}/>
       {showAreaModal && <AreaSettingModal userAreas={userAreas} onSave={areas=>{
         setUser(u=>({...u,areas}));
         if (SUPABASE_READY && user?.id) upsertProfile({ id: user.id, areas });
-      }} onClose={()=>setShowAreaModal(false)}/>}
+        if (user?.id) saveS(`taxi_area_modal_dismissed_${user.id}`, true);
+        setShowAreaModal(false);
+      }} onClose={()=>{
+        // 閉じても再表示しない
+        if (user?.id) saveS(`taxi_area_modal_dismissed_${user.id}`, true);
+        setShowAreaModal(false);
+      }}/>}
       {showAccountLink && <GuestAccountModal onClose={()=>setShowAccountLink(false)} />}
 
       {/* 締日設定促進モーダル */}
       {showClosingPrompt && (
         <div style={{ position:"fixed", inset:0, backgroundColor:"#0008", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-          <div style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, padding:"24px 24px 48px" }}>
+          <div style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, padding:"24px 24px 48px", position:"relative" }}>
+            <button onClick={()=>setShowClosingPrompt(false)} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", fontSize:28, color:C.muted, cursor:"pointer", lineHeight:1, padding:"8px" }}>×</button>
             <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 20px" }}/>
             <div style={{ fontSize:17, fontWeight:800, marginBottom:8 }}>📅 締日を設定しましょう</div>
             <div style={{ fontSize:13, color:C.muted, lineHeight:1.8, marginBottom:20 }}>
@@ -1033,6 +1526,96 @@ export default function App() {
       )}
 
       <PWAInstallBanner />
+
+      {/* AI分析ボトムシート（5枚マイルストーン） */}
+      {milestoneSheet && (
+        <div style={{ position:"fixed", inset:0, backgroundColor:"#00000088", zIndex:500, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
+          onClick={() => setMilestoneSheet(null)}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, maxHeight:"85vh", overflowY:"auto", padding:"20px 20px 44px", position:"relative" }}>
+            <button onClick={() => { if (!milestoneSheet?.loading) setMilestoneSheet(null); }} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", fontSize:22, color: milestoneSheet?.loading ? C.border : C.muted, cursor: milestoneSheet?.loading ? "not-allowed" : "pointer", lineHeight:1, padding:"4px" }}>×</button>
+            <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 20px" }}/>
+            {/* ヘッダー */}
+            <div style={{ textAlign:"center", marginBottom:20 }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>🧠</div>
+              <div style={{ fontSize:17, fontWeight:800, color:C.text }}>
+                {milestoneSheet.count}枚達成！AI分析が届きました
+              </div>
+              <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>
+                記録が積み上がるたびに精度が上がります
+              </div>
+            </div>
+            {/* 分析内容 */}
+            <div style={{ backgroundColor:C.card, borderRadius:14, padding:"16px", border:`1px solid ${C.border}`, marginBottom:20, minHeight:100 }}>
+              {milestoneSheet.loading ? (
+                <div style={{ textAlign:"center", color:C.muted, fontSize:13, padding:"20px 0" }}>
+                  <div style={{ fontSize:24, marginBottom:8 }}>⏳</div>
+                  分析中...
+                </div>
+              ) : (
+                <div style={{ fontSize:13, color:C.text, lineHeight:1.9, whiteSpace:"pre-wrap" }}>
+                  {milestoneSheet.content}
+                </div>
+              )}
+            </div>
+            {!milestoneSheet.loading && (
+              <div style={{ textAlign:"center", fontSize:11, color:C.muted, marginBottom:14 }}>
+                📂 この分析はメニュー → AI分析 にも保存されています
+              </div>
+            )}
+            <button
+              onClick={() => setMilestoneSheet(null)}
+              disabled={milestoneSheet.loading}
+              style={{ width:"100%", padding:"14px 0", borderRadius:12, backgroundColor: milestoneSheet.loading ? C.border : C.accentLight, color:"#fff", border:"none", fontSize:14, fontWeight:700, cursor: milestoneSheet.loading ? "not-allowed" : "pointer" }}>
+              {milestoneSheet.loading ? "分析中..." : "閉じる"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 締め期間振り返りAI分析ボトムシート */}
+      {periodSheet && (
+        <div style={{ position:"fixed", inset:0, backgroundColor:"#00000088", zIndex:500, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
+          onClick={() => { if (!periodSheet?.loading) setPeriodSheet(null); }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, maxHeight:"85vh", overflowY:"auto", padding:"20px 20px 44px", position:"relative" }}>
+            <button onClick={() => { if (!periodSheet?.loading) setPeriodSheet(null); }} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", fontSize:22, color: periodSheet?.loading ? C.border : C.muted, cursor: periodSheet?.loading ? "not-allowed" : "pointer", lineHeight:1, padding:"4px" }}>×</button>
+            <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 20px" }}/>
+            <div style={{ textAlign:"center", marginBottom:20 }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
+              <div style={{ fontSize:17, fontWeight:800, color:C.text }}>
+                締め期間の振り返りが届きました
+              </div>
+              <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>
+                {periodSheet.periodStart}〜{periodSheet.periodEnd}
+              </div>
+            </div>
+            <div style={{ backgroundColor:C.card, borderRadius:14, padding:"16px", border:`1px solid ${C.border}`, marginBottom:20, minHeight:100 }}>
+              {periodSheet.loading ? (
+                <div style={{ textAlign:"center", color:C.muted, fontSize:13, padding:"20px 0" }}>
+                  <div style={{ fontSize:24, marginBottom:8 }}>⏳</div>
+                  分析中...
+                </div>
+              ) : (
+                <div style={{ fontSize:13, color:C.text, lineHeight:1.9, whiteSpace:"pre-wrap" }}>
+                  {periodSheet.content}
+                </div>
+              )}
+            </div>
+            {!periodSheet.loading && (
+              <div style={{ textAlign:"center", fontSize:11, color:C.muted, marginBottom:14 }}>
+                📂 この分析はメニュー → AI分析 にも保存されています
+              </div>
+            )}
+            <button
+              onClick={() => setPeriodSheet(null)}
+              disabled={periodSheet.loading}
+              style={{ width:"100%", padding:"14px 0", borderRadius:12, backgroundColor: periodSheet.loading ? C.border : C.accentLight, color:"#fff", border:"none", fontSize:14, fontWeight:700, cursor: periodSheet.loading ? "not-allowed" : "pointer" }}>
+              {periodSheet.loading ? "分析中..." : "閉じる"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

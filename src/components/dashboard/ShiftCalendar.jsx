@@ -1,7 +1,9 @@
-import { useState } from "react";
-import { C, fmt, loadS, saveS } from "../../lib/constants";
+import { useState, useEffect } from "react";
+import { C, fmt, loadS, saveS, getClosingPeriod } from "../../lib/constants";
 import { Card } from "../UI";
-import { upsertShifts, deleteShift } from "../../lib/supabase";
+import { upsertShifts, deleteShift, fetchShifts, fetchFriendsShifts } from "../../lib/supabase";
+
+const FRIEND_COLORS = ["#e74c3c","#3498db","#f39c12","#9b59b6","#1abc9c","#e67e22","#16a085"];
 
 const SUPABASE_READY = !!(
   import.meta.env.VITE_SUPABASE_URL &&
@@ -11,10 +13,10 @@ const SUPABASE_READY = !!(
 const DAYS = ["日","月","火","水","木","金","土"];
 
 // ━━━ 日付詳細モーダル ━━━━━━━━━━━━━━━━━━━━━━━
-function UnifiedDayModal({ dateStr, shift, report, onClose, onSaveShift, onDeleteShift, onOpenReport }) {
+function UnifiedDayModal({ dateStr, shift, report, onClose, onSaveShift, onDeleteShift, onOpenReport, friendShiftsOnDay = [] }) {
   const d = new Date(dateStr);
   const wd = DAYS[d.getDay()];
-  const todayStr = new Date().toISOString().slice(0,10);
+  const _td = new Date(); const todayStr = `${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,"0")}-${String(_td.getDate()).padStart(2,"0")}`;
   const isPast = dateStr < todayStr;
 
   const [editing, setEditing] = useState(!shift);
@@ -32,7 +34,8 @@ function UnifiedDayModal({ dateStr, shift, report, onClose, onSaveShift, onDelet
 
   return (
     <div style={{ position:"fixed", inset:0, backgroundColor:"#00000090", zIndex:200, display:"flex", alignItems:"flex-end" }} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:24, paddingBottom:36, maxHeight:"85vh", overflowY:"auto" }}>
+      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:24, paddingBottom:36, maxHeight:"85vh", overflowY:"auto", position:"relative" }}>
+        <button onClick={onClose} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", fontSize:28, color:C.muted, cursor:"pointer", lineHeight:1, padding:"8px" }}>×</button>
         <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 16px" }}/>
         <div style={{ fontSize:18, fontWeight:800, marginBottom:16 }}>{dateStr}（{wd}）</div>
 
@@ -70,7 +73,7 @@ function UnifiedDayModal({ dateStr, shift, report, onClose, onSaveShift, onDelet
           <div style={{ backgroundColor:C.goldGlow||C.gold+"12", border:`1px solid ${C.gold}44`, borderRadius:12, padding:14, marginBottom:12 }}>
             <div style={{ fontSize:12, color:C.gold, fontWeight:700, marginBottom:8 }}>💴 日報入力済み</div>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div><div style={{ fontSize:10, color:C.muted }}>総売上</div><div style={{ fontSize:22, fontWeight:900, color:C.gold }}>{fmt(report.gross_sales)}円</div></div>
+              <div><div style={{ fontSize:10, color:C.muted }}>総売上（税抜）</div><div style={{ fontSize:22, fontWeight:900, color:C.gold }}>{fmt(report.gross_sales)}円</div></div>
               <div><div style={{ fontSize:10, color:C.muted }}>営業回数</div><div style={{ fontSize:22, fontWeight:900 }}>{report.ride_count}回</div></div>
             </div>
             <button onClick={()=>{ onOpenReport(report); onClose(); }} style={{ marginTop:10, width:"100%", backgroundColor:C.gold+"22", color:C.gold, border:`1px solid ${C.gold}44`, borderRadius:9, padding:"9px 0", fontSize:12, fontWeight:700, cursor:"pointer" }}>日報の詳細を見る →</button>
@@ -82,6 +85,29 @@ function UnifiedDayModal({ dateStr, shift, report, onClose, onSaveShift, onDelet
           </div>
         ) : null}
 
+        {/* フレンドのシフト */}
+        {friendShiftsOnDay.length > 0 && (
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:8 }}>👥 フレンドの出番</div>
+            {friendShiftsOnDay.map((f, i) => (
+              <div key={f.user_id ?? i} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
+                <div style={{ width:28, height:28, borderRadius:"50%", backgroundColor:f.color+"22", color:f.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, flexShrink:0 }}>
+                  {(f.userName||"?").slice(0,1)}
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{f.userName}</div>
+                  <div style={{ fontSize:11, color:C.muted }}>
+                    {f.clock_in ? `出庫 ${f.clock_in}` : ""}
+                    {f.clock_in && f.clock_out ? " 〜 " : ""}
+                    {f.clock_out ? `帰庫 ${f.clock_out}` : ""}
+                    {!f.clock_in && !f.clock_out ? "時刻未設定" : ""}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <button onClick={onClose} style={{ width:"100%", backgroundColor:"transparent", border:`1px solid ${C.border}`, borderRadius:11, padding:"13px 0", fontSize:14, fontWeight:600, color:C.muted, cursor:"pointer" }}>閉じる</button>
       </div>
     </div>
@@ -91,13 +117,55 @@ function UnifiedDayModal({ dateStr, shift, report, onClose, onSaveShift, onDelet
 // ━━━ カレンダー本体 ━━━━━━━━━━━━━━━━━━━━━━━━━
 function UnifiedCalendar({ reports, monthTarget, user, onOpenReport, noCard = false }) {
   const today = new Date();
-  const todayStr = today.toISOString().slice(0,10);
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
   const [viewYear,    setViewYear]    = useState(today.getFullYear());
   const [viewMonth,   setViewMonth]   = useState(today.getMonth());
   const [selectedDay, setSelectedDay] = useState(null);
   const [dayShift,    setDayShift]    = useState(null);
   const [dayReport,   setDayReport]   = useState(null);
-  const [shifts,      setShifts]      = useState(() => loadS("taxi_shifts", []));
+  const [shifts,       setShifts]       = useState(() => loadS("taxi_shifts", []));
+  const [friendShifts, setFriendShifts] = useState([]);
+
+  // 自分のシフトをSupabaseから取得
+  useEffect(() => {
+    if (!SUPABASE_READY || !user?.id) return;
+    fetchShifts(user.id).then(({ data }) => {
+      if (!data?.length) return;
+      const mapped = data.map(s => ({
+        id:       s.id || ("sb_" + s.shift_date),
+        date:     s.shift_date,
+        clockIn:  s.clock_in  || "",
+        clockOut: s.clock_out || "",
+        isNight:  s.is_night  || false,
+        note:     s.note      || "",
+      }));
+      setShifts(mapped);
+      saveS("taxi_shifts", mapped);
+    });
+  }, [user?.id]);
+
+  // フレンドの共有シフトを取得
+  useEffect(() => {
+    if (!SUPABASE_READY || !user?.id) return;
+    fetchFriendsShifts(user.id).then(({ data }) => {
+      if (!data?.length) return;
+      // フレンドごとに色を割り当て
+      const colorMap = {};
+      let colorIdx = 0;
+      (data ?? []).forEach(s => {
+        if (!colorMap[s.user_id]) colorMap[s.user_id] = FRIEND_COLORS[colorIdx++ % FRIEND_COLORS.length];
+      });
+      setFriendShifts((data ?? []).map(s => ({ ...s, color: colorMap[s.user_id] })));
+    });
+  }, [user?.id]);
+
+  // 日付ごとにフレンドシフトをまとめたマップ
+  const friendsByDate = {};
+  friendShifts.forEach(s => {
+    const d = s.shift_date;
+    if (!friendsByDate[d]) friendsByDate[d] = [];
+    friendsByDate[d].push(s);
+  });
 
   const ym = `${viewYear}-${String(viewMonth+1).padStart(2,"0")}`;
   const monthReports = reports.filter(r => r.date?.startsWith(ym));
@@ -152,6 +220,12 @@ function UnifiedCalendar({ reports, monthTarget, user, onOpenReport, noCard = fa
             <span style={{ fontSize:9, color:C.muted }}>{label}</span>
           </div>
         ))}
+        {friendShifts.length > 0 && (
+          <div style={{ display:"flex", alignItems:"center", gap:3 }}>
+            <div style={{ width:6, height:6, borderRadius:"50%", backgroundColor:FRIEND_COLORS[0] }}/>
+            <span style={{ fontSize:9, color:C.muted }}>フレンドの出番</span>
+          </div>
+        )}
       </div>
 
       <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2, marginBottom:3 }}>
@@ -181,6 +255,13 @@ function UnifiedCalendar({ reports, monthTarget, user, onOpenReport, noCard = fa
               <div style={{ fontSize:10, color:isToday?C.accentLight:C.text, fontWeight:isToday?800:400 }}>{d}</div>
               {shift && <div style={{ fontSize:7, color:bg||C.muted, fontWeight:600, lineHeight:1.3 }}>{shift.clockIn&&shift.clockIn.slice(0,5)}<br/>{shift.clockOut&&shift.clockOut.slice(0,5)}</div>}
               {report && <div style={{ fontSize:8, color:C.gold, fontWeight:700, marginTop:1 }}>{(report.gross_sales/10000).toFixed(1)}万</div>}
+              {(friendsByDate[dateStr]||[]).length > 0 && (
+                <div style={{ display:"flex", gap:2, marginTop:2, flexWrap:"wrap", justifyContent:"center" }}>
+                  {(friendsByDate[dateStr]||[]).slice(0,3).map((f,fi) => (
+                    <div key={fi} style={{ width:5, height:5, borderRadius:"50%", backgroundColor:f.color, flexShrink:0 }}/>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
@@ -191,6 +272,7 @@ function UnifiedCalendar({ reports, monthTarget, user, onOpenReport, noCard = fa
           dateStr={selectedDay} shift={dayShift} report={dayReport}
           onClose={()=>setSelectedDay(null)}
           onSaveShift={handleSaveShift} onDeleteShift={handleDeleteShift} onOpenReport={onOpenReport}
+          friendShiftsOnDay={friendsByDate[selectedDay]||[]}
         />
       )}
     </>
@@ -201,7 +283,7 @@ function UnifiedCalendar({ reports, monthTarget, user, onOpenReport, noCard = fa
 }
 
 // ━━━ シフトサマリーカード（折りたたみ式カレンダー） ━━━
-export function ShiftSummaryCard({ reports = [], user, onOpenReport, monthTarget = 380000, onGoShift }) {
+export function ShiftSummaryCard({ reports = [], user, onOpenReport, monthTarget = 0, onGoShift }) {
   const [open, setOpen] = useState(false);
   const today = new Date();
   const y = today.getFullYear(), m = today.getMonth() + 1;
@@ -211,15 +293,29 @@ export function ShiftSummaryCard({ reports = [], user, onOpenReport, monthTarget
     const d = new Date(s.date);
     return d.getFullYear() === y && d.getMonth() + 1 === m;
   });
-  const remaining = monthShifts.filter(s => s.date >= todayStr).length;
-  const todayShift = monthShifts.find(s => s.date === todayStr);
+  const todayShift  = monthShifts.find(s => s.date === todayStr);
+  const todayReport = reports.find(r => r.date === todayStr);
+
+  // 残り勤務は締め日ベースで計算（月ベースではなく）
+  const { start: periodStart, end: periodEnd } = getClosingPeriod(user?.closing_day ?? 0);
+  const periodShifts = allShifts.filter(s => s.date >= periodStart && s.date <= periodEnd);
+  const remaining = periodShifts.filter(s => s.date >= todayStr).length;
 
   return (
     <Card style={{ marginBottom:14, padding:"12px 16px" }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
         <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", flex:1 }}>
           <span style={{ fontSize:13, fontWeight:700 }}>📅 カレンダー</span>
-          {todayShift && <span style={{ fontSize:10, backgroundColor:C.green+"22", color:C.green, fontWeight:700, padding:"2px 8px", borderRadius:99 }}>本日出勤</span>}
+          {todayShift && !todayReport && (
+            <span style={{ fontSize:10, backgroundColor:C.orange+"22", color:C.orange, fontWeight:700, padding:"3px 8px", borderRadius:99, whiteSpace:"nowrap" }}>
+              日報未入力
+            </span>
+          )}
+          {todayShift && todayReport && (
+            <span style={{ fontSize:10, backgroundColor:C.green+"22", color:C.green, fontWeight:700, padding:"3px 8px", borderRadius:99, whiteSpace:"nowrap" }}>
+              ✓ 入力済
+            </span>
+          )}
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <button onClick={e=>{ e.stopPropagation(); onGoShift?.(); }}

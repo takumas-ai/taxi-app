@@ -71,6 +71,8 @@ create table if not exists public.daily_reports (
   trouble_note      text,
   work_area         text,                      -- 営業メインエリア（例: 港区, 中区（横浜））
   dispatch_type     text,                      -- 配車アプリ・無線の種類（例: GO, S.RIDE, 東京無線）
+  rides             jsonb,                     -- 乗車記録配列 [{pickup_area, amount, start_time, ...}]
+  break_times       jsonb,                     -- 休憩記録配列 [{start, end}]
   created_at        timestamptz default now(),
   updated_at        timestamptz default now(),
   unique (user_id, report_date)             -- 同日の重複登録を防止
@@ -614,6 +616,72 @@ create policy "guide_flags: 自分のみ挿入"
   on public.guide_flags for insert with check (auth.uid() = user_id);
 
 -- ─────────────────────────────────────────
+-- フレンド機能テーブル（v4.0追加）
+-- ─────────────────────────────────────────
+
+-- daily_reports / shifts に is_shared カラム追加
+alter table public.daily_reports add column if not exists is_shared boolean default false;
+alter table public.shifts        add column if not exists is_shared boolean default false;
+
+-- フレンド関係テーブル
+create table if not exists public.friendships (
+  id         uuid        default gen_random_uuid() primary key,
+  user_id    uuid        not null references public.users(id) on delete cascade,
+  friend_id  uuid        not null references public.users(id) on delete cascade,
+  created_at timestamptz default now(),
+  unique (user_id, friend_id)
+);
+
+-- フレンド通知テーブル
+create table if not exists public.friend_notifications (
+  id          uuid        default gen_random_uuid() primary key,
+  user_id     uuid        not null references public.users(id) on delete cascade,  -- 通知を受け取るユーザー
+  from_id     uuid        not null references public.users(id) on delete cascade,  -- 通知の送信元
+  from_name   text,
+  type        text        not null,  -- 'friend_added' など
+  read        boolean     default false,
+  created_at  timestamptz default now()
+);
+
+alter table public.friendships          enable row level security;
+alter table public.friend_notifications enable row level security;
+
+-- friendships RLS
+create policy "friendships: 自分のレコードのみ参照"
+  on public.friendships for select using (auth.uid() = user_id or auth.uid() = friend_id);
+create policy "friendships: ログイン済みが挿入"
+  on public.friendships for insert with check (auth.uid() = user_id);
+create policy "friendships: 自分のレコードのみ削除"
+  on public.friendships for delete using (auth.uid() = user_id or auth.uid() = friend_id);
+
+-- friend_notifications RLS
+create policy "friend_notifications: 自分宛のみ参照"
+  on public.friend_notifications for select using (auth.uid() = user_id);
+create policy "friend_notifications: ログイン済みが挿入"
+  on public.friend_notifications for insert with check (auth.uid() is not null);
+create policy "friend_notifications: 自分宛のみ更新（既読）"
+  on public.friend_notifications for update using (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────
+-- AI分析テーブル（5枚ごとに自動生成）
+-- ─────────────────────────────────────────
+create table if not exists public.ai_analyses (
+  id           uuid primary key default uuid_generate_v4(),
+  user_id      uuid references public.users(id) on delete cascade,
+  report_count integer not null,   -- 何枚目時点の分析か（5, 10, 15…）
+  content      text not null,      -- AI分析テキスト
+  is_read      boolean default false,
+  created_at   timestamptz default now()
+);
+alter table public.ai_analyses enable row level security;
+create policy "ai_analyses: 本人のみ参照"
+  on public.ai_analyses for select using (auth.uid() = user_id);
+create policy "ai_analyses: 本人のみ挿入"
+  on public.ai_analyses for insert with check (auth.uid() = user_id);
+create policy "ai_analyses: 本人のみ更新（既読）"
+  on public.ai_analyses for update using (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────
 -- 完了
 -- ─────────────────────────────────────────
 -- 実行後の確認:
@@ -621,3 +689,6 @@ create policy "guide_flags: 自分のみ挿入"
 --   select * from public.daily_reports limit 5;
 --   select * from public.ride_records limit 5;
 --   select * from public.guide_spots limit 5;
+--   select * from public.friendships limit 5;
+--   select * from public.friend_notifications limit 5;
+--   select * from public.ai_analyses limit 5;

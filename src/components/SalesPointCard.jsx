@@ -64,7 +64,7 @@ function getGps() {
     navigator.geolocation.getCurrentPosition(
       pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
       err => reject(err),
-      { enableHighAccuracy: true, timeout: 8000 }
+      { enableHighAccuracy: false, timeout: 10000 }
     );
   });
 }
@@ -78,10 +78,11 @@ function saveRecords(recs) {
   localStorage.setItem(LS_KEY, JSON.stringify(recs));
 }
 
-const PAYMENT_OPTIONS = ["現金", "カード", "アプリ", "QRコード", "その他"];
-const BOARDING_OPTIONS = ["流し", "付け待ち", "配車アプリ", "無線", "定額", "その他"];
+const PAYMENT_OPTIONS = ["現金", "カード", "電子マネー", "QR", "ネット決済", "チケット", "その他"];
+const BOARDING_OPTIONS = ["流し", "付け待ち", "配車アプリ", "自社無線", "その他"];
 const RADIO_TYPE_OPTIONS = ["GO（ゴー）", "S.RIDE（エスライド）", "DiDi（ディディ）", "Uber Taxi", "NearMe（ニアミー）", "全日本無線", "東京無線", "その他"];
-const RADIO_BOARDING = ["配車アプリ", "無線"]; // 無線種別を表示する乗車方法
+const RADIO_BOARDING = ["配車アプリ", "自社無線"]; // 無線種別を表示する乗車方法
+const NATIONALITY_OPTIONS = ["日本人", "英語圏", "中国語圏", "韓国語圏", "その他の外国人"];
 
 // ─── 記録モーダル ─────────────────────────────
 function RecordModal({ onClose, onSave, editTarget }) {
@@ -100,22 +101,28 @@ function RecordModal({ onClose, onSave, editTarget }) {
   const [boardingMethod, setBoardingMethod] = useState(editTarget?.boardingMethod ?? "");
   const [radioType,      setRadioType]      = useState(editTarget?.radioType ?? "");
   const [memo,           setMemo]           = useState(editTarget?.memo ?? "");
+  const [nationality,    setNationality]    = useState(editTarget?.nationality ?? "");
   const [lat,            setLat]            = useState(editTarget?.lat ?? null);
   const [lng,            setLng]            = useState(editTarget?.lng ?? null);
   const [gpsLoading,       setGpsLoading]       = useState(false);
   const [gpsFor,           setGpsFor]           = useState("");
   const [gpsError,         setGpsError]         = useState("");
+
+  const ua = navigator.userAgent;
+  const osType = /iPhone|iPad|iPod/.test(ua) ? "ios"
+               : /Android/.test(ua)           ? "android"
+               : "pc";
   const [showPickupDrop,   setShowPickupDrop]   = useState(false);
+  const [viaLocation,      setViaLocation]      = useState(editTarget?.viaLocation ?? "");
+  const [showVia,          setShowVia]          = useState(!!(editTarget?.viaLocation));
+  const [myPoint,          setMyPoint]          = useState(editTarget?.myPoint ?? "");
 
   // 登録済み営業ポイント（ハンバーガーメニュー #19 で管理）
   const bizPoints = (() => {
     try { return JSON.parse(localStorage.getItem("taxi_biz_points") || "[]"); } catch { return []; }
   })();
 
-  // 新規登録時: GPS自動取得
-  useEffect(() => {
-    if (!editTarget) fetchGps("pickup");
-  }, []);
+  // GPS自動取得なし（ボタン押下時のみ取得）
 
   async function fetchGps(target) {
     setGpsLoading(true);
@@ -130,8 +137,13 @@ function RecordModal({ onClose, onSave, editTarget }) {
       } else {
         setDropoffLocation(addr);
       }
-    } catch {
-      setGpsError("GPS取得失敗。手動で入力してください。");
+    } catch (err) {
+      const code = err?.code;
+      const msg = code === 1 ? "permission"
+                : code === 2 ? "位置情報を取得できませんでした（電波・GPS確認）"
+                : code === 3 ? "タイムアウト。もう一度試してください"
+                : `GPS取得失敗（${err?.message || "不明"}）`;
+      setGpsError(msg);
     } finally {
       setGpsLoading(false);
       setGpsFor("");
@@ -155,6 +167,9 @@ function RecordModal({ onClose, onSave, editTarget }) {
       boardingMethod,
       radioType:       RADIO_BOARDING.includes(boardingMethod) ? radioType : "",
       memo:            memo.trim(),
+      nationality,
+      viaLocation:     viaLocation.trim(),
+      myPoint:         myPoint.trim(),
       lat,
       lng,
       // 統計用に spotName も残す（乗車場所を代入）
@@ -179,10 +194,13 @@ function RecordModal({ onClose, onSave, editTarget }) {
         style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480,
                  maxHeight:"92vh", overflowY:"auto", padding:22, paddingBottom:40 }}>
         {/* ハンドル */}
-        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 18px" }}/>
+        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 14px" }}/>
 
-        <div style={{ fontSize:16, fontWeight:800, marginBottom:16 }}>
-          {editTarget ? "✏️ 乗車記録を編集" : "🚕 乗車を記録"}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+          <div style={{ fontSize:16, fontWeight:800 }}>
+            {editTarget ? "✏️ 乗車記録を編集" : "🚕 乗車を記録"}
+          </div>
+          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, color:C.muted, cursor:"pointer", lineHeight:1, padding:"4px 8px" }}>✕</button>
         </div>
 
         {/* GPS状態 */}
@@ -191,11 +209,32 @@ function RecordModal({ onClose, onSave, editTarget }) {
             📡 GPS取得中...
           </div>
         )}
-        {gpsError && (
+        {gpsError === "permission" ? (
+          <div style={{ marginBottom:12, padding:"12px 14px", backgroundColor:C.surface, border:`1px solid ${C.border}`, borderRadius:10 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:6 }}>📍 位置情報の許可が必要です</div>
+            <div style={{ fontSize:12, color:C.muted, lineHeight:1.7, marginBottom:8 }}>
+              タクローは <strong style={{color:C.text}}>📡ボタンを押した時だけ</strong> 現在地を取得します。<br/>
+              常時追跡・バックグラウンド取得は一切行いません。
+            </div>
+            <div style={{ fontSize:11, color:C.muted, lineHeight:1.8 }}>
+              {osType === "ios" && <>
+                <div style={{ marginBottom:4 }}>① 設定 → プライバシーとセキュリティ → 位置情報サービス → Safari Webサイト →「使用中のみ許可」</div>
+                <div>② Safariのアドレスバー「AA」→ Webサイトの設定 → 位置情報 →「許可」</div>
+              </>}
+              {osType === "android" && <>
+                <div>ブラウザのアドレスバー左の🔒 → 位置情報 →「許可」</div>
+              </>}
+              {osType === "pc" && <>
+                <div style={{ marginBottom:4 }}>① OSの位置情報設定でブラウザを許可</div>
+                <div>② ブラウザのアドレスバー左の🔒 → 位置情報 →「許可」</div>
+              </>}
+            </div>
+          </div>
+        ) : gpsError ? (
           <div style={{ fontSize:12, color:"#f87171", marginBottom:12, padding:"8px 12px", backgroundColor:"#f8717122", borderRadius:9 }}>
             ⚠️ {gpsError}
           </div>
-        )}
+        ) : null}
 
         {/* 乗務日 */}
         <div style={sectionStyle}>
@@ -257,6 +296,51 @@ function RecordModal({ onClose, onSave, editTarget }) {
             </div>
           )}
         </div>
+
+        {/* マイポイント（乗り場タグ） */}
+        {bizPoints.length > 0 && (
+          <div style={sectionStyle}>
+            <label style={labelStyle}>マイポイント <span style={{ fontSize:10, backgroundColor:C.border, color:C.muted, borderRadius:4, padding:"1px 5px", marginLeft:4 }}>任意</span></label>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+              {bizPoints.map((p, i) => {
+                const name = typeof p === "string" ? p : p.name;
+                const selected = myPoint === name;
+                return (
+                  <div key={i} onClick={() => setMyPoint(selected ? "" : name)}
+                    style={{ padding:"6px 14px", borderRadius:20, fontSize:13, fontWeight:600, cursor:"pointer",
+                      border:`1.5px solid ${selected ? C.accentLight : C.border}`,
+                      backgroundColor: selected ? C.accentLight + "22" : "transparent",
+                      color: selected ? C.accentLight : C.muted }}>
+                    📍 {name}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 経由地ボタン＋欄 */}
+        {!showVia ? (
+          <div style={{ marginBottom:14, textAlign:"center" }}>
+            <button onClick={()=>setShowVia(true)}
+              style={{ fontSize:12, color:C.accentLight, background:"none", border:`1px dashed ${C.accentLight}44`, borderRadius:8, padding:"6px 16px", cursor:"pointer" }}>
+              ＋ 経由地を追加
+            </button>
+          </div>
+        ) : (
+          <div style={sectionStyle}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+              <label style={{ ...labelStyle, marginBottom:0 }}>経由地</label>
+              <button onClick={()=>{ setShowVia(false); setViaLocation(""); }}
+                style={{ fontSize:11, color:C.muted, background:"none", border:"none", cursor:"pointer", padding:0 }}>
+                ✕ 削除
+              </button>
+            </div>
+            <input type="text" value={viaLocation} onChange={e=>setViaLocation(e.target.value)}
+              placeholder="経由した場所を入力"
+              style={inputStyle} />
+          </div>
+        )}
 
         {/* 降車日時 */}
         <div style={sectionStyle}>
@@ -320,7 +404,10 @@ function RecordModal({ onClose, onSave, editTarget }) {
         {/* 乗車方法 */}
         <div style={sectionStyle}>
           <label style={labelStyle}>乗車方法</label>
-          <select value={boardingMethod} onChange={e=>setBoardingMethod(e.target.value)}
+          <select value={boardingMethod} onChange={e=>{
+            setBoardingMethod(e.target.value);
+            if (e.target.value === "配車アプリ" && !paymentMethod) setPaymentMethod("ネット決済");
+          }}
             style={{ ...inputStyle, appearance:"none", backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`, backgroundRepeat:"no-repeat", backgroundPosition:"right 12px center" }}>
             <option value="">選択してください</option>
             {BOARDING_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
@@ -338,6 +425,29 @@ function RecordModal({ onClose, onSave, editTarget }) {
             </select>
           </div>
         )}
+
+        {/* 客の国籍（任意） */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>客の国籍 <span style={{ fontSize:10, backgroundColor:C.border, color:C.muted, borderRadius:4, padding:"1px 5px", marginLeft:4 }}>任意</span></label>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+            {["", ...NATIONALITY_OPTIONS].map((opt, i) => (
+              <div key={i} onClick={() => setNationality(opt === nationality ? "" : opt)}
+                style={{ padding:"6px 12px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer",
+                  border:`1.5px solid ${nationality===opt && opt!==""?C.accentLight:C.border}`,
+                  backgroundColor:nationality===opt && opt!==""?C.accentLight+"22":"transparent",
+                  color:nationality===opt && opt!==""?C.accentLight:C.muted,
+                  display: opt===""?"none":"block" }}>
+                {opt}
+              </div>
+            ))}
+          </div>
+          {nationality && (
+            <div onClick={() => setNationality("")}
+              style={{ marginTop:6, fontSize:11, color:C.muted, cursor:"pointer", textDecoration:"underline" }}>
+              選択解除
+            </div>
+          )}
+        </div>
 
         {/* メモ（任意） */}
         <div style={{ marginBottom:22 }}>

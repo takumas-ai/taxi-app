@@ -37,7 +37,6 @@ export default function InfoCenter({ notifSettings, onUpdateNotif, userAreas=[],
   return (
     <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
       <UpdateBanner />
-      <AreaFilterBanner userAreas={userAreas} onManage={onManageArea} />
       <div style={{ display:"flex", backgroundColor:C.surface, borderRadius:12, padding:4, marginBottom:14, gap:4 }}>
         {[["today","今日"],["delays","電車"],["traffic","渋滞"],["area","単価"],["notif","通知"]].map(([v,l])=>(
           <div key={v} onClick={()=>setSubTab(v)} style={{ flex:1, textAlign:"center", padding:"8px 0", borderRadius:9, fontSize:11, fontWeight:subTab===v?700:400, backgroundColor:subTab===v?C.card:"transparent", color:subTab===v?C.text:C.muted, cursor:"pointer" }}>{l}</div>

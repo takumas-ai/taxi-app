@@ -55,7 +55,9 @@ export function computeIsDark(mode) {
 }
 
 export const DAYS_JA = ["日","月","火","水","木","金","土"];
-export const FREE_LIMIT = 8;
+export const FREE_LIMIT = 30; // β版：全ユーザー月30枚
+export const PLAN_OCR_LIMITS = { free: 30, standard: 30, pro: 60 }; // β版：free/standardとも30枚
+export const PLAN_LABELS = { free: "無料プラン", standard: "スタンダード", pro: "プロ" };
 export const TODAY = new Date().toISOString().slice(0,10);
 export const THIS_YEAR  = new Date().getFullYear();
 export const THIS_MONTH = new Date().getMonth() + 1;
@@ -114,9 +116,27 @@ export function getClosingPeriod(closingDay = 0) {
 // ユーティリティ
 export const fmt    = n => (n==null||isNaN(Number(n))) ? "0" : Number(n).toLocaleString("ja-JP");
 export const occ    = r => (r&&r.total_distance>0) ? Math.round(((r.occupied_distance||0)/r.total_distance)*100) : 0;
-export const dow    = d => DAYS_JA[new Date(d).getDay()];
+export const dow    = d => DAYS_JA[new Date(d + "T00:00:00").getDay()]; // UTC解釈による曜日ずれを防ぐ
 export const hourly = r => (r&&r.work_hours>0) ? Math.round((r.gross_sales||0)/r.work_hours) : 0;
 export const unit   = r => (r&&r.ride_count>0)  ? Math.round((r.gross_sales||0)/r.ride_count) : 0;
 export const loadS  = (k,f) => { try { const v=localStorage.getItem(k); return v?JSON.parse(v):f; } catch { return f; } };
 export const saveS  = (k,v) => { try { localStorage.setItem(k,JSON.stringify(v)); } catch {} };
 // NOTE: React Native移行時はlocalStorageをAsyncStorage / Supabaseに差し替え
+
+/**
+ * 手取り計算（ドライバー種別で分岐）
+ * @param {number} sales - 売上（税込）
+ * @param {{ rate:number, deduction:number, expenses:number }} settings - taxi_takepay
+ * @param {string} workType - user.workType
+ * @returns {number} 手取り金額
+ */
+export function calcTake(sales, settings = {}, workType = "") {
+  if (workType === "個人タクシー") {
+    // 個タク: 売上 − 月間経費
+    return Math.max(0, Math.round(sales - (settings.expenses || 0)));
+  }
+  // 法人タク: 売上 × 歩合率 − 控除額
+  const rate      = settings.rate      ?? 55;
+  const deduction = settings.deduction ?? 30000;
+  return Math.max(0, Math.round(sales * rate / 100 - deduction));
+}

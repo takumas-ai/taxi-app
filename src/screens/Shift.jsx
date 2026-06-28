@@ -4,7 +4,7 @@ import { C, TODAY, THIS_YEAR, THIS_MONTH, loadS, saveS, fmt, dow } from "../lib/
 import { Card, Btn, ProgressBar, Badge, KpiCard } from "../components/UI";
 import { MOCK_SHIFTS } from "../data/mockData";
 import { runShiftOCR } from "../lib/ai";
-import { fetchShifts, upsertShifts, deleteShift } from "../lib/supabase";
+import { fetchShifts, upsertShifts, deleteShift, toggleShareShift } from "../lib/supabase";
 
 const SUPABASE_READY = !!(
   import.meta.env.VITE_SUPABASE_URL &&
@@ -66,11 +66,12 @@ function ShiftCalendar({ year, month, shifts, reports, onSelectDay }) {
   );
 }
 
-function DayDetailModal({ dateStr, shift, report, onClose, onDeleteShift, onGoUpload, onSaveShift }) {
+function DayDetailModal({ dateStr, shift, report, onClose, onDeleteShift, onGoUpload, onSaveShift, onToggleShareShift }) {
   const d = new Date(dateStr), wd = ["日","月","火","水","木","金","土"][d.getDay()], isPast = dateStr < TODAY;
   const [editing, setEditing] = useState(!shift); // シフトなし → すぐ入力フォーム
   const [form, setForm]       = useState({ clockIn: shift?.clockIn||"", clockOut: shift?.clockOut||"", note: shift?.note||"" });
   const [saving, setSaving]   = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
 
   const inp = { backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:"9px 11px", color:C.text, fontSize:14, outline:"none", width:"100%", boxSizing:"border-box" };
 
@@ -90,7 +91,8 @@ function DayDetailModal({ dateStr, shift, report, onClose, onDeleteShift, onGoUp
 
   return (
     <div style={{ position:"fixed", inset:0, backgroundColor:"#00000090", zIndex:150, display:"flex", alignItems:"flex-end" }} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:24, paddingBottom:36, maxHeight:"85vh", overflowY:"auto" }}>
+      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:24, paddingBottom:36, maxHeight:"85vh", overflowY:"auto", position:"relative" }}>
+        <button onClick={onClose} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", fontSize:28, color:C.muted, cursor:"pointer", lineHeight:1, padding:"8px" }}>×</button>
         <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 16px" }}/>
         <div style={{ fontSize:18, fontWeight:800, marginBottom:16 }}>{dateStr}（{wd}）</div>
 
@@ -137,7 +139,20 @@ function DayDetailModal({ dateStr, shift, report, onClose, onDeleteShift, onGoUp
               <div><div style={{ fontSize:10, color:C.muted }}>帰庫</div><div style={{ fontSize:16, fontWeight:700 }}>{shift.clockOut||"—"}</div></div>
             </div>
             {shift.note && <div style={{ fontSize:12, color:C.sub, whiteSpace:"pre-wrap", backgroundColor:C.bg, borderRadius:7, padding:"8px 10px" }}>📝 {shift.note}</div>}
-            <button onClick={()=>onDeleteShift(shift)} style={{ marginTop:10, backgroundColor:"transparent", border:`1px solid ${C.red}44`, borderRadius:8, padding:"6px 14px", fontSize:11, color:C.red, cursor:"pointer", fontWeight:600 }}>このシフトを削除</button>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:10 }}>
+              <button
+                onClick={async () => {
+                  if (!onToggleShareShift) return;
+                  setShareLoading(true);
+                  await onToggleShareShift(dateStr, !shift.isShared);
+                  setShareLoading(false);
+                }}
+                disabled={shareLoading}
+                style={{ flex:1, padding:"7px 0", borderRadius:8, fontSize:12, fontWeight:700, cursor:"pointer", border:`1.5px solid ${shift.isShared?C.accentLight:C.border}`, backgroundColor:shift.isShared?C.accentLight+"22":C.card, color:shift.isShared?C.accentLight:C.muted, opacity:shareLoading?0.5:1 }}>
+                {shareLoading ? "…" : shift.isShared ? "✓ フレンドに共有中" : "フレンドに共有"}
+              </button>
+              <button onClick={()=>onDeleteShift(shift)} style={{ padding:"7px 14px", borderRadius:8, fontSize:11, color:C.red, backgroundColor:"transparent", border:`1px solid ${C.red}44`, cursor:"pointer", fontWeight:600 }}>削除</button>
+            </div>
           </div>
         ) : null}
 
@@ -146,7 +161,7 @@ function DayDetailModal({ dateStr, shift, report, onClose, onDeleteShift, onGoUp
           <div style={{ backgroundColor:C.goldGlow, border:`1px solid ${C.gold}44`, borderRadius:10, padding:14, marginBottom:12 }}>
             <div style={{ fontSize:12, color:C.gold, fontWeight:700, marginBottom:6 }}>💴 日報入力済み</div>
             <div style={{ display:"flex", justifyContent:"space-between" }}>
-              <div><div style={{ fontSize:10, color:C.muted }}>総売上</div><div style={{ fontSize:18, fontWeight:800, color:C.gold }}>{fmt(report.gross_sales)}円</div></div>
+              <div><div style={{ fontSize:10, color:C.muted }}>総売上（税抜）</div><div style={{ fontSize:18, fontWeight:800, color:C.gold }}>{fmt(report.gross_sales)}円</div></div>
               <div><div style={{ fontSize:10, color:C.muted }}>営業回数</div><div style={{ fontSize:18, fontWeight:800 }}>{report.ride_count}回</div></div>
             </div>
           </div>
@@ -171,6 +186,7 @@ const dbToLocal = (row) => ({
   clockOut: row.clock_out || "",
   isNight:  row.is_night  || false,
   note:     row.note      || "",
+  isShared: row.is_shared || false,
 });
 
 export default function ShiftScreen({ reports, onGoUpload, user, onBack }) {
@@ -347,8 +363,22 @@ export default function ShiftScreen({ reports, onGoUpload, user, onBack }) {
   if (ocrStep==="reading") {
     return (
       <div style={{maxWidth:480,margin:"0 auto",padding:"16px 16px 100px"}}>
+        <style>{`
+          @keyframes takuroBounce {
+            0%,100%{transform:translateY(0);}
+            50%{transform:translateY(-10px);}
+          }
+          @keyframes takuroFade {
+            0%,100%{opacity:1;}
+            50%{opacity:0.5;}
+          }
+        `}</style>
         <BackBar onBack={onBack}/>
-        <div style={{textAlign:"center",marginBottom:24}}><div style={{fontSize:36,marginBottom:10}}>🤖</div><div style={{fontSize:15,fontWeight:700}}>シフト表を読み取り中...</div></div>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{fontSize:52,marginBottom:10,display:"inline-block",animation:"takuroBounce 0.9s ease-in-out infinite"}}>🦉</div>
+          <div style={{fontSize:15,fontWeight:700,animation:"takuroFade 1.4s ease-in-out infinite"}}>タクローが解析中...</div>
+          <div style={{fontSize:11,color:C.muted,marginTop:4}}>しばらくお待ちください</div>
+        </div>
         <Card><ProgressBar value={ocrLines.length} max={OCR_LINES.length} color={C.accentLight} height={6}/><div style={{marginTop:14}}>{ocrLines.map((l,i)=><div key={i} style={{fontSize:13,color:i===ocrLines.length-1?C.text:C.muted,padding:"5px 0",borderBottom:i<ocrLines.length-1?`1px solid ${C.border}`:"none"}}>{l}</div>)}</div></Card>
       </div>
     );
@@ -497,6 +527,11 @@ export default function ShiftScreen({ reports, onGoUpload, user, onBack }) {
             return idx>=0 ? prev.map((x,i)=>i===idx?s:x) : [...prev,s];
           });
           if(SUPABASE_READY&&user?.id) await upsertShifts(user.id,[s]);
+        }}
+        onToggleShareShift={async (shiftDate, isShared) => {
+          if (SUPABASE_READY && user?.id) await toggleShareShift(user.id, shiftDate, isShared);
+          setShifts(prev => prev.map(s => s.date === shiftDate ? { ...s, isShared } : s));
+          if (dayShift?.date === shiftDate) setDayShift(prev => ({ ...prev, isShared }));
         }}
       />}
 

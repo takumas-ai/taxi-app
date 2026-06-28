@@ -1,14 +1,25 @@
 import { useState, useRef, useEffect } from "react";
-import { C, fmt, occ, dow, hourly, FREE_LIMIT } from "../lib/constants";
-import { generateReportComment, runReportOCR, runReportOCRP2 } from "../lib/ai";
+import { C, fmt, occ, dow, hourly, PLAN_OCR_LIMITS, PLAN_LABELS } from "../lib/constants";
+import { runReportOCR, runReportOCRP2 } from "../lib/ai";
 import { Card, Btn, ProgressBar } from "../components/UI";
 import { RideMatchModal } from "../components/RideMatchModal";
 import { ZONE_AREAS } from "../data/trafficZones";
-import { supabase } from "../lib/supabase";
+import { supabase, uploadReportImage } from "../lib/supabase";
 import { validateImageFile, validateReportForm, sanitizeReportData } from "../lib/validate";
 
 const OCR_SEQ = ["画像を解析中...","日付・勤務時間を読み取り中...","売上データを抽出中...","営業回数・走行距離を確認中...","フォーマット差異を吸収中...","読み取り完了 ✓"];
-const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", cash_sales:"", card_sales:"", app_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"", highway_fee:"", trouble_note:"", work_area:"", rides:[], break_times:[] };
+const EMPTY = { date:new Date().toISOString().slice(0,10), gross_sales:"", net_sales:"", cash_sales:"", card_sales:"", app_sales:"", emoney_sales:"", ticket_sales:"", ride_count:"", total_distance:"", occupied_distance:"", work_hours:"", break_hours:"", highway_fee:"", adjustment:"", tip_amount:"", trouble_note:"", work_area:"", rides:[], break_times:[] };
+
+// デフォルト略語辞書（タクシー業界共通の略語）
+const DEFAULT_MEMO_DICT = {
+  "障":    "障害者手帳あり",
+  "迎S":   "アプリ配車（S.RIDE）ネット決済",
+  "迎Sネ": "アプリ配車（S.RIDE）ネット決済",
+  "迎高S": "アプリ配車（S.RIDE）高速利用ネット決済",
+  "迎G":   "アプリ配車（GO）ネット決済",
+  "迎D":   "アプリ配車（DiDi）ネット決済",
+  "迎U":   "アプリ配車（Uber）ネット決済",
+};
 
 // HEIC/HEIFをJPEG Blobに変換（heic2any CDN経由）
 async function convertHeicToJpeg(file) {
@@ -58,6 +69,64 @@ async function imageToBase64(file) {
   });
 }
 
+// ━━━ 調整欄（±切替） ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function AdjustmentInput({ value, onChange }) {
+  const num = parseInt(value) || 0;
+  const isNeg = num < 0;
+  const absVal = Math.abs(num);
+  // 入力中の生テキストを保持（"" のまま入力できるよう）
+  const [raw, setRaw] = useState(absVal > 0 ? String(absVal) : "");
+  useEffect(() => { setRaw(absVal > 0 ? String(absVal) : ""); }, [absVal]);
+  const handleChange = (e) => {
+    const v = e.target.value;
+    setRaw(v);
+    const n = parseInt(v) || 0;
+    onChange(String(isNeg ? -n : n));
+  };
+  return (
+    <div>
+      <div style={{ fontSize:13, fontWeight:600, color:C.muted, marginBottom:7 }}>調整（±円）</div>
+      <div style={{ display:"flex", gap:8 }}>
+        <div style={{ display:"flex", borderRadius:10, border:`1px solid ${C.border}`, overflow:"hidden", flexShrink:0 }}>
+          <button onClick={() => onChange(String(absVal))} style={{ padding:"0 22px", fontSize:20, fontWeight:700, cursor:"pointer", border:"none", backgroundColor:!isNeg?C.accentLight+"33":"transparent", color:!isNeg?C.accentLight:C.muted }}>＋</button>
+          <button onClick={() => onChange(String(-absVal))} style={{ padding:"0 22px", fontSize:20, fontWeight:700, cursor:"pointer", border:"none", borderLeft:`1px solid ${C.border}`, backgroundColor:isNeg?C.red+"33":"transparent", color:isNeg?C.red:C.muted }}>－</button>
+        </div>
+        <input type="number" value={raw} min="0" placeholder="0" onChange={handleChange}
+          style={{ flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:10, padding:"15px 16px", color:C.text, fontSize:17, outline:"none", boxSizing:"border-box" }}/>
+      </div>
+      {num!==0&&<div style={{ fontSize:13, color:num>0?C.green:C.red, marginTop:6, textAlign:"right", fontWeight:700 }}>{num>0?"+":""}{num.toLocaleString()}円</div>}
+    </div>
+  );
+}
+
+// ━━━ 勤務時間ドラムロール ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ━━━ 勤務時間ドロップダウン ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function WorkHoursPicker({ value, onChange, label = "勤務時間", maxHours = 20 }) {
+  const totalMin = Math.round((parseFloat(value) || 0) * 60);
+  const selH = Math.min(maxHours, Math.max(0, Math.floor(totalMin / 60)));
+  const selM = [0,15,30,45].reduce((a,b) => Math.abs(b-(totalMin%60))<Math.abs(a-(totalMin%60))?b:a, 0);
+  const update = (h, m) => onChange(String(parseFloat((h + m/60).toFixed(4))));
+  const wrap = { flex:1, backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:10, overflow:"hidden" };
+  const sel  = { width:"100%", backgroundColor:"transparent", border:"none", padding:"15px 16px", color:C.text, fontSize:17, outline:"none" };
+  return (
+    <div>
+      <div style={{ fontSize:13, fontWeight:600, color:C.muted, marginBottom:7 }}>{label}</div>
+      <div style={{ display:"flex", gap:8 }}>
+        <div style={wrap}>
+          <select value={selH} onChange={e => update(Number(e.target.value), selM)} style={sel}>
+            {Array.from({length:maxHours+1},(_,i)=>i).map(h => <option key={h} value={h}>{h}時間</option>)}
+          </select>
+        </div>
+        <div style={wrap}>
+          <select value={selM} onChange={e => update(selH, Number(e.target.value))} style={sel}>
+            {[0,15,30,45].map(m => <option key={m} value={m}>{String(m).padStart(2,"0")}分</option>)}
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // break_times から break_hours を計算
 function calcBreakHours(breakTimes) {
   if (!breakTimes || breakTimes.length === 0) return "1.0";
@@ -71,27 +140,176 @@ function calcBreakHours(breakTimes) {
   return String(Math.round(total / 60 * 10) / 10);
 }
 
+// ━━━ 乗車方法・支払い選択肢 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const BOARDING_METHOD_OPTIONS = ["流し", "付け待ち", "アプリ配車", "自社無線", "その他"];
+const APP_TYPE_OPTIONS        = ["GO", "S.RIDE", "DiDi", "Uber", "その他"];
+const RIDE_PAYMENT_OPTIONS    = ["現金", "カード", "電子マネー", "QR", "ネット決済", "チケット", "その他"];
+const APP_BOARDING_METHODS    = ["アプリ配車"]; // これを選んだ時にネット決済を自動セット
+
+// ━━━ 備考略語辞書 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const PAYMENT_FROM_MEANING = {
+  "電子マネー": "電子マネー",
+  "カード":    "カード",
+  "QR":       "QR",
+  "ネット決済": "ネット決済",
+  "現金":     "現金",
+  "チケット":  "チケット",
+};
+
+/** 入力された意味がアプリの対応フィールドにマッピングできるか判定 */
+function isKnownMeaning(text) {
+  if (!text || text === "skip") return true; // スキップは除外
+  const t = text;
+  if (Object.keys(PAYMENT_FROM_MEANING).some(k => t.includes(k))) return true;
+  if (["アプリ配車", "GO", "S.RIDE", "DiDi", "Uber"].some(k => t.includes(k))) return true;
+  if (t.includes("障害者手帳")) return true;
+  if (t.includes("高速")) return true;
+  if (t.includes("キャンセル") || t.includes("スキップ")) return true;
+  return false;
+}
+
+function applyMemoDict(rides, dict) {
+  return rides.map(r => {
+    const raw = r.note?.trim();
+    if (!raw || !dict[raw] || dict[raw] === "skip") return r;
+    const meaning = dict[raw];
+    // 支払い方法（意味テキストに含まれるキーワードで判定）
+    const paymentKey = Object.keys(PAYMENT_FROM_MEANING).find(k => meaning.includes(k));
+    const payment = paymentKey ? PAYMENT_FROM_MEANING[paymentKey] : (r.payment || "現金");
+    // 乗車方法
+    let boarding_method = r.boarding_method || "";
+    let app_type = r.app_type || "";
+    if (meaning.includes("アプリ配車") || ["GO","S.RIDE","DiDi","Uber"].some(a => meaning.includes(a))) {
+      boarding_method = "アプリ配車";
+      const found = APP_TYPE_OPTIONS.find(a => meaning.includes(a));
+      if (found && found !== "その他") app_type = found;
+    }
+    const has_disability_card = r.has_disability_card || meaning.includes("障害者手帳");
+    const highway = r.highway || meaning.includes("高速");
+    return { ...r, note: meaning, payment, boarding_method, app_type, has_disability_card, highway };
+  });
+}
+
+function MemoDictModal({ unknownMemos, onSave, onSkip }) {
+  // unknownMemos: { word: string, rideNum: number }[]
+  const [index, setIndex] = useState(0);
+  const [answers, setAnswers] = useState(() => {
+    const init = {};
+    unknownMemos.forEach(m => { init[m.word] = ""; });
+    return init;
+  });
+
+  const current = unknownMemos[index]; // { word, rideNum }
+  const total   = unknownMemos.length;
+  const isLast  = index === total - 1;
+
+  const advance = (meaning) => {
+    const next = { ...answers, [current.word]: meaning ?? answers[current.word] };
+    setAnswers(next);
+    if (isLast) {
+      const result = {};
+      unknownMemos.forEach(orig => {
+        const m = next[orig.word];
+        if (m && m !== "skip") result[orig.word] = m;
+      });
+      onSave(result);
+    } else {
+      setIndex(i => i + 1);
+    }
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, backgroundColor:"#000000bb", zIndex:300, display:"flex", alignItems:"flex-end" }}>
+      <div style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:"24px 20px 40px", position:"relative" }}>
+        <button onClick={onSkip} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", fontSize:28, color:C.muted, cursor:"pointer", lineHeight:1, padding:"8px" }}>×</button>
+        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 16px" }}/>
+
+        {/* ステップ表示 */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+          <div style={{ fontSize:15, fontWeight:800 }}>📝 備考の確認</div>
+          <div style={{ fontSize:12, color:C.muted, backgroundColor:C.bg, borderRadius:99, padding:"3px 10px" }}>
+            {index + 1} / {total}
+          </div>
+        </div>
+
+        {/* プログレスバー */}
+        <div style={{ height:3, backgroundColor:C.border, borderRadius:99, marginBottom:20 }}>
+          <div style={{ height:"100%", width:`${((index + 1) / total) * 100}%`, backgroundColor:C.accentLight, borderRadius:99, transition:"width 0.3s" }}/>
+        </div>
+
+        {/* 略語表示 */}
+        <div style={{ textAlign:"center", marginBottom:20 }}>
+          <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>乗車記録 #{current.rideNum} の備考</div>
+          <div style={{ fontSize:26, fontWeight:900, color:C.accentLight, letterSpacing:2 }}>「{current.word}」</div>
+          <div style={{ fontSize:12, color:C.muted, marginTop:6 }}>これは何の意味ですか？</div>
+        </div>
+
+        {/* 自由テキスト入力 */}
+        <input
+          autoFocus
+          value={answers[current.word]}
+          onChange={e => setAnswers(p => ({ ...p, [current.word]: e.target.value }))}
+          placeholder="例: アプリ配車、キャンセル、無線など"
+          style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg,
+            border:`1.5px solid ${answers[current.word] ? C.accentLight : C.border}`,
+            borderRadius:12, padding:"14px 16px", fontSize:16, color:C.text, outline:"none",
+            marginBottom:12, transition:"border-color 0.15s" }}
+        />
+
+        {/* 未対応項目の通知 */}
+        {answers[current.word] && !isKnownMeaning(answers[current.word]) && (
+          <div style={{ backgroundColor:"#F59E0B18", border:"1px solid #F59E0B44",
+            borderRadius:10, padding:"10px 14px", marginBottom:12, fontSize:12, color:"#F59E0B",
+            lineHeight:1.6 }}>
+            💡 この項目はまだタクローに対応フィールドがありません。<br/>
+            入力内容は記録しておくので、要望が多ければ今後追加します。
+          </div>
+        )}
+
+        {/* 次へ / 完了 */}
+        <Btn onClick={() => advance()} disabled={!answers[current.word]} style={{ marginBottom:10 }}>
+          {isLast ? "完了して保存 ✓" : "次へ →"}
+        </Btn>
+
+        {/* 略語ではない（スキップ） */}
+        <button onClick={() => advance("skip")}
+          style={{ width:"100%", padding:"13px 0", borderRadius:12, fontSize:14, fontWeight:600,
+            cursor:"pointer", border:`1px solid #EF444444`, backgroundColor:"#EF444410",
+            color:"#EF4444", marginBottom:10 }}>
+          ✕ 略語ではない（スキップ）
+        </button>
+
+        <Btn onClick={onSkip} variant="ghost">全てスキップ</Btn>
+      </div>
+    </div>
+  );
+}
+
 // ━━━ 乗車記録編集モーダル ━━━━━━━━━━━━━━━━━━━━━━━━
-const PAYMENT_OPTIONS = ["現金", "カード", "GO", "S.RIDE", "DiDi", "Uber", "未収", "その他"];
-const EMPTY_RIDE = { pickup_time:"", dropoff_time:"", pickup_area:"", dropoff_area:"", amount:"", passengers:1, payment:"現金", note:"" };
+const EMPTY_RIDE = { pickup_time:"", dropoff_time:"", pickup_area:"", dropoff_area:"", amount:"", passengers:1, boarding_method:"", app_type:"", payment:"現金", note:"", has_disability_card:false, highway:false };
 
 function RideEditModal({ ride, index, onSave, onDelete, onClose }) {
   const [r, setR] = useState({
-    pickup_time:  ride.pickup_time  ?? "",
-    dropoff_time: ride.dropoff_time ?? "",
-    pickup_area:  ride.pickup_area  ?? "",
-    dropoff_area: ride.dropoff_area ?? "",
-    amount:       ride.amount       != null ? String(ride.amount) : "",
-    passengers:   ride.passengers   ?? 1,
-    payment:      ride.payment ?? (ride.cash != null ? "現金" : ride.note?.includes("カード") ? "カード" : "現金"),
-    note:         ride.note         ?? "",
+    pickup_time:         ride.pickup_time         ?? "",
+    dropoff_time:        ride.dropoff_time        ?? "",
+    pickup_area:         ride.pickup_area         ?? "",
+    dropoff_area:        ride.dropoff_area        ?? "",
+    amount:              ride.amount              != null ? String(ride.amount) : "",
+    passengers:          ride.passengers          ?? 1,
+    boarding_method:     ride.boarding_method     ?? "",
+    app_type:            ride.app_type            ?? "",
+    payment:             ride.payment             ?? "現金",
+    note:                ride.note                ?? "",
+    has_disability_card: ride.has_disability_card ?? false,
+    highway:             ride.highway             ?? false,
   });
   const set = (k, v) => setR(p => ({ ...p, [k]: v }));
   const isNew = index === -1;
 
   return (
     <div style={{ position:"fixed", inset:0, backgroundColor:"#000000bb", zIndex:300, display:"flex", alignItems:"flex-end" }} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:"20px 20px 40px", maxHeight:"90vh", overflowY:"auto" }}>
+      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:"20px 20px 40px", maxHeight:"90vh", overflowY:"auto", position:"relative" }}>
+        <button onClick={onClose} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", fontSize:28, color:C.muted, cursor:"pointer", lineHeight:1, padding:"8px" }}>×</button>
         <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 16px" }}/>
         <div style={{ fontSize:16, fontWeight:800, marginBottom:16, color:C.text }}>
           {isNew ? "🚕 乗車記録を追加" : `🚕 乗車記録 #${index + 1} を編集`}
@@ -131,21 +349,70 @@ function RideEditModal({ ride, index, onSave, onDelete, onClose }) {
           </div>
         </div>
 
+        {/* 乗車方法 */}
+        <div style={{ marginBottom:12 }}>
+          <div style={{ fontSize:11, color:C.muted, marginBottom:6 }}>乗車方法</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+            {BOARDING_METHOD_OPTIONS.map(opt => (
+              <div key={opt} onClick={() => {
+                set("boarding_method", opt);
+                if (APP_BOARDING_METHODS.includes(opt)) {
+                  if (!r.payment || r.payment === "現金") set("payment", "ネット決済");
+                }
+                if (!APP_BOARDING_METHODS.includes(opt)) set("app_type", "");
+              }} style={{ padding:"6px 12px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer", border:`1.5px solid ${r.boarding_method===opt?C.accentLight:C.border}`, backgroundColor:r.boarding_method===opt?C.accentLight+"22":"transparent", color:r.boarding_method===opt?C.accentLight:C.muted, transition:"all 0.15s" }}>{opt}</div>
+            ))}
+          </div>
+        </div>
+
+        {/* アプリ種別（アプリ配車選択時のみ） */}
+        {APP_BOARDING_METHODS.includes(r.boarding_method) && (
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:11, color:C.muted, marginBottom:6 }}>アプリの種類</div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+              {APP_TYPE_OPTIONS.map(opt => (
+                <div key={opt} onClick={() => set("app_type", opt)} style={{ padding:"6px 12px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer", border:`1.5px solid ${r.app_type===opt?C.gold:C.border}`, backgroundColor:r.app_type===opt?C.gold+"22":"transparent", color:r.app_type===opt?C.gold:C.muted, transition:"all 0.15s" }}>{opt}</div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* 支払い方法 */}
         <div style={{ marginBottom:12 }}>
           <div style={{ fontSize:11, color:C.muted, marginBottom:6 }}>支払い方法</div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {PAYMENT_OPTIONS.map(opt => (
+            {RIDE_PAYMENT_OPTIONS.map(opt => (
               <div key={opt} onClick={()=>set("payment",opt)} style={{ padding:"6px 12px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer", border:`1.5px solid ${r.payment===opt?C.accentLight:C.border}`, backgroundColor:r.payment===opt?C.accentLight+"22":"transparent", color:r.payment===opt?C.accentLight:C.muted, transition:"all 0.15s" }}>{opt}</div>
             ))}
           </div>
         </div>
 
         {/* 備考 */}
-        <div style={{ marginBottom:20 }}>
+        <div style={{ marginBottom:12 }}>
           <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>備考（任意）</div>
-          <input type="text" value={r.note} onChange={e=>set("note",e.target.value)} placeholder="高速使用など"
+          <input type="text" value={r.note} onChange={e=>set("note",e.target.value)} placeholder="メモなど"
             style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:9, padding:"10px 12px", color:C.text, fontSize:14, outline:"none" }}/>
+        </div>
+
+        {/* 障害者手帳・高速利用 */}
+        <div style={{ display:"flex", gap:10, marginBottom:20 }}>
+          {[
+            { key:"has_disability_card", emoji:"♿", label:"障害者手帳あり" },
+            { key:"highway",             emoji:"🛣️", label:"高速利用あり" },
+          ].map(({key, emoji, label}) => (
+            <div key={key} onClick={() => set(key, !r[key])}
+              style={{ flex:1, display:"flex", alignItems:"center", gap:8, padding:"10px 12px",
+                borderRadius:10, cursor:"pointer",
+                border:`1.5px solid ${r[key] ? C.accentLight : C.border}`,
+                backgroundColor:r[key] ? C.accentLight+"18" : "transparent" }}>
+              <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${r[key] ? C.accentLight : C.border}`,
+                backgroundColor:r[key] ? C.accentLight : "transparent",
+                display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                {r[key] && <span style={{ color:"#fff", fontSize:11, fontWeight:900 }}>✓</span>}
+              </div>
+              <span style={{ fontSize:12, color:r[key] ? C.accentLight : C.muted, fontWeight:r[key]?700:400 }}>{emoji} {label}</span>
+            </div>
+          ))}
         </div>
 
         <button onClick={()=>onSave({ ...r, amount: parseInt(r.amount)||0, passengers: parseInt(r.passengers)||1 })}
@@ -177,11 +444,15 @@ const SHOT_GUIDE = [
 ];
 
 // 撮影ガイドモーダル
+const SKIP_GUIDE_KEY = "taxi_skip_shot_guide";
+
 function ShotGuideModal({ onShoot, onCancel }) {
   const [checked, setChecked] = useState(false);
+  const [skipGuide, setSkipGuide] = useState(() => localStorage.getItem(SKIP_GUIDE_KEY) === "1");
   return (
     <div style={{ position:"fixed", inset:0, backgroundColor:"#000000aa", zIndex:200, display:"flex", alignItems:"flex-end" }} onClick={onCancel}>
-      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:24, paddingBottom:40 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:24, paddingBottom:40, position:"relative" }}>
+        <button onClick={onCancel} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", fontSize:28, color:C.muted, cursor:"pointer", lineHeight:1, padding:"8px" }}>×</button>
         <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 18px" }}/>
 
         {/* タイトル */}
@@ -209,6 +480,19 @@ function ShotGuideModal({ onShoot, onCancel }) {
           <span style={{ fontSize:13, color:checked?C.green:C.sub, fontWeight:checked?700:400 }}>上記5点を確認しました</span>
         </div>
 
+        {/* 次回から表示しない */}
+        <div onClick={() => { const n=!skipGuide; setSkipGuide(n); localStorage.setItem(SKIP_GUIDE_KEY, n?"1":"0"); }}
+          style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", marginBottom:16, borderRadius:10,
+            border:`1px solid ${skipGuide?C.accentLight+"66":C.border}`,
+            backgroundColor:skipGuide?C.accentLight+"10":"transparent", cursor:"pointer" }}>
+          <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${skipGuide?C.accentLight:C.border}`,
+            backgroundColor:skipGuide?C.accentLight:"transparent",
+            display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, transition:"all 0.15s" }}>
+            {skipGuide && <span style={{ color:"#fff", fontSize:13, fontWeight:900 }}>✓</span>}
+          </div>
+          <span style={{ fontSize:13, color:skipGuide?C.accentLight:C.sub, fontWeight:skipGuide?700:400 }}>次回から表示しない</span>
+        </div>
+
         <Btn onClick={onShoot} disabled={!checked}>
           {checked ? "撮影・ファイル選択に進む →" : "チェックを入れてから進んでください"}
         </Btn>
@@ -231,10 +515,12 @@ function loadDraft() {
   try { return JSON.parse(localStorage.getItem(OCR_DRAFT_KEY) || "null"); } catch { return null; }
 }
 
-export default function UploadScreen({ uploadCount, onSave, reports, user }) {
+
+export default function UploadScreen({ uploadCount, onSave, reports, user, onSaveMemoDict }) {
   const draft = loadDraft();
-  const [step, setStep]     = useState(draft?.step || "select");
-  const [isManual, setIsManual] = useState(false);
+  const isKoTaku = user?.workType === "個人タクシー";
+  const [step, setStep]     = useState(isKoTaku ? "confirm" : (draft?.step || "select"));
+  const [isManual, setIsManual] = useState(isKoTaku);
   const [isClosure, setIsClosure] = useState(false);
   const [closureDate, setClosureDate] = useState(() => new Date().toISOString().slice(0,10));
   const [closureCount, setClosureCount] = useState(0);
@@ -249,17 +535,26 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [matchData, setMatchData] = useState(null); // { ocrRides, manualRecords }
   const [ocrImageUrl, setOcrImageUrl] = useState(null); // OCR後の画像プレビュー用URL
+  const [ocrFile, setOcrFile]         = useState(null); // Storageアップロード用ファイル
   const [ocrConfidence, setOcrConfidence] = useState(null); // OCR全体の信頼度(0-100)
-  const [imgExpanded, setImgExpanded] = useState(false); // 画像拡大表示
+  const [imgExpanded, setImgExpanded] = useState(true); // 画像拡大表示（確認画面では最初から開く）
+  const [unknownMemos, setUnknownMemos] = useState([]); // 未登録の備考略語
+  const [pendingFormData, setPendingFormData] = useState(null); // 略語登録待ちのフォームデータ
 
   // step/form/ocrLines が変わったらlocalStorageに保存
   useEffect(() => { saveDraft(step, form, ocrLines); }, [step, form, ocrLines]);
   const fileInputRef = useRef(null);
-  const remaining = FREE_LIMIT - uploadCount;
+  const planKey = user?.plan || "free";
+  const planLimit = PLAN_OCR_LIMITS[planKey] ?? PLAN_OCR_LIMITS.free;
+  const planLabel = PLAN_LABELS[planKey] ?? "無料プラン";
+  const remaining = planLimit - uploadCount;
 
   // ━━ ドラッグ＆ドロップ: window レベルで直接拾う（React合成イベントを迂回）━━
   const stepRef = useRef(step);
   useEffect(() => { stepRef.current = step; }, [step]);
+
+  // handleFileSelectのrefを持っておく（drag-dropのuseEffectはマウント時のみ登録するためstale回避）
+  const handleFileSelectRef = useRef(null);
 
   useEffect(() => {
     const onDragOver = (e) => {
@@ -275,7 +570,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
       setIsDragOver(false);
       if (stepRef.current !== "select") return;
       const fileArr = Array.from(e.dataTransfer?.files || []);
-      if (fileArr.length > 0) handleFileSelect({ target: { files: fileArr } });
+      if (fileArr.length > 0) handleFileSelectRef.current?.({ target: { files: fileArr } });
     };
     window.addEventListener("dragover", onDragOver);
     window.addEventListener("dragleave", onDragLeave);
@@ -295,6 +590,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   };
 
   // ファイル選択後にOCR実行（最大2枚）
+  // ※ handleFileSelectRefに毎レンダー代入し、drag-dropのstale closure問題を回避
   const handleFileSelect = async (e) => {
     const files = Array.from(e.target.files || []).slice(0, 2);
     if (files.length === 0) return;
@@ -328,6 +624,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
 
       // 画像プレビュー用URLを生成（確認画面で日報を見ながら修正できるように）
       setOcrImageUrl(URL.createObjectURL(files[0]));
+      setOcrFile(files[0]); // Storageアップロード用に保持
 
       const result1 = await runReportOCR(base64_1, "image/jpeg");
       if (result1?.error === "monthly_limit_exceeded") {
@@ -378,9 +675,11 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
       } catch { /* ignore */ }
 
       const pos = (v) => (v != null && Number(v) >= 0) ? String(v) : ""; // マイナス値は除去
-      setForm({
+      const baseForm = {
         date:               reportDate,
-        gross_sales:        pos(f.gross_sales),
+        // gross_salesがなくnet_salesがある場合（グリーンキャブ等）は×1.1で補完
+        gross_sales:        pos(f.gross_sales) || (f.net_sales != null ? String(Math.round(f.net_sales * 1.1)) : ""),
+        net_sales:          pos(f.net_sales),
         cash_sales:         pos(f.cash_sales),
         card_sales:         pos(f.card_sales),
         app_sales:          pos(f.app_sales),
@@ -392,18 +691,57 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         work_hours:         f.work_hours         != null ? String(f.work_hours)         : "",
         break_hours:        computedBreakHours,
         highway_fee:        f.highway_fee        != null ? String(f.highway_fee)        : "0",
+        adjustment:         "",
         trouble_note:       "",
         work_area:          f.work_area          ?? "",
         rides,
         break_times:        breakTimes,
-      });
-      setStep(hasMatch ? "select" : "confirm");
+      };
+
+      // 未登録の備考略語を検出（デフォルト辞書＋ユーザー辞書を統合）
+      const existingDict = { ...DEFAULT_MEMO_DICT, ...(user?.memoDict || {}) };
+      const splitNote = (note) =>
+        note.split(/[.．・、。\s　,，/／\-]+/).map(t => t.trim()).filter(t => t && !/^\d+$/.test(t));
+      // 各単語に乗車記録番号を紐づける（Task3: どの乗車記録の備考かを表示するため）
+      const allWordRides = rides.flatMap((r, i) =>
+        r.note?.trim() ? splitNote(r.note.trim()).map(w => ({ word: w, rideNum: r.no ?? i + 1 })) : []
+      );
+      // 単語ごとに最初の出現番号を記録（重複は最初のrideNumを保持）
+      const wordMap = new Map();
+      allWordRides.forEach(({ word, rideNum }) => { if (!wordMap.has(word)) wordMap.set(word, rideNum); });
+      const unknown = [...wordMap.entries()]
+        .filter(([word]) => !(word in existingDict))
+        .map(([word, rideNum]) => ({ word, rideNum }));
+
+      if (unknown.length > 0) {
+        // 略語登録モーダルへ（hasMatchの場合はRideMatchModal→memo_mapの順）
+        setPendingFormData(baseForm);
+        setUnknownMemos(unknown);
+        if (hasMatch) {
+          setMatchData({ ocrRides: rides, manualRecords: [] }); // RideMatchModal先に表示
+          setForm({ ...baseForm, rides: applyMemoDict(rides, existingDict) });
+          setStep("select");
+        } else {
+          setStep("memo_map");
+        }
+      } else {
+        // 既存辞書で変換
+        const finalForm = { ...baseForm, rides: applyMemoDict(rides, existingDict) };
+        setForm(finalForm);
+        if (hasMatch) {
+          setStep("select");
+        } else {
+          setStep("confirm");
+        }
+      }
     } catch (err) {
       console.error("[OCR]", err);
       setOcrError(err.message || "読み取りに失敗しました");
       setStep("ocr_error");
     }
   };
+  // refを常に最新のhandleFileSelectに更新（drag-drop stale closure対策）
+  handleFileSelectRef.current = handleFileSelect;
 
   // 締め作業: 選択日の乗車記録を集計してconfirmへ
   const handleClosureLoad = () => {
@@ -449,8 +787,6 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
     setStep("confirm");
   };
 
-  const [wantAiAdvice, setWantAiAdvice] = useState(false);
-
   const handleSave = async () => {
     // バリデーション（強化版）
     const { errors: validationErrors, isValid } = validateReportForm(form);
@@ -459,32 +795,37 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
     setSaving(true);
     // サニタイズ（XSS対策・値のクランプ）
     const data = { id: Date.now(), ...sanitizeReportData(form), rides: form.rides ?? [], break_times: form.break_times ?? [] };
-    // ユーザーがリクエストした場合のみAIコメント生成
-    const comment = wantAiAdvice ? await generateReportComment(data, reports) : "";
-    data.ai_comment = comment;
-    setSaving(false); onSave(data); setForm(EMPTY); setIsManual(false); setWantAiAdvice(false);
+    // OCR画像をSupabase Storageに保存
+    if (ocrFile && user?.id) {
+      const { url } = await uploadReportImage(ocrFile, user.id);
+      if (url) data.image_url = url;
+    }
+    setSaving(false); onSave(data); setForm(EMPTY); setIsManual(false);
+    setOcrFile(null);
     localStorage.removeItem(OCR_DRAFT_KEY); // 保存完了でdraftクリア
     setStep("done");
   };
 
   const isOcrMode = !isManual && !isClosure && ocrImageUrl !== null;
-  const F = ({label,fk,type="number",ph="",required=false,span=1}) => {
+  // 統一スタイル定数
+  const FLD_LBL = { fontSize:13, fontWeight:600, marginBottom:7 };
+  const FLD_INP = { width:"100%", boxSizing:"border-box", borderRadius:10, padding:"15px 16px", color:C.text, fontSize:17, outline:"none" };
+  const F = ({label,fk,type="number",ph="",required=false}) => {
     const uncertain = isOcrMode && form[fk] === "";
     const borderColor = errors[fk] ? C.red : uncertain ? "#f5a623" : C.border;
     const bgColor = uncertain ? "#f5a62318" : C.bg;
     const labelColor = errors[fk] ? C.red : uncertain ? "#f5a623" : C.muted;
     return (
-      <div style={{ gridColumn:`span ${span}` }}>
-        <div style={{ fontSize:11, color:labelColor, marginBottom:5 }}>
+      <div>
+        <div style={{ ...FLD_LBL, color:labelColor }}>
           {label}{required&&<span style={{color:C.red}}> *</span>}
           {errors[fk]&&<span style={{marginLeft:4}}>{errors[fk]}</span>}
           {uncertain&&<span style={{marginLeft:4}}>要確認</span>}
         </div>
         <input type={type} value={form[fk]} placeholder={ph} onChange={e=>{
-          // コンマ（全角・半角）をドットに正規化
           const v = type === "number" ? e.target.value.replace(/[,，、]/g, ".") : e.target.value;
           setForm(p=>({...p,[fk]:v}));setErrors(p=>({...p,[fk]:""}));
-        }} style={{ width:"100%", boxSizing:"border-box", backgroundColor:bgColor, border:`1px solid ${borderColor}`, borderRadius:9, padding:"11px 12px", color:C.text, fontSize:15, outline:"none" }}/>
+        }} style={{ ...FLD_INP, backgroundColor:bgColor, border:`1px solid ${borderColor}` }}/>
       </div>
     );
   };
@@ -494,9 +835,39 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
       <div style={{ maxWidth:480, margin:"0 auto", padding:"20px 16px 100px" }}>
         <Card style={{ textAlign:"center", padding:32 }}>
           <div style={{ fontSize:36, marginBottom:12 }}>📊</div>
-          <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>今月の無料枠を使い切りました</div>
-          <Btn variant="gold">月額480円で続ける</Btn>
+          <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>今月のOCR上限（{planLimit}回）に達しました</div>
+          <div style={{ fontSize:13, color:C.muted, marginBottom:8, lineHeight:1.6 }}>
+            翌月1日にリセットされます。それまでは手入力でご利用いただけます。
+          </div>
+          <div style={{ fontSize:11, color:C.muted, lineHeight:1.6 }}>
+            ※βテスト期間中は全プラン月{planLimit}回まで無料でご利用いただけます
+          </div>
         </Card>
+      </div>
+    );
+  }
+
+  if (step === "memo_map") {
+    return (
+      <div style={{ maxWidth:480, margin:"0 auto", padding:"20px 16px 100px" }}>
+        <MemoDictModal
+          unknownMemos={unknownMemos}
+          onSave={async (mappings) => {
+            const existingDict = user?.memoDict || {};
+            const newDict = { ...existingDict, ...mappings };
+            await onSaveMemoDict?.(newDict);
+            setForm({ ...pendingFormData, rides: applyMemoDict(pendingFormData.rides, newDict) });
+            setPendingFormData(null);
+            setUnknownMemos([]);
+            setStep("confirm");
+          }}
+          onSkip={() => {
+            setForm({ ...pendingFormData, rides: applyMemoDict(pendingFormData.rides, user?.memoDict || {}) });
+            setPendingFormData(null);
+            setUnknownMemos([]);
+            setStep("confirm");
+          }}
+        />
       </div>
     );
   }
@@ -517,11 +888,36 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
   if (step === "ocring") {
     return (
       <div style={{ maxWidth:480, margin:"0 auto", padding:"40px 16px 100px" }}>
-        <div style={{ textAlign:"center", marginBottom:24 }}><div style={{ fontSize:36, marginBottom:10 }}>🦉</div><div style={{ fontSize:15, fontWeight:700 }}>タクローが読み取り中...</div></div>
+        <style>{`
+          @keyframes takuroBounce {
+            0%,100%{transform:translateY(0);}
+            50%{transform:translateY(-10px);}
+          }
+          @keyframes takuroFade {
+            0%,100%{opacity:1;}
+            50%{opacity:0.5;}
+          }
+        `}</style>
+        <div style={{ textAlign:"center", marginBottom:24 }}>
+          <div style={{ fontSize:52, marginBottom:10, display:"inline-block", animation:"takuroBounce 0.9s ease-in-out infinite" }}>🦉</div>
+          <div style={{ fontSize:15, fontWeight:700, animation:"takuroFade 1.4s ease-in-out infinite" }}>タクローが解析中...</div>
+          <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>しばらくお待ちください</div>
+        </div>
         <Card>
-          <ProgressBar value={ocrProg} max={100} color={C.accentLight} height={6}/>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+            <div style={{ fontSize:11, color:C.muted }}>読み取り進捗</div>
+            <div style={{ fontSize:11, fontWeight:700, color:C.accentLight }}>{ocrProg}%</div>
+          </div>
+          <ProgressBar value={ocrProg} max={100} color={C.accentLight} height={8}/>
           <div style={{ marginTop:14 }}>
-            {ocrLines.map((l,i) => <div key={i} style={{ fontSize:13, color:i===ocrLines.length-1?C.text:C.muted, padding:"5px 0", borderBottom:i<ocrLines.length-1?`1px solid ${C.border}`:"none" }}>{l}</div>)}
+            {ocrLines.map((l,i) => (
+              <div key={i} style={{ fontSize:13, color:i===ocrLines.length-1?C.text:C.muted,
+                padding:"6px 0", borderBottom:i<ocrLines.length-1?`1px solid ${C.border}`:"none",
+                display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:11 }}>{i===ocrLines.length-1?"▶":"✓"}</span>
+                {l}
+              </div>
+            ))}
           </div>
         </Card>
       </div>
@@ -584,18 +980,42 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         )}
 
         <Card>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-            {F({label:"日付", fk:"date", type:"date", required:true, span:2})}
-            {F({label:"売上（税込）（円）", fk:"gross_sales", required:true})}
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            {F({label:"日付", fk:"date", type:"date", required:true})}
             {F({label:"営業回数（回）", fk:"ride_count"})}
-            {F({label:"売上（税抜）（円）", fk:"cash_sales"})}
-            {F({label:"カード売上（円）", fk:"card_sales"})}
-            {F({label:"配車アプリ（円）", fk:"app_sales", span:2})}
+            {F({label:"売上（税込）（円）", fk:"gross_sales", required:true})}
+            {/* 売上（税抜）: OCR読み込みまたは手動入力可 */}
+            <div>
+              <div style={{ fontSize:13, fontWeight:600, color:C.muted, marginBottom:4 }}>
+                売上（税抜）（円）
+                {!form.net_sales && form.gross_sales && (
+                  <span
+                    onClick={() => setForm(p => ({ ...p, net_sales: String(Math.round(parseInt(p.gross_sales) / 1.1)) }))}
+                    style={{ marginLeft:8, fontSize:11, color:C.accentLight, cursor:"pointer", fontWeight:400 }}>
+                    税込から計算
+                  </span>
+                )}
+              </div>
+              <input
+                type="number"
+                value={form.net_sales}
+                placeholder={form.gross_sales ? String(Math.round(parseInt(form.gross_sales) / 1.1)) : ""}
+                onChange={e => setForm(p => ({ ...p, net_sales: e.target.value }))}
+                style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:10, padding:"15px 16px", color:C.text, fontSize:17, outline:"none" }}
+              />
+            </div>
+            {F({label:"高速料金（円）", fk:"highway_fee"})}
+            <AdjustmentInput value={form.adjustment} onChange={v=>setForm(p=>({...p,adjustment:v}))} />
+            {F({label:"現金売上（円）", fk:"cash_sales"})}
+            {F({label:"アプリ決済（円）", fk:"app_sales"})}
+            {F({label:"クレジットカード（円）", fk:"card_sales"})}
+            {F({label:"電子マネー（円）", fk:"emoney_sales"})}
+            {F({label:"タクシーチケット（円）", fk:"ticket_sales"})}
             {F({label:"走行距離（km）", fk:"total_distance"})}
             {F({label:"実車距離（km）", fk:"occupied_distance"})}
-            {F({label:"勤務時間（h）", fk:"work_hours"})}
-            {F({label:"休憩時間（h）", fk:"break_hours"})}
-            {F({label:"高速料金（円）", fk:"highway_fee", span:2})}
+            <WorkHoursPicker value={form.work_hours} onChange={v=>setForm(p=>({...p,work_hours:v}))} />
+            <WorkHoursPicker label="休憩時間" maxHours={8} value={form.break_hours} onChange={v=>setForm(p=>({...p,break_hours:v}))} />
+            {F({label:"チップ（円）", fk:"tip_amount"})}
           </div>
           <div style={{ marginTop:12 }}>
             <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>事故・トラブル備考</div>
@@ -627,7 +1047,10 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
                     </div>
                     <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>
                       {r.pickup_time && r.dropoff_time ? `${r.pickup_time}〜${r.dropoff_time}` : ""}
+                      {r.boarding_method ? `　${r.app_type || r.boarding_method}` : ""}
                       {r.payment ? `　${r.payment}` : ""}
+                      {r.has_disability_card ? "　♿" : ""}
+                      {r.highway ? "　🛣️" : ""}
                     </div>
                   </div>
                   <span style={{ color:C.green, fontWeight:700, fontSize:13, flexShrink:0 }}>¥{(r.amount ?? 0).toLocaleString()}</span>
@@ -668,20 +1091,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         {form.total_distance && form.occupied_distance && parseInt(form.total_distance)>0 && (
           <Card style={{ padding:12, textAlign:"center" }}><span style={{ fontSize:12, color:C.muted }}>実車率（自動計算）: </span><span style={{ fontSize:16, fontWeight:700, color:C.green }}>{Math.round(parseInt(form.occupied_distance)/parseInt(form.total_distance)*100)}%</span></Card>
         )}
-        {/* AIアドバイス オプトイン */}
-        <div
-          onClick={() => setWantAiAdvice(p => !p)}
-          style={{ display:"flex", alignItems:"center", gap:12, padding:"13px 16px", borderRadius:12, border:`1.5px solid ${wantAiAdvice ? C.accentLight : C.border}`, backgroundColor: wantAiAdvice ? C.accentLight+"11" : C.surface, cursor:"pointer", marginBottom:10 }}
-        >
-          <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${wantAiAdvice ? C.accentLight : C.border}`, backgroundColor: wantAiAdvice ? C.accentLight : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-            {wantAiAdvice && <span style={{ color:"#fff", fontSize:13, fontWeight:900, lineHeight:1 }}>✓</span>}
-          </div>
-          <div>
-            <div style={{ fontSize:13, fontWeight:700, color: wantAiAdvice ? C.accentLight : C.text }}>🦉 AIアドバイスをもらう</div>
-            <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>データを分析して今後のヒントをお届け（任意）</div>
-          </div>
-        </div>
-        <Btn onClick={handleSave} disabled={saving}>{saving ? (wantAiAdvice ? "AI分析中..." : "保存中...") : "保存する"}</Btn>
+        <Btn onClick={handleSave} disabled={saving}>{saving ? "保存中..." : "保存する"}</Btn>
         <Btn onClick={()=>{ setIsManual(false); setIsClosure(false); setStep("select"); }} variant="ghost" style={{ marginTop:10 }}>戻る</Btn>
       </div>
     );
@@ -720,7 +1130,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
         </div>
       )}
       <div style={{ backgroundColor:C.goldGlow, border:`1px solid ${C.gold}44`, borderRadius:12, padding:"10px 14px", marginBottom:14 }}>
-        <span style={{ fontSize:13, color:C.sub }}>今月残り <strong style={{ color:C.gold }}>{remaining}件</strong> 無料</span>
+        <span style={{ fontSize:13, color:C.sub }}>{planLabel}｜今月残り <strong style={{ color:C.gold }}>{remaining}件</strong>（上限{planLimit}回）</span>
       </div>
 
       {/* 撮影ガイドの簡易プレビュー（常時表示） */}
@@ -742,7 +1152,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
 
       {/* 撮影ボタン（タップ→ガイドモーダル、ドラッグ＆ドロップ対応） */}
       <div
-        onClick={() => setShowGuide(true)}
+        onClick={() => { if (localStorage.getItem(SKIP_GUIDE_KEY) === "1") { fileInputRef.current?.click(); } else { setShowGuide(true); } }}
         onMouseEnter={e => { if (!isDragOver) e.currentTarget.style.borderColor = C.accentLight; }}
         onMouseLeave={e => { if (!isDragOver) e.currentTarget.style.borderColor = C.border; }}
         onDragOver={e => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); }}
@@ -816,13 +1226,22 @@ export default function UploadScreen({ uploadCount, onSave, reports, user }) {
           ocrRides={matchData.ocrRides}
           manualRecords={matchData.manualRecords}
           onConfirm={mergedRides => {
-            setForm(f => ({ ...f, rides: mergedRides }));
             setMatchData(null);
-            setStep("confirm");
+            if (unknownMemos.length > 0 && pendingFormData) {
+              setPendingFormData(f => ({ ...f, rides: mergedRides }));
+              setStep("memo_map");
+            } else {
+              setForm(f => ({ ...f, rides: mergedRides }));
+              setStep("confirm");
+            }
           }}
           onSkip={() => {
             setMatchData(null);
-            setStep("confirm");
+            if (unknownMemos.length > 0 && pendingFormData) {
+              setStep("memo_map");
+            } else {
+              setStep("confirm");
+            }
           }}
         />
       )}

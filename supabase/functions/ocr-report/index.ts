@@ -1,12 +1,20 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const FREE_OCR_LIMIT = 8; // 無料ユーザーの月次上限
+const OCR_LIMITS: Record<string, number> = {
+  free:     30, // βテスト期間中は全プラン30枚
+  standard: 30,
+  pro:      60,
+};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Sonnet 4.6 料金（$3/MTok入力、$15/MTok出力）
+const INPUT_PRICE_PER_TOKEN  = 3  / 1_000_000;
+const OUTPUT_PRICE_PER_TOKEN = 15 / 1_000_000;
 
 // 汎用タクシー日報OCRプロンプト（会社フォーマット自動検出 + 勤務時間計算）
 const REPORT_OCR_PROMPT = `あなたはタクシー日報OCRの専門AIです。
@@ -97,14 +105,22 @@ serve(async (req) => {
       userId = user?.id ?? null;
     }
 
-    if (userId) {
-      const { data: profile } = await db.from("users").select("plan, monthly_upload_count, upload_reset_month").eq("id", userId).single();
-      if (profile && profile.plan !== "paid") {
-        const currentMonth = new Date().toISOString().slice(0, 7);
-        const count = profile.upload_reset_month === currentMonth ? (profile.monthly_upload_count || 0) : 0;
-        if (count >= FREE_OCR_LIMIT) {
-          return new Response(JSON.stringify({ error: "monthly_limit_exceeded", limit: FREE_OCR_LIMIT }), { status: 429, headers: corsHeaders });
-        }
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+    }
+
+    // ─── 月次カウント取得 & 制限チェック ───
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    let currentCount = 0;
+    let userPlan = "free";
+
+    const { data: profile } = await db.from("users").select("plan, monthly_upload_count, upload_reset_month").eq("id", userId).single();
+    if (profile) {
+      userPlan = profile.plan || "free";
+      const limit = OCR_LIMITS[userPlan] ?? OCR_LIMITS.free;
+      currentCount = profile.upload_reset_month === currentMonth ? (profile.monthly_upload_count || 0) : 0;
+      if (currentCount >= limit) {
+        return new Response(JSON.stringify({ error: "monthly_limit_exceeded", limit }), { status: 429, headers: corsHeaders });
       }
     }
 
@@ -160,6 +176,32 @@ serve(async (req) => {
     if (!response.ok) {
       const msg = result.error?.message ?? `Anthropic error ${response.status}`;
       return new Response(JSON.stringify({ error: msg }), { status: 502, headers: corsHeaders });
+    }
+
+    // ─── トークン使用量・コスト記録 & カウンターインクリメント ───
+    const usage = result.usage as { input_tokens: number; output_tokens: number } | undefined;
+    if (usage) {
+      const inputCost  = usage.input_tokens  * INPUT_PRICE_PER_TOKEN;
+      const outputCost = usage.output_tokens * OUTPUT_PRICE_PER_TOKEN;
+      const totalCost  = inputCost + outputCost;
+      console.log(`[ocr-report] tokens: in=${usage.input_tokens} out=${usage.output_tokens} cost=$${totalCost.toFixed(5)}`);
+
+      // DB に非同期で保存（失敗してもOCR結果は返す）
+      Promise.all([
+        db.from("ocr_usage_logs").insert({
+          user_id:        userId,
+          model:          "claude-sonnet-4-6",
+          input_tokens:   usage.input_tokens,
+          output_tokens:  usage.output_tokens,
+          input_cost_usd:  inputCost,
+          output_cost_usd: outputCost,
+          total_cost_usd:  totalCost,
+        }),
+        db.from("users").update({
+          monthly_upload_count: currentCount + 1,
+          upload_reset_month:   currentMonth,
+        }).eq("id", userId),
+      ]).catch(err => console.error("[ocr-report] usage log error:", err));
     }
 
     const text = result.content?.[0]?.text ?? "{}";

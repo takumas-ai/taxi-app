@@ -1,8 +1,9 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 統計画面
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { C, loadS, fmt } from "../lib/constants";
+import { generateWeeklyInsight } from "../lib/ai";
 
 const TABS = [
   { id:"point", label:"ポイント" },
@@ -13,8 +14,40 @@ const TABS = [
 
 const DAYS = ["日","月","火","水","木","金","土"];
 
+const AI_ADVICE_KEY = (n) => `taxi_stats_advice_${n}`;
+
 export default function StatsScreen({ reports }) {
   const [activeTab, setActiveTab] = useState("point");
+
+  // ─── AIアドバイス（5件刻み） ────────────────────────────────
+  const milestone = Math.floor(reports.length / 5) * 5; // 5, 10, 15...
+  const cacheKey  = AI_ADVICE_KEY(milestone);
+  const [advice, setAdvice]         = useState(() => milestone >= 5 ? (localStorage.getItem(cacheKey) || "") : "");
+  const [adviceLoading, setLoading] = useState(false);
+  const [adviceError, setAdviceErr] = useState("");
+
+  // マイルストーンが変わったらキャッシュを再読み込み
+  useEffect(() => {
+    if (milestone >= 5) setAdvice(localStorage.getItem(cacheKey) || "");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [milestone]);
+
+  const generateAdvice = async () => {
+    if (reports.length < 5) return;
+    setLoading(true); setAdviceErr("");
+    try {
+      const text = await generateWeeklyInsight(reports);
+      if (text) {
+        localStorage.setItem(cacheKey, text);
+        setAdvice(text);
+      } else {
+        setAdviceErr("生成に失敗しました。もう一度お試しください。");
+      }
+    } catch {
+      setAdviceErr("生成に失敗しました。もう一度お試しください。");
+    }
+    setLoading(false);
+  };
 
   // ─── ポイント別 ───────────────────────────────────────────
   // OCR/マージ済み rides → point_name
@@ -46,7 +79,7 @@ export default function StatsScreen({ reports }) {
     if (!r.date || !r.gross_sales) return;
     const d = new Date(r.date + "T00:00:00").getDay();
     dowMap[d].count++;
-    dowMap[d].total += Number(r.gross_sales) || 0;
+    dowMap[d].total += Number(r.net_sales || Math.round(r.gross_sales / 1.1)) || 0;
   });
   const dowStats = dowMap.map((d, i) => ({
     day: DAYS[i], count: d.count,
@@ -76,14 +109,15 @@ export default function StatsScreen({ reports }) {
   reports.forEach(r => {
     if (!r.date || !r.gross_sales) return;
     const ym = r.date.slice(0,7);
-    if (!monthMap[ym]) monthMap[ym] = { count:0, total:0 };
+    if (!monthMap[ym]) monthMap[ym] = { count:0, total:0, tips:0 };
     monthMap[ym].count++;
-    monthMap[ym].total += Number(r.gross_sales) || 0;
+    monthMap[ym].total += Number(r.net_sales || Math.round(r.gross_sales / 1.1)) || 0;
+    monthMap[ym].tips  += Number(r.tip_amount) || 0;
   });
   const monthStats = Object.entries(monthMap)
     .sort(([a],[b]) => b.localeCompare(a))
     .slice(0, 6)
-    .map(([ym, { count, total }]) => ({ ym, count, total, avg: Math.round(total / count) }));
+    .map(([ym, { count, total, tips }]) => ({ ym, count, total, tips, avg: Math.round(total / count) }));
 
   // ─── 最大値（バー用） ────────────────────────────────────
   const maxPointAvg  = Math.max(...pointStats.map(p => p.avg), 1);
@@ -104,6 +138,35 @@ export default function StatsScreen({ reports }) {
   return (
     <div style={{ maxWidth:480, margin:"0 auto", padding:"16px 16px 100px" }}>
       <div style={{ fontSize:18, fontWeight:900, color:C.text, marginBottom:16 }}>📈 統計</div>
+
+      {/* AIアドバイスカード */}
+      {reports.length >= 5 && (
+        <div style={{ backgroundColor:C.card, border:`1px solid ${C.accentLight}44`, borderRadius:14, padding:"16px", marginBottom:16 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: advice ? 10 : 0 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ fontSize:18 }}>🦉</span>
+              <div>
+                <div style={{ fontSize:13, fontWeight:800, color:C.text }}>AIアドバイス</div>
+                <div style={{ fontSize:10, color:C.muted }}>{reports.length}件目 / 次の更新 {milestone + 5}件</div>
+              </div>
+            </div>
+            <button
+              onClick={generateAdvice}
+              disabled={adviceLoading}
+              style={{ fontSize:11, fontWeight:700, padding:"6px 12px", borderRadius:20, border:`1.5px solid ${C.accentLight}`, backgroundColor: adviceLoading ? C.border : C.accentGlow, color: adviceLoading ? C.muted : C.accentLight, cursor: adviceLoading ? "default" : "pointer", flexShrink:0 }}
+            >
+              {adviceLoading ? "生成中..." : advice ? "再生成" : "生成する"}
+            </button>
+          </div>
+          {adviceError && <div style={{ fontSize:12, color:C.red, marginTop:8 }}>{adviceError}</div>}
+          {advice && !adviceLoading && (
+            <div style={{ fontSize:13, color:C.sub, lineHeight:1.8, whiteSpace:"pre-wrap" }}>{advice}</div>
+          )}
+          {!advice && !adviceLoading && (
+            <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>「生成する」を押すと、直近{reports.length}件のデータをもとにアドバイスが届きます。</div>
+          )}
+        </div>
+      )}
 
       {/* タブ */}
       <div style={{ display:"flex", gap:4, marginBottom:20, backgroundColor:C.surface, borderRadius:12, padding:4, border:`1px solid ${C.border}` }}>
@@ -192,6 +255,12 @@ export default function StatsScreen({ reports }) {
                 </div>
               </div>
               <Bar ratio={m.total / maxMonthTot} color={C.green} />
+              {m.tips > 0 && (
+                <div style={{ marginTop:8, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"6px 10px", backgroundColor:C.accentGlow, borderRadius:8 }}>
+                  <span style={{ fontSize:12, color:C.muted }}>💰 チップ合計</span>
+                  <span style={{ fontSize:13, fontWeight:800, color:C.accentLight }}>¥{fmt(m.tips)}</span>
+                </div>
+              )}
             </div>
           ))
       )}

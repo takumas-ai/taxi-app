@@ -1,11 +1,88 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ナビゲーションコンポーネント
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { C, loadS, saveS } from "../lib/constants";
 import { MOCK_DELAYS } from "../data/mockData";
 import { ZONE_META } from "../data/trafficZones";
 import { UserAvatar } from "./AvatarPicker";
+import { fetchFriendNotifs, markFriendNotifsRead } from "../lib/supabase";
+
+// ━━━ タクローからのお知らせ（アップデート情報）━━━
+const UPDATE_NEWS = [
+  { date:"2026-06-24", title:"βテスト開始", body:"タクローのβ版テストを開始しました。不具合・ご意見は設定の「意見箱」からお送りください。" },
+  { date:"2026-06-24", title:"アカウント削除を即時対応に変更", body:"アカウント削除が申請制から即時削除に変わりました。削除後も日報データは保持されます。" },
+  { date:"2026-06-23", title:"OCR確認画面に休憩時間を追加", body:"日報読み取り後の確認画面で休憩時間を入力できるようになりました。ホーム画面の休憩記録にも自動反映されます。" },
+  { date:"2026-06-22", title:"フレンド機能リリース", body:"QRコードでフレンド登録・日報の共有ができるようになりました。マイページからご利用ください。" },
+  { date:"2026-06-20", title:"βテスト期間中はOCR月30回無料", body:"βテスト期間中は全プラン月30回のOCR読み取りが無料でご利用いただけます。" },
+];
+
+// ━━━ 通知パネル（ベルタップで開くボトムシート）━━━
+function NotificationPanel({ user, onClose, onNavigateSettings, onMarkRead }) {
+  const [friendNotifs, setFriendNotifs] = useState([]);
+  const [loading, setLoading]           = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) { setLoading(false); return; }
+    fetchFriendNotifs(user.id).then(({ data }) => {
+      setFriendNotifs(data || []);
+      setLoading(false);
+    });
+    markFriendNotifsRead(user.id).then(() => onMarkRead?.());
+  }, []);
+
+  const unreadFriend = friendNotifs.filter(n => !n.read);
+  const typeLabel = (type) => type === "friend_added" ? "フレンドに追加しました" : type;
+
+  return (
+    <div style={{ position:"fixed", inset:0, backgroundColor:"#00000088", zIndex:500, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
+      onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, maxHeight:"80vh", overflowY:"auto", padding:"20px 20px 40px", position:"relative" }}>
+        <button onClick={onClose} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", fontSize:28, color:C.muted, cursor:"pointer", lineHeight:1, padding:"8px" }}>×</button>
+        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 18px" }}/>
+        <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:18 }}>🔔 お知らせ</div>
+
+        {/* フレンド通知 */}
+        {!loading && friendNotifs.length > 0 && (
+          <div style={{ marginBottom:22 }}>
+            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:10, letterSpacing:1 }}>👥 フレンド通知</div>
+            {friendNotifs.map(n => (
+              <div key={n.id} style={{ padding:"12px 0", borderBottom:`1px solid ${C.border}`, display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+                <div>
+                  <div style={{ fontSize:13, color:C.text, fontWeight: n.read ? 400 : 700 }}>
+                    {n.from_name ?? "だれか"}さんが{typeLabel(n.type)}
+                  </div>
+                </div>
+                <div style={{ fontSize:10, color:C.muted, flexShrink:0 }}>{n.created_at?.slice(0,10)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* タクローからのお知らせ */}
+        <div style={{ marginBottom:20 }}>
+          <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:10, letterSpacing:1 }}>📢 タクローからのお知らせ</div>
+          {UPDATE_NEWS.map((n, i) => (
+            <div key={i} style={{ padding:"12px 0", borderBottom:`1px solid ${C.border}` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:5, gap:8 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{n.title}</div>
+                <div style={{ fontSize:10, color:C.muted, flexShrink:0 }}>{n.date}</div>
+              </div>
+              <div style={{ fontSize:12, color:C.sub, lineHeight:1.7 }}>{n.body}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* 通知設定 */}
+        <button onClick={() => { onNavigateSettings?.("notif"); onClose(); }}
+          style={{ width:"100%", padding:"12px 0", borderRadius:10, backgroundColor:C.bg, border:`1px solid ${C.border}`, color:C.sub, fontSize:13, cursor:"pointer" }}>
+          ⚙️ 通知設定
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ボトムナビ（5タブ）
 export function BottomNav({ tab, setTab, userAreas=[], alertsSeen=false }) {
@@ -19,7 +96,7 @@ export function BottomNav({ tab, setTab, userAreas=[], alertsSeen=false }) {
     { id:"list",       icon:"📋", label:"日報"     },
     { id:"upload",     icon:"＋", label:"記録",  special:true },
     { id:"guide",      icon:"📍", label:"ガイド"   },
-    { id:"community",  icon:"💬", label:"コミュニティ" },
+    { id:"map",        icon:"🗺️", label:"マップ" },
   ];
 
   const isActive = id => {
@@ -89,6 +166,8 @@ function ModeSheet({ appMode, onModeChange, onClose }) {
 // 営業ポイント管理モーダル（GPS対応）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function BusinessPointModal({ onClose }) {
+  const [modalTab, setModalTab] = useState("register"); // "register" | "ranking"
+
   // 旧形式(string[])と新形式({name,lat,lng,memo,timestamp}[])を両対応
   const [points, setPoints] = useState(() => {
     const raw = loadS("taxi_biz_points", []);
@@ -100,6 +179,22 @@ function BusinessPointModal({ onClose }) {
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError]     = useState("");
   const [pendingCoords, setPendingCoords] = useState(null); // { lat, lng }
+
+  // ランキング集計（taxi_sales_records）
+  const ranking = (() => {
+    const records = loadS("taxi_sales_records", []);
+    const map = {};
+    records.forEach(r => {
+      const name = (r.pickupLocation || r.spotName || "").trim();
+      if (!name) return;
+      if (!map[name]) map[name] = { count: 0, total: 0 };
+      map[name].count++;
+      map[name].total += parseInt(r.fare) || parseInt(r.amount) || 0;
+    });
+    return Object.entries(map)
+      .map(([name, { count, total }]) => ({ name, count, total, avg: Math.round(total / count) }))
+      .sort((a, b) => b.avg - a.avg);
+  })();
 
   const save = (next) => { setPoints(next); saveS("taxi_biz_points", next); };
 
@@ -166,10 +261,56 @@ function BusinessPointModal({ onClose }) {
     <div style={{ position:"fixed", inset:0, backgroundColor:"#00000088", zIndex:300 }} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{ position:"absolute", bottom:0, left:0, right:0, backgroundColor:C.surface, borderRadius:"20px 20px 0 0", padding:24, paddingBottom:44, maxWidth:480, margin:"0 auto", maxHeight:"85vh", overflowY:"auto" }}>
         <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 16px" }}/>
-        <div style={{ fontSize:15, fontWeight:800, marginBottom:4 }}>📍 営業ポイント記録</div>
-        <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>稼げた場所をGPSで記録。日報の営業エリア選択にも使えます</div>
+        <div style={{ fontSize:15, fontWeight:800, marginBottom:12 }}>📍 マイスポット</div>
+
+        {/* タブ切り替え */}
+        <div style={{ display:"flex", gap:4, marginBottom:16, backgroundColor:C.bg, borderRadius:10, padding:3, border:`1px solid ${C.border}` }}>
+          {[["register","📝 登録"],["ranking","🏆 ランキング"]].map(([v,l]) => (
+            <div key={v} onClick={()=>setModalTab(v)}
+              style={{ flex:1, textAlign:"center", padding:"8px 0", borderRadius:8, fontSize:12, fontWeight:modalTab===v?700:400, backgroundColor:modalTab===v?C.accentLight:"transparent", color:modalTab===v?"#fff":C.muted, cursor:"pointer", transition:"all 0.15s" }}>
+              {l}
+            </div>
+          ))}
+        </div>
+
+        {/* ランキングタブ */}
+        {modalTab === "ranking" && (
+          ranking.length === 0 ? (
+            <div style={{ textAlign:"center", padding:"32px 16px", color:C.muted }}>
+              <div style={{ fontSize:32, marginBottom:10 }}>📊</div>
+              <div style={{ fontSize:14, fontWeight:700, marginBottom:6 }}>まだデータがありません</div>
+              <div style={{ fontSize:12 }}>ホーム画面の営業ポイント記録を使うと<br/>ここにランキングが表示されます</div>
+            </div>
+          ) : (
+            <div>
+              {ranking.map((s, i) => {
+                const medalColor = i===0?C.gold:i===1?"#94a3b8":i===2?"#b45309":C.muted;
+                const barW = Math.round(s.avg / ranking[0].avg * 100);
+                return (
+                  <div key={s.name} style={{ backgroundColor:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px", marginBottom:8 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
+                      <div style={{ fontSize:16, fontWeight:900, color:medalColor, width:26, textAlign:"center" }}>#{i+1}</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{s.name}</div>
+                        <div style={{ fontSize:11, color:C.muted }}>{s.count}回記録</div>
+                      </div>
+                      <div style={{ textAlign:"right" }}>
+                        <div style={{ fontSize:14, fontWeight:800, color:C.text }}>¥{s.avg.toLocaleString()}</div>
+                        <div style={{ fontSize:10, color:C.muted }}>平均単価</div>
+                      </div>
+                    </div>
+                    <div style={{ height:4, backgroundColor:C.border, borderRadius:99, overflow:"hidden" }}>
+                      <div style={{ height:"100%", width:`${barW}%`, backgroundColor:i===0?C.gold:C.accentLight, borderRadius:99 }}/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        )}
 
         {/* GPS取得ボタン */}
+        {modalTab === "register" && <>
         <button
           onClick={handleGPS}
           disabled={gpsLoading}
@@ -231,6 +372,8 @@ function BusinessPointModal({ onClose }) {
           ))
         )}
 
+        </>}
+
         <button onClick={onClose} style={{ width:"100%", marginTop:16, padding:"13px 0", borderRadius:11, fontSize:14, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.sub }}>閉じる</button>
       </div>
     </div>
@@ -240,36 +383,56 @@ function BusinessPointModal({ onClose }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ハンバーガーメニュー（左ドロワー）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSettings, onManageArea, hasNewRanking }) {
+function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSettings, onManageArea, hasNewRanking, eventCount = 0, friendNotifCount = 0, unreadAnalysisCount = 0 }) {
+  // ドロワー表示中はbodyスクロールをロック（iOS対応）
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  const isAdmin = user?.email === (import.meta.env.VITE_ADMIN_EMAIL ?? "yoshito.takeuchi@gmail.com");
+
   const items = [
-    { icon:"📈", label:"統計",             action:()=>{ setTab("stats"); onClose(); } },
-    { icon:"🏆", label:"ランキング",       action:()=>{ setTab("ranking"); onClose(); }, badge: hasNewRanking },
-    { icon:"🗺️", label:"エリア設定",       action:()=>{ onManageArea?.(); onClose(); } },
-    { icon:"📍", label:"マイポイント",       action:()=>{ onOpenBizPoints(); onClose(); } },
-    { icon:"💴", label:"手取り設定",       action:()=>{ onNavigateSettings("takepay"); onClose(); } },
+    { icon:"👥", label:"マイページ",          action:()=>{ setTab("mypage"); onClose(); }, badge: friendNotifCount > 0 ? friendNotifCount : null },
+    { icon:"🧠", label:"AI分析",              action:()=>{ setTab("ai_analysis"); onClose(); }, badge: unreadAnalysisCount > 0 ? unreadAnalysisCount : null },
+    { icon:"📈", label:"統計",                action:()=>{ setTab("stats"); onClose(); } },
+    { icon:"🧮", label:"売上シミュレーション", action:()=>{ setTab("simulation"); onClose(); } },
+    { icon:"📍", label:"マイスポット",         action:()=>{ onOpenBizPoints(); onClose(); } },
+    { icon:"🌏", label:"英語フレーズ",         action:()=>{ setTab("english"); onClose(); } },
+    { icon:"🎓", label:"新人コース",           action:()=>{ setTab("newbie"); onClose(); } },
+    { icon:"🏆", label:"ランキング（開発中）", action:()=>{ setTab("ranking"); onClose(); } },
+    { icon:"💬", label:"コミュニティ（開発中）",action:()=>{ setTab("community"); onClose(); } },
+    ...(isAdmin ? [{ icon:"📣", label:"イベント（試験中）", action:()=>{ setTab("events"); onClose(); }, badge: eventCount > 0 ? eventCount : null }] : []),
   ];
 
   return (
     <>
       {/* オーバーレイ */}
-      <div style={{ position:"fixed", inset:0, backgroundColor:"#00000066", zIndex:150 }} onClick={onClose}/>
+      <div style={{ position:"fixed", inset:0, backgroundColor:"#00000066", zIndex:150 }} onClick={onClose} onTouchMove={e=>e.preventDefault()}/>
 
       {/* ドロワー本体 */}
-      <div style={{ position:"fixed", top:0, left:0, bottom:0, width:280, maxWidth:"80vw", backgroundColor:C.surface, zIndex:160, display:"flex", flexDirection:"column", boxShadow:"4px 0 24px #00000033" }}>
+      <div style={{ position:"fixed", top:0, left:0, bottom:0, width:280, maxWidth:"80vw", backgroundColor:C.surface, zIndex:160, display:"flex", flexDirection:"column", boxShadow:"4px 0 24px #00000033", overscrollBehavior:"contain" }}>
 
         {/* ユーザープロフィール */}
-        <div style={{ padding:"52px 20px 20px", backgroundColor:C.card, borderBottom:`1px solid ${C.border}` }}>
-          <div style={{ marginBottom:10 }}>
-            <UserAvatar avatarUrl={user?.avatarUrl} avatarPreset={user?.avatarPreset} size={48} />
+        <div style={{ padding:"16px 16px 10px", backgroundColor:C.card, borderBottom:`1px solid ${C.border}` }}>
+          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+            <UserAvatar avatarUrl={user?.avatarUrl} avatarPreset={user?.avatarPreset} size={40} />
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:14, fontWeight:800, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user?.name || "ゲスト"}</div>
+              {user?.workType && <div style={{ fontSize:11, color:C.muted }}>{user.workType}</div>}
+            </div>
+            <div
+              onClick={()=>{ onNavigateSettings("profile"); onClose(); }}
+              style={{ fontSize:11, color:C.accentLight, cursor:"pointer", padding:"6px 10px", borderRadius:8, border:`1px solid ${C.accentLight}44`, backgroundColor:C.accentLight+"11", fontWeight:700, whiteSpace:"nowrap", flexShrink:0 }}
+            >
+              編集
+            </div>
           </div>
-          <div style={{ fontSize:15, fontWeight:800, color:C.text }}>{user?.name || "ゲスト"}</div>
-          <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{user?.company || ""}</div>
-          {user?.workType && <div style={{ display:"inline-block", marginTop:6, fontSize:10, backgroundColor:C.accentGlow, color:C.accentLight, border:`1px solid ${C.accentLight}44`, borderRadius:99, padding:"2px 10px", fontWeight:700 }}>{user.workType}</div>}
-          <div onClick={()=>{ onNavigateSettings("profile"); onClose(); }} style={{ marginTop:10, display:"inline-block", fontSize:12, color:C.accentLight, cursor:"pointer", padding:"5px 12px", borderRadius:8, border:`1px solid ${C.accentLight}44`, backgroundColor:C.accentLight+"11" }}>✏️ プロフィールを編集</div>
         </div>
 
         {/* メニュー項目 */}
-        <div style={{ flex:1, overflowY:"auto", padding:"12px 0" }}>
+        <div style={{ flex:1, overflowY:"auto", padding:"12px 0", overscrollBehavior:"contain" }}>
           {items.map(item => (
             <div key={item.label} onClick={item.action}
               style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 20px", cursor:"pointer", transition:"background 0.1s" }}
@@ -278,15 +441,17 @@ function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSet
             >
               <span style={{ fontSize:18, width:24, textAlign:"center" }}>{item.icon}</span>
               <span style={{ fontSize:14, color:C.text, fontWeight:500 }}>{item.label}</span>
-              {item.badge && (
-                <span style={{ marginLeft:"auto", backgroundColor:C.red, color:"#fff", fontSize:9, fontWeight:700, borderRadius:99, padding:"2px 7px" }}>NEW</span>
+              {item.badge != null && (
+                <span style={{ marginLeft:"auto", backgroundColor:C.red, color:"#fff", fontSize:9, fontWeight:700, borderRadius:99, padding:"2px 7px", minWidth:18, textAlign:"center" }}>
+                  {item.badge}
+                </span>
               )}
             </div>
           ))}
         </div>
 
         {/* 下部：設定 */}
-        <div style={{ borderTop:`1px solid ${C.border}`, padding:"8px 0 32px" }}>
+        <div style={{ borderTop:`1px solid ${C.border}`, padding:"8px 0 24px" }}>
           <div onClick={()=>{ setTab("settings"); onClose(); }}
             style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 20px", cursor:"pointer" }}
             onMouseEnter={e=>e.currentTarget.style.backgroundColor=C.card}
@@ -295,14 +460,8 @@ function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSet
             <span style={{ fontSize:18, width:24, textAlign:"center" }}>⚙️</span>
             <span style={{ fontSize:14, color:C.text, fontWeight:500 }}>設定</span>
           </div>
-          {/* ビルド時刻 — デプロイ確認用 */}
-          <div style={{ padding:"0 20px 4px", fontSize:10, color:C.muted, opacity:0.6 }}>
-            {(() => {
-              try {
-                const d = new Date(__BUILD_TIME__);
-                return `ビルド: ${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-              } catch { return ""; }
-            })()}
+          <div style={{ padding:"0 20px 4px", fontSize:10, color:C.muted, opacity:0.5, letterSpacing:"0.03em" }}>
+            β v0.8 · 更新日 2026/06/25
           </div>
         </div>
       </div>
@@ -313,24 +472,11 @@ function HamburgerDrawer({ user, onClose, setTab, onOpenBizPoints, onNavigateSet
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // タクロー浮遊ボタン（右下常時表示）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-export function TakuroFAB({ setTab }) {
-  const [visible, setVisible] = useState(() => loadS("taxi_takuro_fab", true));
-
-  const hide = (e) => {
-    e.stopPropagation();
-    setVisible(false);
-    saveS("taxi_takuro_fab", false);
-  };
-
-  if (!visible) return null;
-
+export function TakuroFAB({ onOpenChat }) {
   return (
     <div style={{ position:"fixed", bottom:90, right:16, zIndex:49 }}>
-      {/* ×ボタン */}
-      <button onClick={hide} style={{ position:"absolute", top:-6, right:-6, width:18, height:18, borderRadius:"50%", backgroundColor:C.muted, border:"none", color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, zIndex:1 }}>×</button>
-
       {/* フクロウアイコン */}
-      <div onClick={()=>setTab("feedback")}
+      <div onClick={onOpenChat}
         style={{ width:52, height:52, borderRadius:"50%", backgroundColor:C.surface, border:`2px solid ${C.accentLight}66`, boxShadow:`0 4px 20px ${C.accentLight}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, cursor:"pointer", transition:"transform 0.2s" }}
         onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"}
         onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
@@ -342,10 +488,15 @@ export function TakuroFAB({ setTab }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ヘッダー
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-export function Header({ user, tab, setTab, appMode="simple", onModeChange, alertsSeen=false, onNavigateSettings, onManageArea, hasNewRanking=false }) {
-  const [showDrawer, setShowDrawer]     = useState(false);
-  const [showModeSheet, setShowModeSheet] = useState(false);
-  const [showBizPoints, setShowBizPoints] = useState(false);
+export function Header({ user, tab, setTab, appMode="simple", onModeChange, alertsSeen=false, onNavigateSettings, onManageArea, hasNewRanking=false, friendNotifCount=0, onMarkNotifsRead, unreadAnalysisCount=0 }) {
+  const [showDrawer, setShowDrawer]           = useState(false);
+  const [showModeSheet, setShowModeSheet]     = useState(false);
+  const [showBizPoints, setShowBizPoints]     = useState(false);
+  const [showNotifPanel, setShowNotifPanel]   = useState(false);
+
+  // 今日チェック済みイベント数（バッジ表示用）
+  const eventChecks = loadS("taxi_event_checks", {});
+  const checkedEventCount = Object.values(eventChecks).filter(Boolean).length;
 
   const userAreas = user?.areas || [];
   const alertCount = MOCK_DELAYS.filter(d =>
@@ -357,7 +508,7 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
 
   return (
     <>
-      <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 14px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:40 }}>
+      <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 14px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between", position:"fixed", top:0, left:0, right:0, zIndex:40, maxWidth:"100vw" }}>
 
         {/* 左：ハンバーガーメニュー ＋ エリアチップ */}
         <div style={{ display:"flex", alignItems:"center", gap:6, flex:1, minWidth:0 }}>
@@ -403,16 +554,12 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
             <span style={{ fontSize:9, color:C.muted }}>▾</span>
           </div>
 
-          {/* 強制リロード */}
-          <div onClick={() => window.location.reload()} title="最新版に更新"
-            style={{ cursor:"pointer", padding:"5px 6px", borderRadius:10, fontSize:15, opacity:0.55, lineHeight:1, flexShrink:0 }}>
-            🔄
-          </div>
-
-          {/* 通知 */}
-          <div onClick={() => setTab("info")} style={{ position:"relative", cursor:"pointer", padding:"5px 6px", borderRadius:10, backgroundColor:tab==="info"?C.accentGlow:"transparent", flexShrink:0 }}>
-            <span style={{ fontSize:18, opacity:tab==="info"?1:0.6 }}>🔔</span>
-            {alertCount > 0 && !alertsSeen && <div style={{ position:"absolute", top:2, right:4, width:8, height:8, borderRadius:"50%", backgroundColor:C.red }} />}
+          {/* 通知ベル → 通知パネルを開く */}
+          <div onClick={() => setShowNotifPanel(true)} style={{ position:"relative", cursor:"pointer", padding:"5px 6px", borderRadius:10, backgroundColor:showNotifPanel?C.accentGlow:"transparent", flexShrink:0 }}>
+            <span style={{ fontSize:18, opacity:showNotifPanel?1:0.6 }}>🔔</span>
+            {friendNotifCount > 0 && (
+              <div style={{ position:"absolute", top:0, right:2, backgroundColor:C.red, color:"#fff", fontSize:9, fontWeight:700, borderRadius:99, minWidth:16, height:16, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{friendNotifCount}</div>
+            )}
           </div>
         </div>
       </div>
@@ -427,6 +574,9 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
           onNavigateSettings={onNavigateSettings}
           onManageArea={onManageArea}
           hasNewRanking={hasNewRanking}
+          eventCount={checkedEventCount}
+          friendNotifCount={friendNotifCount}
+          unreadAnalysisCount={unreadAnalysisCount}
         />
       )}
 
@@ -435,6 +585,16 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
 
       {/* 営業ポイント管理モーダル */}
       {showBizPoints && <BusinessPointModal onClose={() => setShowBizPoints(false)}/>}
+
+      {/* 通知パネル */}
+      {showNotifPanel && (
+        <NotificationPanel
+          user={user}
+          onClose={() => setShowNotifPanel(false)}
+          onNavigateSettings={onNavigateSettings}
+          onMarkRead={onMarkNotifsRead}
+        />
+      )}
     </>
   );
 }
