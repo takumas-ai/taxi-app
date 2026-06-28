@@ -239,7 +239,7 @@ export default function MapScreen({ reports, user }) {
   const getAllRides = useCallback(async () => {
     if (!SUPABASE_READY) return getMyRides();
     const { data, error } = await supabase
-      .from("daily_reports").select("rides, date").not("rides", "is", null);
+      .from("daily_reports").select("rides, date");
     if (error) return getMyRides();
     const rides = [];
     const ridesList = [];
