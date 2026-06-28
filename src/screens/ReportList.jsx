@@ -920,7 +920,7 @@ export default function ReportList({ reports, onSelect, onEdit, onUpdate, user }
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:12, color:C.muted, marginBottom:2 }}>{r.date}（{dow(r.date)}）</div>
                     <div style={{ display:"flex", alignItems:"flex-end", gap:14, flexWrap:"wrap" }}>
-                      <div style={{ fontSize:26, fontWeight:900, color:C.text, lineHeight:1.1 }}>
+                      <div style={{ fontSize:26, fontWeight:900, color:C.text, lineHeight:1.1, minWidth:150 }}>
                         {fmt(netSales)}<span style={{ fontSize:12, color:C.muted, marginLeft:3, fontWeight:400 }}>円</span>
                       </div>
                       <div style={{ paddingBottom:2 }}>
