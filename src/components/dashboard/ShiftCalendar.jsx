@@ -303,8 +303,8 @@ export function ShiftSummaryCard({ reports = [], user, onOpenReport, monthTarget
 
   return (
     <Card style={{ marginBottom:14, padding:"12px 16px" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", flex:1 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:6 }}>
+        <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", flexShrink:0 }}>
           <span style={{ fontSize:13, fontWeight:700 }}>📅 カレンダー</span>
           {todayShift && !todayReport && (
             <span style={{ fontSize:10, backgroundColor:C.orange+"22", color:C.orange, fontWeight:700, padding:"3px 8px", borderRadius:99, whiteSpace:"nowrap" }}>
@@ -317,10 +317,10 @@ export function ShiftSummaryCard({ reports = [], user, onOpenReport, monthTarget
             </span>
           )}
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
           <button onClick={e=>{ e.stopPropagation(); onGoShift?.(); }}
             style={{ fontSize:11, padding:"4px 10px", borderRadius:8, border:`1px solid ${C.accentLight}55`, backgroundColor:C.accentLight+"18", color:C.accentLight, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
-            📷 シフトを読み取る
+            📷 読み取る
           </button>
           <div onClick={() => setOpen(p=>!p)} style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer" }}>
             {monthShifts.length > 0
