@@ -754,7 +754,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user, onSav
       return;
     }
     const sum = (arr, fn) => arr.reduce((s, r) => s + (fn(r) || 0), 0);
-    const grossSales   = sum(dayRecords, r => r.fare);
+    const grossSales   = Math.round(sum(dayRecords, r => r.fare) / 10) * 10;
     const cashSales    = sum(dayRecords.filter(r => r.paymentMethod === "現金"), r => r.fare);
     const cardSales    = sum(dayRecords.filter(r => r.paymentMethod === "カード"), r => r.fare);
     const appSales     = sum(dayRecords.filter(r => ["配車アプリ","アプリ"].includes(r.paymentMethod)), r => r.fare);
@@ -990,7 +990,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user, onSav
                 売上（税抜）（円）
                 {!form.net_sales && form.gross_sales && (
                   <span
-                    onClick={() => setForm(p => ({ ...p, net_sales: String(Math.round(parseInt(p.gross_sales) / 1.1)) }))}
+                    onClick={() => setForm(p => ({ ...p, net_sales: String(Math.round(Math.round(parseInt(p.gross_sales) / 1.1) / 10) * 10) }))}
                     style={{ marginLeft:8, fontSize:11, color:C.accentLight, cursor:"pointer", fontWeight:400 }}>
                     税込から計算
                   </span>
@@ -999,7 +999,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user, onSav
               <input
                 type="number"
                 value={form.net_sales}
-                placeholder={form.gross_sales ? String(Math.round(parseInt(form.gross_sales) / 1.1)) : ""}
+                placeholder={form.gross_sales ? String(Math.round(Math.round(parseInt(form.gross_sales) / 1.1) / 10) * 10) : ""}
                 onChange={e => setForm(p => ({ ...p, net_sales: e.target.value }))}
                 style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:10, padding:"15px 16px", color:C.text, fontSize:17, outline:"none" }}
               />

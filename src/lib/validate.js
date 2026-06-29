@@ -118,8 +118,8 @@ export function validateReportForm(form) {
 export function sanitizeReportData(form) {
   return {
     date:               String(form.date || "").slice(0, 10),
-    gross_sales:        clampReportValue("gross_sales",       parseInt(form.gross_sales)      || 0),
-    net_sales:          form.net_sales ? clampReportValue("gross_sales", parseInt(form.net_sales) || 0) : null,
+    gross_sales:        Math.round(clampReportValue("gross_sales", parseInt(form.gross_sales) || 0) / 10) * 10,
+    net_sales:          form.net_sales ? Math.round(clampReportValue("gross_sales", parseInt(form.net_sales) || 0) / 10) * 10 : null,
     cash_sales:         clampReportValue("cash_sales",        parseInt(form.cash_sales)       || 0),
     card_sales:         clampReportValue("card_sales",        parseInt(form.card_sales)       || 0),
     app_sales:          clampReportValue("app_sales",         parseInt(form.app_sales)        || 0),
