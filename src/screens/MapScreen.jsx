@@ -276,6 +276,12 @@ function resolveArea(address) {
 export default function MapScreen({ reports, user }) {
   const [scope,        setScope]        = useState("self");
   const [tab,          setTab]          = useState("highFare");
+  const bizPoints = useMemo(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem("taxi_biz_points") || "[]");
+      return raw.map(p => typeof p === "string" ? { name: p, memo: "", timestamp: null } : p);
+    } catch { return []; }
+  }, []);
   const [timeSlotIdx,  setTimeSlotIdx]  = useState(0);
   const [selectedDays, setSelectedDays] = useState([]);
   const [filtersOpen,  setFiltersOpen]  = useState(false);
@@ -395,6 +401,21 @@ export default function MapScreen({ reports, user }) {
       .sort((a, b) => b.avg - a.avg);
   }, [rawRides, timeRange, selectedDays]);
 
+  // ── マイポイント統計（手動記録のpickup名で一致） ──
+  const pointStats = useMemo(() =>
+    bizPoints.map(p => {
+      const matching = rawRidesList.filter(r =>
+        matchesTime(r.hour, timeRange) && matchesDay(r.date, selectedDays) &&
+        r.pickup === p.name
+      );
+      const count = matching.length;
+      const avg   = count > 0 ? Math.round(matching.reduce((s, r) => s + Number(r.amount), 0) / count) : 0;
+      const dates  = matching.map(r => r.date).filter(Boolean).sort();
+      return { ...p, count, avg, lastDate: dates[dates.length - 1] || null };
+    }).sort((a, b) => b.avg - a.avg),
+    [bizPoints, rawRidesList, timeRange, selectedDays]
+  );
+
   const hasFilter = timeSlotIdx > 0 || selectedDays.length > 0;
 
   // ── UI ──
@@ -415,12 +436,12 @@ export default function MapScreen({ reports, user }) {
       </div>
 
       {/* タブ切替 */}
-      <div style={{ display:"flex", gap:8, marginBottom:14 }}>
-        {[["highFare","💰 高単価記録"],["area","📊 エリア分析"]].map(([v, lbl]) => (
+      <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+        {[["highFare","💰 高単価"],["area","📊 エリア"],["point","📍 ポイント"]].map(([v, lbl]) => (
           <button key={v} onClick={() => setTab(v)}
             style={{ flex:1, padding:"10px 0", borderRadius:10,
               border:`1.5px solid ${tab === v ? C.accentLight : C.border}`,
-              fontWeight:700, fontSize:13, cursor:"pointer",
+              fontWeight:700, fontSize:12, cursor:"pointer",
               backgroundColor: tab === v ? C.accentGlow : C.surface,
               color: tab === v ? C.accentLight : C.muted }}>
             {lbl}
@@ -558,6 +579,61 @@ export default function MapScreen({ reports, user }) {
               </div>
             );
           })}
+        </div>
+      )}
+      {/* ── マイポイントタブ ── */}
+      {!loading && tab === "point" && (
+        <div>
+          {bizPoints.length === 0 ? (
+            <div style={{ textAlign:"center", padding:48, color:C.muted, fontSize:13 }}>
+              <div style={{ fontSize:32, marginBottom:12 }}>📍</div>
+              マイポイントが未登録です<br/>
+              <span style={{ fontSize:11 }}>ハンバーガーメニュー → マイポイントで追加できます</span>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>
+                登録ポイント {bizPoints.length}件
+                {hasFilter && " （絞り込み適用中）"}
+              </div>
+              {pointStats.map((p, i) => {
+                const color = p.avg >= 5000 ? C.green : p.avg >= 3000 ? C.gold : C.accentLight;
+                return (
+                  <div key={i} style={{ backgroundColor:C.surface, borderRadius:12, padding:"14px 16px",
+                    marginBottom:8, borderLeft:`3px solid ${p.count > 0 ? color : C.border}` }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:15, fontWeight:700, color:C.text,
+                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                          📍 {p.name}
+                        </div>
+                        {p.memo ? (
+                          <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>メモ: {p.memo}</div>
+                        ) : null}
+                        <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>
+                          {p.count > 0
+                            ? <>{p.count}回{p.lastDate ? `  最終: ${p.lastDate}` : ""}</>
+                            : "記録なし"}
+                        </div>
+                      </div>
+                      <div style={{ textAlign:"right", marginLeft:12, flexShrink:0 }}>
+                        {p.avg > 0 ? (
+                          <>
+                            <div style={{ fontSize:22, fontWeight:900, color }}>
+                              {fmt(p.avg)}<span style={{ fontSize:12, color:C.muted, marginLeft:2 }}>円</span>
+                            </div>
+                            <div style={{ fontSize:10, color:C.muted }}>平均単価</div>
+                          </>
+                        ) : (
+                          <div style={{ fontSize:12, color:C.border }}>—</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
         </div>
       )}
     </div>
