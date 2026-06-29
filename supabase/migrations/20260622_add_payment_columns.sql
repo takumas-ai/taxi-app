@@ -1,0 +1,5 @@
+-- 電子マネー・タクシーチケット・調整欄カラム追加
+ALTER TABLE daily_reports
+  ADD COLUMN IF NOT EXISTS emoney_sales  INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS ticket_sales  INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS adjustment    INTEGER NOT NULL DEFAULT 0;
