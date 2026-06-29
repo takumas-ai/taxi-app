@@ -74,25 +74,25 @@ function dowLabel(dateStr) {
 // ──────────────────────────────────────
 const AREA_MAP = [
   // 千代田区
-  ["東京国際フォーラム","千代田区","有楽町・日比谷"],
-  ["東京駅",    "千代田区","丸の内・東京駅"],
+  ["東京国際フォーラム","千代田区","有楽町"],
+  ["東京駅",    "千代田区","東京駅"],
   ["大手町",    "千代田区","大手町"],
-  ["丸の内",    "千代田区","丸の内・東京駅"],
-  ["有楽町",    "千代田区","有楽町・日比谷"],
-  ["日比谷公園","千代田区","有楽町・日比谷"],
-  ["日比谷",    "千代田区","有楽町・日比谷"],
+  ["丸の内",    "千代田区","丸の内"],
+  ["有楽町",    "千代田区","有楽町"],
+  ["日比谷公園","千代田区","日比谷"],
+  ["日比谷",    "千代田区","日比谷"],
   ["神田",      "千代田区","神田"],
   ["秋葉原",    "千代田区","秋葉原"],
   ["御茶ノ水",  "千代田区","御茶ノ水"],
   ["水道橋",    "千代田区","水道橋"],
-  ["九段下",    "千代田区","九段下・神保町"],
-  ["神保町",    "千代田区","九段下・神保町"],
+  ["九段下",    "千代田区","九段下"],
+  ["神保町",    "千代田区","神保町"],
   ["半蔵門",    "千代田区","半蔵門"],
   ["永田町",    "千代田区","永田町"],
   ["霞が関",    "千代田区","霞が関"],
   ["飯田橋",    "千代田区","飯田橋"],
-  ["市ヶ谷",    "千代田区","市ヶ谷・四ツ谷"],
-  ["四ツ谷",    "千代田区","市ヶ谷・四ツ谷"],
+  ["市ヶ谷",    "千代田区","市ヶ谷"],
+  ["四ツ谷",    "千代田区","四ツ谷"],
   ["皇居",      "千代田区","皇居周辺"],
   // 中央区
   ["銀座",      "中央区","銀座"],
@@ -101,8 +101,8 @@ const AREA_MAP = [
   ["人形町",    "中央区","人形町"],
   ["水天宮前",  "中央区","人形町"],
   ["茅場町",    "中央区","茅場町"],
-  ["新橋",      "中央区","新橋・汐留"],
-  ["汐留",      "中央区","新橋・汐留"],
+  ["新橋",      "中央区","新橋"],
+  ["汐留",      "中央区","汐留"],
   // 港区
   ["東京ミッドタウン","港区","六本木"],
   ["六本木ヒルズ",    "港区","六本木"],
@@ -128,12 +128,12 @@ const AREA_MAP = [
   ["高輪ゲートウェイ","港区","高輪"],
   ["高輪",            "港区","高輪"],
   ["泉岳寺",          "港区","高輪"],
-  ["芝公園",          "港区","芝・浜松町"],
-  ["大門",            "港区","芝・浜松町"],
-  ["浜松町",          "港区","芝・浜松町"],
-  ["東京タワー",      "港区","芝・浜松町"],
-  ["三田",            "港区","三田・田町"],
-  ["田町",            "港区","三田・田町"],
+  ["芝公園",          "港区","芝公園"],
+  ["東京タワー",      "港区","芝公園"],
+  ["大門",            "港区","浜松町"],
+  ["浜松町",          "港区","浜松町"],
+  ["三田",            "港区","三田"],
+  ["田町",            "港区","田町"],
   ["ダイバーシティ",  "港区","お台場"],
   ["お台場",          "港区","お台場"],
   ["台場",            "港区","お台場"],
@@ -156,8 +156,8 @@ const AREA_MAP = [
   ["表参道",      "渋谷区","表参道"],
   ["代官山",      "渋谷区","代官山"],
   ["恵比寿",      "渋谷区","恵比寿"],
-  ["笹塚",        "渋谷区","笹塚・幡ヶ谷"],
-  ["幡ヶ谷",      "渋谷区","笹塚・幡ヶ谷"],
+  ["笹塚",        "渋谷区","笹塚"],
+  ["幡ヶ谷",      "渋谷区","幡ヶ谷"],
   // 目黒区
   ["中目黒",    "目黒区","中目黒"],
   ["学芸大学",  "目黒区","学芸大学"],
@@ -222,8 +222,8 @@ const AREA_MAP = [
   ["蔵前",      "台東区","蔵前"],
   ["浅草橋",    "台東区","浅草橋"],
   // 墨田区
-  ["スカイツリー","墨田区","押上・スカイツリー"],
-  ["押上",      "墨田区","押上・スカイツリー"],
+  ["スカイツリー","墨田区","押上"],
+  ["押上",      "墨田区","押上"],
   ["両国",      "墨田区","両国"],
   ["錦糸町",    "墨田区","錦糸町"],
   // 江東区
@@ -276,11 +276,21 @@ function resolveArea(address) {
 export default function MapScreen({ reports, user }) {
   const [scope,        setScope]        = useState("self");
   const [tab,          setTab]          = useState("highFare");
-  const bizPoints = useMemo(() => {
+  const [bizPoints, setBizPoints] = useState(() => {
     try {
       const raw = JSON.parse(localStorage.getItem("taxi_biz_points") || "[]");
       return raw.map(p => typeof p === "string" ? { name: p, memo: "", timestamp: null } : p);
     } catch { return []; }
+  });
+
+  const savePoint = useCallback((name) => {
+    if (!name) return;
+    setBizPoints(prev => {
+      if (prev.some(p => p.name === name)) return prev;
+      const next = [...prev, { name, memo: "", lat: null, lng: null, timestamp: Date.now() }];
+      localStorage.setItem("taxi_biz_points", JSON.stringify(next));
+      return next;
+    });
   }, []);
   const [timeSlotIdx,  setTimeSlotIdx]  = useState(0);
   const [selectedDays, setSelectedDays] = useState([]);
@@ -536,8 +546,26 @@ export default function MapScreen({ reports, user }) {
                       </div>
                     )}
                   </div>
-                  <div style={{ fontSize:22, fontWeight:900, color:C.text, marginLeft:12, flexShrink:0 }}>
-                    ¥{fmt(r.amount)}
+                  <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", marginLeft:12, flexShrink:0, gap:6 }}>
+                    <div style={{ fontSize:22, fontWeight:900, color:C.text }}>
+                      ¥{fmt(r.amount)}
+                    </div>
+                    {r.pickup && (() => {
+                      const saved = bizPoints.some(p => p.name === r.pickup);
+                      return (
+                        <button
+                          onClick={() => savePoint(r.pickup)}
+                          disabled={saved}
+                          style={{ fontSize:11, padding:"3px 9px", borderRadius:7,
+                            cursor: saved ? "default" : "pointer",
+                            border:`1px solid ${saved ? C.border : C.accentLight}`,
+                            backgroundColor: saved ? "transparent" : C.accentGlow,
+                            color: saved ? C.muted : C.accentLight,
+                            fontWeight:700, whiteSpace:"nowrap" }}>
+                          {saved ? "✓ 登録済" : "📍 保存"}
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
