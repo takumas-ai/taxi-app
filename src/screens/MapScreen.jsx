@@ -281,22 +281,49 @@ function stripChome(addr) {
 export default function MapScreen({ reports, user }) {
   const [scope,        setScope]        = useState("self");
   const [tab,          setTab]          = useState("highFare");
-  const [bizPoints, setBizPoints] = useState(() => {
+  const [bizPoints,    setBizPoints]    = useState(() => {
     try {
       const raw = JSON.parse(localStorage.getItem("taxi_biz_points") || "[]");
-      return raw.map(p => typeof p === "string" ? { name: p, memo: "", timestamp: null } : p);
+      return raw.map(p => typeof p === "string" ? { name: p, address: p, memo: "", timestamp: null } : { address: p.name, ...p });
     } catch { return []; }
   });
+  // 登録モーダル: { address, name }
+  const [pendingSave,  setPendingSave]  = useState(null);
+  // 編集モーダル: { index, name, memo }
+  const [editingPoint, setEditingPoint] = useState(null);
 
-  const savePoint = useCallback((name) => {
+  const persistPoints = (next) => {
+    setBizPoints(next);
+    localStorage.setItem("taxi_biz_points", JSON.stringify(next));
+  };
+
+  const savePoint = useCallback((customName, originalAddress) => {
+    const name = (customName || "").trim();
     if (!name) return;
     setBizPoints(prev => {
-      if (prev.some(p => p.name === name)) return prev;
-      const next = [...prev, { name, memo: "", lat: null, lng: null, timestamp: Date.now() }];
+      if (prev.some(p => p.address === originalAddress)) return prev; // 同じ住所は重複登録しない
+      const next = [...prev, { name, address: originalAddress || name, memo: "", lat: null, lng: null, timestamp: Date.now() }];
       localStorage.setItem("taxi_biz_points", JSON.stringify(next));
       return next;
     });
   }, []);
+
+  const deletePoint = useCallback((idx) => {
+    setBizPoints(prev => {
+      const next = prev.filter((_, i) => i !== idx);
+      localStorage.setItem("taxi_biz_points", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const updatePoint = useCallback((idx, { name, memo }) => {
+    setBizPoints(prev => {
+      const next = prev.map((p, i) => i === idx ? { ...p, name: name.trim(), memo: memo.trim() } : p);
+      localStorage.setItem("taxi_biz_points", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   const [timeSlotIdx,  setTimeSlotIdx]  = useState(0);
   const [selectedDays, setSelectedDays] = useState([]);
   const [filtersOpen,  setFiltersOpen]  = useState(false);
@@ -419,15 +446,15 @@ export default function MapScreen({ reports, user }) {
 
   // ── マイポイント統計（手動記録のpickup名で一致） ──
   const pointStats = useMemo(() =>
-    bizPoints.map(p => {
+    bizPoints.map((p, idx) => {
       const matching = rawRidesList.filter(r =>
         matchesTime(r.hour, timeRange) && matchesDay(r.date, selectedDays) &&
-        r.pickup === p.name
+        (r.pickup === (p.address || p.name) || r.pickup === p.name)
       );
       const count = matching.length;
       const avg   = count > 0 ? Math.round(matching.reduce((s, r) => s + Number(r.amount), 0) / count) : 0;
       const dates  = matching.map(r => r.date).filter(Boolean).sort();
-      return { ...p, count, avg, lastDate: dates[dates.length - 1] || null };
+      return { ...p, _idx: idx, count, avg, lastDate: dates[dates.length - 1] || null };
     }).sort((a, b) => b.avg - a.avg),
     [bizPoints, rawRidesList, timeRange, selectedDays]
   );
@@ -557,10 +584,10 @@ export default function MapScreen({ reports, user }) {
                       ¥{fmt(r.amount)}
                     </div>
                     {r.pickup && (() => {
-                      const saved = bizPoints.some(p => p.name === r.pickup);
+                      const saved = bizPoints.some(p => p.address === r.pickup || p.name === r.pickup);
                       return (
                         <button
-                          onClick={() => savePoint(r.pickup)}
+                          onClick={() => !saved && setPendingSave({ address: r.pickup, name: r.pickup })}
                           disabled={saved}
                           style={{ fontSize:11, padding:"3px 9px", borderRadius:7,
                             cursor: saved ? "default" : "pointer",
@@ -568,7 +595,7 @@ export default function MapScreen({ reports, user }) {
                             backgroundColor: saved ? "transparent" : C.accentGlow,
                             color: saved ? C.muted : C.accentLight,
                             fontWeight:700, whiteSpace:"nowrap" }}>
-                          {saved ? "✓ 登録済" : "📍 保存"}
+                          {saved ? "✓ 登録済" : "ポイントへ登録"}
                         </button>
                       );
                     })()}
@@ -635,32 +662,47 @@ export default function MapScreen({ reports, user }) {
                 return (
                   <div key={i} style={{ backgroundColor:C.surface, borderRadius:12, padding:"14px 16px",
                     marginBottom:8, borderLeft:`3px solid ${p.count > 0 ? color : C.border}` }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:15, fontWeight:700, color:C.text,
                           overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                           📍 {p.name}
                         </div>
+                        {p.address && p.address !== p.name && (
+                          <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{p.address}</div>
+                        )}
                         {p.memo ? (
-                          <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>メモ: {p.memo}</div>
+                          <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>メモ: {p.memo}</div>
                         ) : null}
-                        <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>
+                        <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
                           {p.count > 0
                             ? <>{p.count}回{p.lastDate ? `  最終: ${p.lastDate}` : ""}</>
                             : "記録なし"}
                         </div>
                       </div>
-                      <div style={{ textAlign:"right", marginLeft:12, flexShrink:0 }}>
+                      <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", marginLeft:12, flexShrink:0, gap:6 }}>
                         {p.avg > 0 ? (
-                          <>
+                          <div style={{ textAlign:"right" }}>
                             <div style={{ fontSize:22, fontWeight:900, color }}>
                               {fmt(p.avg)}<span style={{ fontSize:12, color:C.muted, marginLeft:2 }}>円</span>
                             </div>
                             <div style={{ fontSize:10, color:C.muted }}>平均単価</div>
-                          </>
+                          </div>
                         ) : (
                           <div style={{ fontSize:12, color:C.border }}>—</div>
                         )}
+                        <div style={{ display:"flex", gap:6 }}>
+                          <button onClick={() => setEditingPoint({ index: p._idx, name: p.name, memo: p.memo || "" })}
+                            style={{ fontSize:11, padding:"3px 8px", borderRadius:6, cursor:"pointer",
+                              border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.muted, fontWeight:600 }}>
+                            編集
+                          </button>
+                          <button onClick={() => { if(window.confirm(`「${p.name}」を削除しますか？`)) deletePoint(p._idx); }}
+                            style={{ fontSize:11, padding:"3px 8px", borderRadius:6, cursor:"pointer",
+                              border:`1px solid ${C.red}44`, backgroundColor:"transparent", color:C.red, fontWeight:600 }}>
+                            削除
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -668,6 +710,89 @@ export default function MapScreen({ reports, user }) {
               })}
             </>
           )}
+        </div>
+      )}
+      {/* ── ポイント登録モーダル ── */}
+      {pendingSave && (
+        <div style={{ position:"fixed", inset:0, backgroundColor:"#00000080", zIndex:300, display:"flex", alignItems:"flex-end" }}
+          onClick={() => setPendingSave(null)}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%",
+              maxWidth:480, margin:"0 auto", padding:"24px 20px 48px" }}>
+            <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 20px" }}/>
+            <div style={{ fontSize:16, fontWeight:800, marginBottom:6, color:C.text }}>📍 ポイントへ登録</div>
+            <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>乗車地: {pendingSave.address}</div>
+            <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>ポイント名</div>
+            <input
+              autoFocus
+              value={pendingSave.name}
+              onChange={e => setPendingSave(p => ({ ...p, name: e.target.value }))}
+              placeholder="例: 六本木ヒルズ前"
+              style={{ width:"100%", boxSizing:"border-box", padding:"11px 14px",
+                backgroundColor:C.bg, border:`1.5px solid ${C.accentLight}`,
+                borderRadius:10, color:C.text, fontSize:14, outline:"none" }}
+            />
+            <div style={{ display:"flex", gap:10, marginTop:16 }}>
+              <button onClick={() => setPendingSave(null)}
+                style={{ flex:1, padding:"12px 0", borderRadius:10, border:`1px solid ${C.border}`,
+                  backgroundColor:"transparent", color:C.muted, fontWeight:700, fontSize:14, cursor:"pointer" }}>
+                キャンセル
+              </button>
+              <button onClick={() => { savePoint(pendingSave.name, pendingSave.address); setPendingSave(null); }}
+                disabled={!pendingSave.name.trim()}
+                style={{ flex:2, padding:"12px 0", borderRadius:10, border:"none",
+                  backgroundColor: pendingSave.name.trim() ? C.accentLight : C.border,
+                  color:"#fff", fontWeight:700, fontSize:14, cursor: pendingSave.name.trim() ? "pointer" : "default" }}>
+                マイポイントに登録
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ポイント編集モーダル ── */}
+      {editingPoint && (
+        <div style={{ position:"fixed", inset:0, backgroundColor:"#00000080", zIndex:300, display:"flex", alignItems:"flex-end" }}
+          onClick={() => setEditingPoint(null)}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%",
+              maxWidth:480, margin:"0 auto", padding:"24px 20px 48px" }}>
+            <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 20px" }}/>
+            <div style={{ fontSize:16, fontWeight:800, marginBottom:20, color:C.text }}>ポイントを編集</div>
+            <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>ポイント名</div>
+            <input
+              autoFocus
+              value={editingPoint.name}
+              onChange={e => setEditingPoint(p => ({ ...p, name: e.target.value }))}
+              style={{ width:"100%", boxSizing:"border-box", padding:"11px 14px",
+                backgroundColor:C.bg, border:`1.5px solid ${C.accentLight}`,
+                borderRadius:10, color:C.text, fontSize:14, outline:"none", marginBottom:14 }}
+            />
+            <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>メモ（任意）</div>
+            <textarea
+              value={editingPoint.memo}
+              onChange={e => setEditingPoint(p => ({ ...p, memo: e.target.value }))}
+              rows={2}
+              placeholder="時間帯・コツなど"
+              style={{ width:"100%", boxSizing:"border-box", padding:"11px 14px",
+                backgroundColor:C.bg, border:`1px solid ${C.border}`,
+                borderRadius:10, color:C.text, fontSize:13, outline:"none", resize:"vertical" }}
+            />
+            <div style={{ display:"flex", gap:10, marginTop:16 }}>
+              <button onClick={() => setEditingPoint(null)}
+                style={{ flex:1, padding:"12px 0", borderRadius:10, border:`1px solid ${C.border}`,
+                  backgroundColor:"transparent", color:C.muted, fontWeight:700, fontSize:14, cursor:"pointer" }}>
+                キャンセル
+              </button>
+              <button onClick={() => { updatePoint(editingPoint.index, { name: editingPoint.name, memo: editingPoint.memo }); setEditingPoint(null); }}
+                disabled={!editingPoint.name.trim()}
+                style={{ flex:2, padding:"12px 0", borderRadius:10, border:"none",
+                  backgroundColor: editingPoint.name.trim() ? C.accentLight : C.border,
+                  color:"#fff", fontWeight:700, fontSize:14, cursor: editingPoint.name.trim() ? "pointer" : "default" }}>
+                保存
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
