@@ -169,7 +169,7 @@ function TakePaySection({ takePay, saveTakePay, user, onUpdate }) {
             <div style={{ height:1, backgroundColor:C.accentLight+"22", marginBottom:8 }}/>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <span style={{ fontSize:12, color:C.muted }}>💴 目標達成時の手取り（概算）</span>
-              <span style={{ fontSize:15, fontWeight:800, color:C.green }}>¥{fmt2(calcTake(currentTarget))}</span>
+              <span style={{ fontSize:15, fontWeight:800, color:C.green }}>¥{fmt2(calcTakeLocal(currentTarget))}</span>
             </div>
           </div>
         )}
@@ -1012,7 +1012,7 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
     ]},
     { label: "収入計算", items: [
       {id:"closing", icon:"📅", label:"締日設定",            sub: user.closing_day ? `毎月${user.closing_day}日締め` : "月末締め"},
-      {id:"takepay", icon:"💴", label:"売上・手取り設定",       sub: user.workType==="個人タクシー" ? `経費${((takePay.expenses||0)/10000).toFixed(1)}万円/月` : user.target ? `目標¥${parseInt(user.target).toLocaleString()} / 歩合${takePay.rate}%` : `歩合${takePay.rate}% / 控除${(takePay.deduction/10000).toFixed(1)}万円`},
+      {id:"takepay", icon:"💴", label:"売上・手取り設定",       sub: user.workType==="個人タクシー" ? `経費${((takePay.expenses||0)/10000).toFixed(1)}万円/月` : parseInt(user.target) > 0 ? `目標¥${parseInt(user.target).toLocaleString()} / 歩合${takePay.rate}%` : `歩合${takePay.rate}% / 控除${(takePay.deduction/10000).toFixed(1)}万円`},
     ]},
     { label: "特典", items: [
       {id:"referral",icon:"🎁", label:"友達を招待",           sub:"紹介リンク・特典"},
