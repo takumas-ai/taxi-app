@@ -453,7 +453,7 @@ function LoginScreen({ onLogin, onGuestLogin }) {
         <div style={{ width:"100%", maxWidth:360 }}>
           <div style={{ fontSize:17, fontWeight:700, marginBottom:18, textAlign:"center" }}>アカウント登録</div>
           {[
-            {l:"お名前",k:"name",t:"text",ph:"田中 義人"},
+            {l:"お名前（ニックネームでもOK）",k:"name",t:"text",ph:"タクシー太郎"},
             ...(SUPABASE_READY ? [
               {l:"メールアドレス",k:"email",t:"email",ph:"taxi@example.com"},
             ] : []),
