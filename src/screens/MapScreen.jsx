@@ -631,15 +631,15 @@ export default function MapScreen({ reports, user }) {
                       const savedSpot = r.pickup ? bizPoints.find(p =>
                         (p.addresses || [p.address || p.name]).includes(r.pickup) || p.name === r.pickup
                       ) : null;
+                      const savedIdx = savedSpot ? bizPoints.indexOf(savedSpot) : null;
                       return (
                         <button
-                          onClick={() => !savedSpot && setPendingSave({ address: r.pickup || "", name: "", mergeIdx: null })}
-                          disabled={!!savedSpot}
+                          onClick={() => setPendingSave({ address: r.pickup || "", name: "", mergeIdx: savedIdx })}
                           style={{ fontSize:11, padding:"3px 9px", borderRadius:7,
-                            cursor: savedSpot ? "default" : "pointer",
-                            border:`1px solid ${savedSpot ? C.border : C.accentLight}`,
-                            backgroundColor: savedSpot ? "transparent" : C.accentGlow,
-                            color: savedSpot ? C.muted : C.accentLight,
+                            cursor: "pointer",
+                            border:`1px solid ${savedSpot ? C.green+"88" : C.accentLight}`,
+                            backgroundColor: savedSpot ? C.green+"11" : C.accentGlow,
+                            color: savedSpot ? C.green : C.accentLight,
                             fontWeight:700, whiteSpace:"nowrap" }}>
                           {savedSpot ? `✓ ${savedSpot.name}` : "スポットへ登録"}
                         </button>
@@ -773,7 +773,25 @@ export default function MapScreen({ reports, user }) {
               style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%",
                 maxWidth:480, margin:"0 auto", padding:"24px 20px 48px" }}>
               <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 20px" }}/>
-              <div style={{ fontSize:16, fontWeight:800, marginBottom:4, color:C.text }}>📍 スポットへ登録</div>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+                <div style={{ fontSize:16, fontWeight:800, color:C.text }}>📍 スポットへ登録</div>
+                {/* 登録済みの場合は紐付け解除ボタン */}
+                {mergeIdx !== null && mergeIdx !== -1 && bizPoints[mergeIdx] && (
+                  <button onClick={() => {
+                    const addr = pendingSave.address;
+                    setBizPoints(prev => {
+                      const next = prev.map((p, i) => i !== mergeIdx ? p : {
+                        ...p, addresses: (p.addresses || []).filter(a => a !== addr)
+                      });
+                      localStorage.setItem("taxi_biz_points", JSON.stringify(next));
+                      return next;
+                    });
+                    setPendingSave(null);
+                  }} style={{ fontSize:11, color:C.red, background:"none", border:`1px solid ${C.red}44`, borderRadius:7, padding:"4px 10px", cursor:"pointer", fontWeight:600 }}>
+                    紐付け解除
+                  </button>
+                )}
+              </div>
               {pendingSave.address
                 ? <div style={{ fontSize:12, color:C.muted, marginBottom:18, wordBreak:"break-all" }}>乗車地: {pendingSave.address}</div>
                 : <div style={{ fontSize:12, color:C.muted, marginBottom:18 }}>乗車地の記録なし</div>
