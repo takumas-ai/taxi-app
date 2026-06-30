@@ -27,7 +27,7 @@ function UnifiedDayModal({ dateStr, shift, report, onClose, onSaveShift, onDelet
 
   const handleSave = async () => {
     setSaving(true);
-    await onSaveShift({ id:shift?.id||("manual_"+Date.now()), date:dateStr, clockIn:form.clockIn, clockOut:form.clockOut, isNight:false, note:form.note });
+    await onSaveShift({ id:shift?.id||("manual_"+Date.now()), date:dateStr, clockIn:form.clockIn, clockOut:form.clockOut, isNight:false, isShared:shift?.isShared??false, note:form.note });
     setSaving(false);
     onClose();
   };
@@ -137,6 +137,7 @@ function UnifiedCalendar({ reports, monthTarget, user, onOpenReport, noCard = fa
         clockIn:  s.clock_in  || "",
         clockOut: s.clock_out || "",
         isNight:  s.is_night  || false,
+        isShared: s.is_shared || false,
         note:     s.note      || "",
       }));
       setShifts(mapped);
