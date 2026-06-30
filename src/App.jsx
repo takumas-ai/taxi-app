@@ -196,52 +196,41 @@ function LoginScreen({ onLogin, onGuestLogin }) {
     if (!isValidEmail(form.email)) { setError("正しいメールアドレスを入力してください"); return; }
     if (!isValidPassword(form.password)) { setError("パスワードは6文字以上で入力してください"); return; }
     setLoading(true); setError("");
-    try {
-      if (SUPABASE_READY) {
-        const { data, error: err } = await signUpWithEmail(form.email, form.password);
-        if (err) { setError(err.message); return; }
-        if (data?.user) {
-          const profileData = {
-            id: data.user.id,
-            ...sanitizeProfile({
-              name: form.name, company_name: form.company,
-              work_type: form.workType, areas,
-              monthly_target: parseInt(form.target) || null,
-            }),
-          };
-          await insertProfile(profileData);
-          // メール認証フロー用：新規ユーザーフラグ（getSession側でオンボーディングをスキップしないため）
-          localStorage.setItem("taxi_new_user_pending", "true");
-          // 招待コードがあれば紹介イベントを記録・クーポン発行
-          if (refCode.trim()) {
-            try {
-              await registerWithReferral({
-                referredId:   data.user.id,
-                referredName: form.name,
-                referralCode: refCode.trim().toUpperCase(),
-              });
-            } catch(e) { console.warn("[doRegister] referral error:", e); }
-          }
-          // 自分の招待コードを生成
-          try { await ensureReferralCode(data.user.id); } catch(e) { console.warn("[doRegister] referralCode error:", e); }
-          // メール認証が必要な場合（session===null）は確認待ち画面へ
-          if (!data.session) { setStep("verify_email"); return; }
-          onLogin({ id: data.user.id, name: form.name, company: form.company, workType: form.workType, target: form.target, plan:"free", uploadCount:0, areas, _migrationUserId: data.user.id });
-        } else {
-          // data.user が null = 既登録メール（確認メール再送） or 予期しない状態
-          setError("このメールアドレスは既に登録されています。ログインしてください。");
+    if (SUPABASE_READY) {
+      const { data, error: err } = await signUpWithEmail(form.email, form.password);
+      if (err) { setError(err.message); setLoading(false); return; }
+      if (data.user) {
+        const profileData = {
+          id: data.user.id,
+          ...sanitizeProfile({
+            name: form.name, company_name: form.company,
+            work_type: form.workType, areas,
+            monthly_target: parseInt(form.target) || null,
+          }),
+        };
+        await insertProfile(profileData);
+        // メール認証フロー用：新規ユーザーフラグ（getSession側でオンボーディングをスキップしないため）
+        localStorage.setItem("taxi_new_user_pending", "true");
+        // 招待コードがあれば紹介イベントを記録・クーポン発行
+        if (refCode.trim()) {
+          await registerWithReferral({
+            referredId:   data.user.id,
+            referredName: form.name,
+            referralCode: refCode.trim().toUpperCase(),
+          });
         }
-      } else {
-        // Supabase未設定時はローカルで動作
-        await new Promise(r=>setTimeout(r,700));
-        onLogin({ id: "local_" + Date.now(), ...form, plan:"free", uploadCount:0, areas });
+        // 自分の招待コードを生成
+        if (SUPABASE_READY) await ensureReferralCode(data.user.id);
+        // メール認証が必要な場合（session===null）は確認待ち画面へ
+        if (!data.session) { setStep("verify_email"); setLoading(false); return; }
+        onLogin({ id: data.user.id, name: form.name, company: form.company, workType: form.workType, target: form.target, plan:"free", uploadCount:0, areas, _migrationUserId: data.user.id });
       }
-    } catch(e) {
-      console.error("[doRegister] unexpected error:", e);
-      setError("エラーが発生しました。もう一度お試しください。");
-    } finally {
-      setLoading(false);
+    } else {
+      // Supabase未設定時はローカルで動作
+      await new Promise(r=>setTimeout(r,700));
+      onLogin({ id: "local_" + Date.now(), ...form, plan:"free", uploadCount:0, areas });
     }
+    setLoading(false);
   };
 
   // Supabase メールログイン
@@ -260,7 +249,7 @@ function LoginScreen({ onLogin, onGuestLogin }) {
         name: profile?.name || data.user.email,
         company: profile?.company_name || "",
         workType: profile?.work_type || "隔日勤務",
-        target: profile?.monthly_target > 0 ? String(profile.monthly_target) : "",
+        target: profile?.monthly_target != null ? String(profile.monthly_target) : "",
         plan: profile?.plan || "free",
         uploadCount: profile?.monthly_upload_count || 0,
         areas: profile?.areas || [],
@@ -721,7 +710,7 @@ export default function App() {
             name: profile.name,
             company: profile.company_name || "",
             workType: profile.work_type || "隔日勤務",
-            target: profile.monthly_target > 0 ? String(profile.monthly_target) : "",
+            target: profile.monthly_target != null ? String(profile.monthly_target) : "",
             plan: profile.plan || "free",
             uploadCount,
             areas: profile.areas || [],
@@ -803,7 +792,7 @@ export default function App() {
               name: existingProfile.name,
               company: existingProfile.company_name || "",
               workType: existingProfile.work_type || "隔日勤務",
-              target: existingProfile.monthly_target > 0 ? String(existingProfile.monthly_target) : "",
+              target: existingProfile.monthly_target != null ? String(existingProfile.monthly_target) : "",
               plan: existingProfile.plan || "free",
               uploadCount: existingProfile.monthly_upload_count || 0,
               areas: existingProfile.areas || [],
@@ -902,7 +891,7 @@ export default function App() {
           name: prof.name,
           company: prof.company_name || "",
           workType: prof.work_type || "隔日勤務",
-          target: prof.monthly_target > 0 ? String(prof.monthly_target) : "",
+          target: prof.monthly_target != null ? String(prof.monthly_target) : "",
           plan: prof.plan || "free",
           uploadCount: prof.monthly_upload_count || 0,
           areas: prof.areas || [],

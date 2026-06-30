@@ -116,10 +116,20 @@ export function validateReportForm(form) {
  * @returns {Object} サニタイズ済みの保存用データ
  */
 export function sanitizeReportData(form) {
+  // 調整欄をnet_salesに反映（#54）
+  const adj = Math.max(-9999999, Math.min(9999999, parseInt(form.adjustment) || 0));
+  const grossVal = Math.round(clampReportValue("gross_sales", parseInt(form.gross_sales) || 0) / 10) * 10;
+  // net_salesが空の場合はgross_salesから自動計算（#65: 1.1円単位バグ防止）
+  const rawNet = form.net_sales
+    ? Math.round(clampReportValue("gross_sales", parseInt(form.net_sales) || 0) / 10) * 10
+    : (grossVal > 0 ? Math.round(Math.round(grossVal / 1.1) / 10) * 10 : null);
+  // adjustmentをnet_salesに加算して保存（以降adjustmentは0）
+  const effectiveNet = rawNet !== null ? Math.round((rawNet + adj) / 10) * 10 : null;
+
   return {
     date:               String(form.date || "").slice(0, 10),
-    gross_sales:        clampReportValue("gross_sales",       parseInt(form.gross_sales)      || 0),
-    net_sales:          form.net_sales ? clampReportValue("gross_sales", parseInt(form.net_sales) || 0) : null,
+    gross_sales:        grossVal,
+    net_sales:          effectiveNet,
     cash_sales:         clampReportValue("cash_sales",        parseInt(form.cash_sales)       || 0),
     card_sales:         clampReportValue("card_sales",        parseInt(form.card_sales)       || 0),
     app_sales:          clampReportValue("app_sales",         parseInt(form.app_sales)        || 0),
@@ -132,7 +142,7 @@ export function sanitizeReportData(form) {
     emoney_sales:       clampReportValue("app_sales",  parseInt(form.emoney_sales) || 0),
     ticket_sales:       clampReportValue("app_sales",  parseInt(form.ticket_sales) || 0),
     tip_amount:         clampReportValue("app_sales",  parseInt(form.tip_amount)   || 0),
-    adjustment:         Math.max(-9999999, Math.min(9999999, parseInt(form.adjustment) || 0)),
+    adjustment:         0,  // net_salesに組み込み済み
     trouble_note:       sanitizeText(form.trouble_note, 1000),
     work_area:          sanitizeText(form.work_area, 50),
     dispatch_type:      sanitizeText(form.dispatch_type || "", 50),

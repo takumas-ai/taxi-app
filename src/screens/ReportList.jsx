@@ -76,14 +76,21 @@ function buildForm(report) {
   return {
     date:               report.date || "",
     gross_sales:        report.gross_sales        != null ? String(report.gross_sales)        : "",
-    net_sales:          report.net_sales          != null ? String(report.net_sales)          : "",
+    // 旧データ互換：net_salesにadjustmentを加算して表示、adjustmentは0にリセット（#54/#65）
+    net_sales:          (() => {
+      const storedNet = report.net_sales != null ? report.net_sales
+        : (report.gross_sales ? Math.round(Math.round(report.gross_sales / 1.1) / 10) * 10 : null);
+      const adj = report.adjustment || 0;
+      const effective = storedNet !== null ? storedNet + adj : null;
+      return effective !== null ? String(effective) : "";
+    })(),
     cash_sales:         report.cash_sales         != null ? String(report.cash_sales)         : "",
     card_sales:         report.card_sales         != null ? String(report.card_sales)         : "",
     app_sales:          report.app_sales          != null ? String(report.app_sales)          : "",
     emoney_sales:       report.emoney_sales       != null ? String(report.emoney_sales)       : "",
     ticket_sales:       report.ticket_sales       != null ? String(report.ticket_sales)       : "",
     highway_fee:        report.highway_fee        != null ? String(report.highway_fee)        : "0",
-    adjustment:         report.adjustment         != null ? String(report.adjustment)         : "0",
+    adjustment:         "0",  // net_salesに組み込み済み
     ride_count:         report.ride_count         != null ? String(report.ride_count)         : "",
     total_distance:     report.total_distance     != null ? String(report.total_distance)     : "",
     occupied_distance:  report.occupied_distance  != null ? String(report.occupied_distance)  : "",
@@ -391,7 +398,7 @@ export function ReportModal({ report, onClose, onUpdate, onDelete, startInEdit =
               売上（税抜）（円）
               {!form.net_sales && form.gross_sales && (
                 <span
-                  onClick={() => setForm(p => ({ ...p, net_sales: String(Math.round(parseInt(p.gross_sales) / 1.1)) }))}
+                  onClick={() => setForm(p => ({ ...p, net_sales: String(Math.round(Math.round(parseInt(p.gross_sales) / 1.1) / 10) * 10) }))}
                   style={{ marginLeft:8, fontSize:11, color:C.accentLight, cursor:"pointer", fontWeight:400 }}>
                   税込から計算
                 </span>
@@ -400,7 +407,7 @@ export function ReportModal({ report, onClose, onUpdate, onDelete, startInEdit =
             <input
               type="number"
               value={form.net_sales}
-              placeholder={form.gross_sales ? String(Math.round(parseInt(form.gross_sales) / 1.1)) : ""}
+              placeholder={form.gross_sales ? String(Math.round(Math.round(parseInt(form.gross_sales) / 1.1) / 10) * 10) : ""}
               onChange={e => setForm(p => ({ ...p, net_sales: e.target.value }))}
               style={{ width:"100%", boxSizing:"border-box", backgroundColor:C.bg, border:`1px solid ${C.border}`, borderRadius:10, padding:"15px 16px", color:C.text, fontSize:17, outline:"none" }}
             />
@@ -920,7 +927,7 @@ export default function ReportList({ reports, onSelect, onEdit, onUpdate, user }
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:12, color:C.muted, marginBottom:2 }}>{r.date}（{dow(r.date)}）</div>
                     <div style={{ display:"flex", alignItems:"flex-end", gap:14, flexWrap:"wrap" }}>
-                      <div style={{ fontSize:26, fontWeight:900, color:C.text, lineHeight:1.1 }}>
+                      <div style={{ fontSize:26, fontWeight:900, color:C.text, lineHeight:1.1, minWidth:150 }}>
                         {fmt(netSales)}<span style={{ fontSize:12, color:C.muted, marginLeft:3, fontWeight:400 }}>円</span>
                       </div>
                       <div style={{ paddingBottom:2 }}>
