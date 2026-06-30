@@ -175,6 +175,8 @@ function LoginScreen({ onLogin, onGuestLogin }) {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   const ua = navigator.userAgent;
   const isAndroid = /Android/.test(ua);
@@ -195,6 +197,7 @@ function LoginScreen({ onLogin, onGuestLogin }) {
     if (!form.name || !form.email || !form.password) { setError("名前・メール・パスワードは必須です"); return; }
     if (!isValidEmail(form.email)) { setError("正しいメールアドレスを入力してください"); return; }
     if (!isValidPassword(form.password)) { setError("パスワードは6文字以上で入力してください"); return; }
+    if (form.password !== confirmPassword) { setError("パスワードが一致しません"); return; }
     setLoading(true); setError("");
     try {
       if (SUPABASE_READY) {
@@ -453,7 +456,6 @@ function LoginScreen({ onLogin, onGuestLogin }) {
             {l:"お名前",k:"name",t:"text",ph:"田中 義人"},
             ...(SUPABASE_READY ? [
               {l:"メールアドレス",k:"email",t:"email",ph:"taxi@example.com"},
-              {l:"パスワード（6文字以上）",k:"password",t:"password",ph:""},
             ] : []),
           ].map(({l,k,t,ph})=>(
             <div key={k} style={{ marginBottom:12 }}>
@@ -461,6 +463,28 @@ function LoginScreen({ onLogin, onGuestLogin }) {
               <input type={t} value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} placeholder={ph} style={inputStyle}/>
             </div>
           ))}
+          {SUPABASE_READY && (<>
+            {/* パスワード（目隠しトグル付き） */}
+            {[
+              { l:"パスワード（6文字以上）", val:form.password, onChange:v=>setForm(p=>({...p,password:v})), show:showPassword, toggle:()=>setShowPassword(p=>!p) },
+              { l:"パスワード（確認）", val:confirmPassword, onChange:setConfirmPassword, show:showConfirmPassword, toggle:()=>setShowConfirmPassword(p=>!p),
+                err: confirmPassword && form.password !== confirmPassword ? "パスワードが一致しません" : null },
+            ].map(({l,val,onChange,show,toggle,err})=>(
+              <div key={l} style={{ marginBottom:12 }}>
+                <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>{l}</div>
+                <div style={{ position:"relative" }}>
+                  <input type={show?"text":"password"} value={val} onChange={e=>onChange(e.target.value)} style={{ ...inputStyle, paddingRight:44, borderColor: err ? C.red : undefined }}/>
+                  <button type="button" onClick={toggle} style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", padding:4, color:C.muted }}>
+                    {show
+                      ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                      : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    }
+                  </button>
+                </div>
+                {err && <div style={{ fontSize:11, color:C.red, marginTop:4 }}>{err}</div>}
+              </div>
+            ))}
+          </>)}
           <div style={{ marginBottom:12 }}>
             <div style={{ fontSize:11, color:C.muted, marginBottom:8 }}>勤務形態</div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
