@@ -924,19 +924,19 @@ export default function ReportList({ reports, onSelect, onEdit, onUpdate, user }
                   style={{ padding:"14px", marginLeft: selectMode ? 26 : 0,
                     border: isSelected ? `1.5px solid ${C.accentLight}` : undefined,
                     backgroundColor: isSelected ? C.accentGlow : undefined }}>
-                {/* 1行目: 日付 + 実車率 */}
+                {/* 1行目: 日付 */}
+                <div style={{ fontSize:12, color:C.muted, marginBottom:3 }}>{r.date}（{dow(r.date)}）</div>
+                {/* 2行目: 売上 + 実車率 */}
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-                  <div style={{ fontSize:12, color:C.muted }}>{r.date}（{dow(r.date)}）</div>
+                  <div style={{ fontSize:24, fontWeight:900, color:C.text, lineHeight:1.1 }}>
+                    {fmt(netSales)}<span style={{ fontSize:12, color:C.muted, marginLeft:3, fontWeight:400 }}>円</span>
+                  </div>
                   <Badge color={oc}>実車率 {or}%</Badge>
                 </div>
-                {/* 2行目: 売上 + 目標比 */}
-                <div style={{ display:"flex", alignItems:"baseline", gap:8, marginBottom:6, overflow:"hidden" }}>
-                  <span style={{ fontSize:24, fontWeight:900, color:C.text, lineHeight:1.1, flexShrink:0 }}>
-                    {fmt(netSales)}<span style={{ fontSize:12, color:C.muted, marginLeft:3, fontWeight:400 }}>円</span>
-                  </span>
-                  <span style={{ fontSize:11, fontWeight:700, color:diff>=0?C.green:C.red, whiteSpace:"nowrap", flexShrink:0 }}>
-                    {diffLabel} {diff>=0?"+":""}{fmt(diff)}円
-                  </span>
+                {/* 3行目: 目標比（2段） */}
+                <div style={{ marginBottom:6 }}>
+                  <div style={{ fontSize:10, color:diff>=0?C.green:C.red, fontWeight:600, lineHeight:1.4 }}>{diffLabel}</div>
+                  <div style={{ fontSize:14, fontWeight:800, color:diff>=0?C.green:C.red, lineHeight:1.2 }}>{diff>=0?"+":""}{fmt(diff)}<span style={{ fontSize:11, marginLeft:1 }}>円</span></div>
                 </div>
                 {/* 3行目: 情報 + ボタン */}
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
