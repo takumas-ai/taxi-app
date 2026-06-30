@@ -924,44 +924,47 @@ export default function ReportList({ reports, onSelect, onEdit, onUpdate, user }
                   style={{ padding:"14px", marginLeft: selectMode ? 26 : 0,
                     border: isSelected ? `1.5px solid ${C.accentLight}` : undefined,
                     backgroundColor: isSelected ? C.accentGlow : undefined }}>
-                {/* 1行目: 日付 */}
-                <div style={{ fontSize:12, color:C.muted, marginBottom:3 }}>{r.date}（{dow(r.date)}）</div>
-                {/* 2行目: 売上 */}
-                <div style={{ fontSize:24, fontWeight:900, color:C.text, lineHeight:1.1, marginBottom:4 }}>
-                  {fmt(netSales)}<span style={{ fontSize:12, color:C.muted, marginLeft:3, fontWeight:400 }}>円</span>
-                </div>
-                {/* 3行目: 目標比（2段） */}
-                <div style={{ marginBottom:6 }}>
-                  <div style={{ fontSize:10, color:diff>=0?C.green:C.red, fontWeight:600, lineHeight:1.4 }}>{diffLabel}</div>
-                  <div style={{ fontSize:14, fontWeight:800, color:diff>=0?C.green:C.red, lineHeight:1.2 }}>{diff>=0?"+":""}{fmt(diff)}<span style={{ fontSize:11, marginLeft:1 }}>円</span></div>
-                </div>
-                {/* 4行目: 情報 + 実車率・ボタン */}
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                  <div style={{ display:"flex", gap:10, fontSize:11, color:C.muted, flexWrap:"wrap", flex:1 }}>
-                    <span>🚗 {r.ride_count}回</span>
-                    <span>📍 {r.total_distance}km</span>
-                    <span>⏱ {fmt(hourly(r))}円/h</span>
-                    {r.dispatch_type && <span>📱 {r.dispatch_type}</span>}
-                    {r.work_area && <span>📌 {r.work_area}</span>}
-                    {r.trouble_note&&<span style={{ color:C.red }}>⚠️</span>}
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+                  {/* 左: 日付・売上・目標比 */}
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:12, color:C.muted, marginBottom:3 }}>{r.date}（{dow(r.date)}）</div>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <div style={{ fontSize:24, fontWeight:900, color:C.text, lineHeight:1.1, flexShrink:0 }}>
+                        {fmt(netSales)}<span style={{ fontSize:12, color:C.muted, marginLeft:3, fontWeight:400 }}>円</span>
+                      </div>
+                      <div style={{ flexShrink:0 }}>
+                        <div style={{ fontSize:10, color:diff>=0?C.green:C.red, fontWeight:600, lineHeight:1.4 }}>{diffLabel}</div>
+                        <div style={{ fontSize:14, fontWeight:800, color:diff>=0?C.green:C.red, lineHeight:1.2 }}>{diff>=0?"+":""}{fmt(diff)}<span style={{ fontSize:11, marginLeft:1 }}>円</span></div>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ display:"flex", gap:6, flexShrink:0, marginLeft:8, alignItems:"center" }}>
+                  {/* 右: 実車率・ボタン */}
+                  <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6, flexShrink:0, marginLeft:10 }}>
                     <Badge color={oc}>実車率 {or}%</Badge>
-                    {!selectMode && r.id && (
-                      <button
-                        onClick={e => handleToggleShare(e, r.id)}
-                        disabled={shareLoading === r.id}
-                        title={sharedIds.has(r.id) ? "共有中（タップで解除）" : "フレンドに共有"}
-                        style={{ fontSize:12, color:sharedIds.has(r.id)?C.accentLight:C.muted, background:"none", border:`1px solid ${sharedIds.has(r.id)?C.accentLight+"66":C.border}`, borderRadius:8, padding:"4px 8px", cursor:"pointer", opacity:shareLoading===r.id?0.5:1, fontWeight:sharedIds.has(r.id)?700:400 }}
-                      >{shareLoading===r.id?"…":sharedIds.has(r.id)?"✓共有":"共有"}</button>
-                    )}
-                    {!selectMode && onEdit && (
-                      <button
-                        onClick={e=>{ e.stopPropagation(); onEdit(r); }}
-                        style={{ fontSize:12, color:C.accentLight, background:"none", border:`1px solid ${C.accentLight}66`, borderRadius:8, padding:"4px 8px", cursor:"pointer", fontWeight:700 }}
-                      >✏️</button>
+                    {!selectMode && (
+                      <div style={{ display:"flex", gap:6 }}>
+                        {r.id && (
+                          <button onClick={e => handleToggleShare(e, r.id)} disabled={shareLoading === r.id}
+                            style={{ fontSize:12, color:sharedIds.has(r.id)?C.accentLight:C.muted, background:"none", border:`1px solid ${sharedIds.has(r.id)?C.accentLight+"66":C.border}`, borderRadius:8, padding:"4px 8px", cursor:"pointer", opacity:shareLoading===r.id?0.5:1, fontWeight:sharedIds.has(r.id)?700:400 }}
+                          >{shareLoading===r.id?"…":sharedIds.has(r.id)?"✓共有":"共有"}</button>
+                        )}
+                        {onEdit && (
+                          <button onClick={e=>{ e.stopPropagation(); onEdit(r); }}
+                            style={{ fontSize:12, color:C.accentLight, background:"none", border:`1px solid ${C.accentLight}66`, borderRadius:8, padding:"4px 8px", cursor:"pointer", fontWeight:700 }}
+                          >✏️</button>
+                        )}
+                      </div>
                     )}
                   </div>
+                </div>
+                {/* 情報行 */}
+                <div style={{ display:"flex", gap:10, fontSize:11, color:C.muted, flexWrap:"wrap" }}>
+                  <span>🚗 {r.ride_count}回</span>
+                  <span>📍 {r.total_distance}km</span>
+                  <span>⏱ {fmt(hourly(r))}円/h</span>
+                  {r.dispatch_type && <span>📱 {r.dispatch_type}</span>}
+                  {r.work_area && <span>📌 {r.work_area}</span>}
+                  {r.trouble_note&&<span style={{ color:C.red }}>⚠️</span>}
                 </div>
                 {r.ai_comment && (
                   <div style={{ marginTop:10, fontSize:12, color:C.sub, backgroundColor:C.bg, borderRadius:8, padding:"8px 10px", borderLeft:`3px solid ${C.accentLight}`, lineHeight:1.6 }}>
