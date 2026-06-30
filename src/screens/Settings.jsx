@@ -169,7 +169,7 @@ function TakePaySection({ takePay, saveTakePay, user, onUpdate }) {
             <div style={{ height:1, backgroundColor:C.accentLight+"22", marginBottom:8 }}/>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <span style={{ fontSize:12, color:C.muted }}>💴 目標達成時の手取り（概算）</span>
-              <span style={{ fontSize:15, fontWeight:800, color:C.green }}>¥{fmt2(calcTakeLocal(currentTarget))}</span>
+              <span style={{ fontSize:15, fontWeight:800, color:C.green }}>¥{fmt2(calcTake(currentTarget))}</span>
             </div>
           </div>
         )}

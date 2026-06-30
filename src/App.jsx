@@ -196,41 +196,52 @@ function LoginScreen({ onLogin, onGuestLogin }) {
     if (!isValidEmail(form.email)) { setError("正しいメールアドレスを入力してください"); return; }
     if (!isValidPassword(form.password)) { setError("パスワードは6文字以上で入力してください"); return; }
     setLoading(true); setError("");
-    if (SUPABASE_READY) {
-      const { data, error: err } = await signUpWithEmail(form.email, form.password);
-      if (err) { setError(err.message); setLoading(false); return; }
-      if (data.user) {
-        const profileData = {
-          id: data.user.id,
-          ...sanitizeProfile({
-            name: form.name, company_name: form.company,
-            work_type: form.workType, areas,
-            monthly_target: parseInt(form.target) || null,
-          }),
-        };
-        await insertProfile(profileData);
-        // メール認証フロー用：新規ユーザーフラグ（getSession側でオンボーディングをスキップしないため）
-        localStorage.setItem("taxi_new_user_pending", "true");
-        // 招待コードがあれば紹介イベントを記録・クーポン発行
-        if (refCode.trim()) {
-          await registerWithReferral({
-            referredId:   data.user.id,
-            referredName: form.name,
-            referralCode: refCode.trim().toUpperCase(),
-          });
+    try {
+      if (SUPABASE_READY) {
+        const { data, error: err } = await signUpWithEmail(form.email, form.password);
+        if (err) { setError(err.message); return; }
+        if (data?.user) {
+          const profileData = {
+            id: data.user.id,
+            ...sanitizeProfile({
+              name: form.name, company_name: form.company,
+              work_type: form.workType, areas,
+              monthly_target: parseInt(form.target) || null,
+            }),
+          };
+          await insertProfile(profileData);
+          // メール認証フロー用：新規ユーザーフラグ（getSession側でオンボーディングをスキップしないため）
+          localStorage.setItem("taxi_new_user_pending", "true");
+          // 招待コードがあれば紹介イベントを記録・クーポン発行
+          if (refCode.trim()) {
+            try {
+              await registerWithReferral({
+                referredId:   data.user.id,
+                referredName: form.name,
+                referralCode: refCode.trim().toUpperCase(),
+              });
+            } catch(e) { console.warn("[doRegister] referral error:", e); }
+          }
+          // 自分の招待コードを生成
+          try { await ensureReferralCode(data.user.id); } catch(e) { console.warn("[doRegister] referralCode error:", e); }
+          // メール認証が必要な場合（session===null）は確認待ち画面へ
+          if (!data.session) { setStep("verify_email"); return; }
+          onLogin({ id: data.user.id, name: form.name, company: form.company, workType: form.workType, target: form.target, plan:"free", uploadCount:0, areas, _migrationUserId: data.user.id });
+        } else {
+          // data.user が null = 既登録メール（確認メール再送） or 予期しない状態
+          setError("このメールアドレスは既に登録されています。ログインしてください。");
         }
-        // 自分の招待コードを生成
-        if (SUPABASE_READY) await ensureReferralCode(data.user.id);
-        // メール認証が必要な場合（session===null）は確認待ち画面へ
-        if (!data.session) { setStep("verify_email"); setLoading(false); return; }
-        onLogin({ id: data.user.id, name: form.name, company: form.company, workType: form.workType, target: form.target, plan:"free", uploadCount:0, areas, _migrationUserId: data.user.id });
+      } else {
+        // Supabase未設定時はローカルで動作
+        await new Promise(r=>setTimeout(r,700));
+        onLogin({ id: "local_" + Date.now(), ...form, plan:"free", uploadCount:0, areas });
       }
-    } else {
-      // Supabase未設定時はローカルで動作
-      await new Promise(r=>setTimeout(r,700));
-      onLogin({ id: "local_" + Date.now(), ...form, plan:"free", uploadCount:0, areas });
+    } catch(e) {
+      console.error("[doRegister] unexpected error:", e);
+      setError("エラーが発生しました。もう一度お試しください。");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   // Supabase メールログイン
