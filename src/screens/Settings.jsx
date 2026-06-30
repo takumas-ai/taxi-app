@@ -4,7 +4,7 @@ import { C, FREE_LIMIT, PLAN_OCR_LIMITS, PLAN_LABELS, loadS, saveS } from "../li
 import { Card, Btn, ProgressBar, Toggle } from "../components/UI";
 import { AreaBadges } from "../components/UI";
 import { levelFromXp, getTitle, BADGES } from "../lib/xp";
-import { insertFeedback, fetchReferralCount, fetchMyCoupons, fetchMyReferralStats, signOutOtherDevices, updateEmail, updatePassword } from "../lib/supabase";
+import { insertFeedback, fetchReferralCount, fetchMyCoupons, fetchMyReferralStats, signOutOtherDevices, updateEmail, updatePassword, fetchDeletedReports, restoreReport, permanentDeleteReport } from "../lib/supabase";
 import { downloadCSV, printAsPDF, downloadRideRecordsCSV } from "../lib/export";
 import AvatarPicker from "../components/AvatarPicker";
 
@@ -169,7 +169,7 @@ function TakePaySection({ takePay, saveTakePay, user, onUpdate }) {
             <div style={{ height:1, backgroundColor:C.accentLight+"22", marginBottom:8 }}/>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <span style={{ fontSize:12, color:C.muted }}>💴 目標達成時の手取り（概算）</span>
-              <span style={{ fontSize:15, fontWeight:800, color:C.green }}>¥{fmt2(calcTake(currentTarget))}</span>
+              <span style={{ fontSize:15, fontWeight:800, color:C.green }}>¥{fmt2(calcTakeLocal(currentTarget))}</span>
             </div>
           </div>
         )}
@@ -486,6 +486,87 @@ function NotifSection({ notifSettings, onUpdateNotif }) {
         </>
       )}
     </>
+  );
+}
+
+// ━━━ ゴミ箱セクション（#56 削除復旧） ━━━
+function TrashSection({ user, onRestore }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [working, setWorking] = useState(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    fetchDeletedReports(user.id).then(({ data }) => {
+      setItems(data ?? []);
+      setLoading(false);
+    });
+  }, [user?.id]);
+
+  const fmt = n => (n || 0).toLocaleString();
+  const daysLeft = (deletedAt) => {
+    const diff = 30 - Math.floor((Date.now() - new Date(deletedAt).getTime()) / 86400000);
+    return Math.max(0, diff);
+  };
+
+  const handleRestore = async (item) => {
+    setWorking(item.id);
+    const { error } = await restoreReport(item.id, user.id);
+    if (!error) {
+      setItems(prev => prev.filter(r => r.id !== item.id));
+      onRestore?.();
+    }
+    setWorking(null);
+  };
+
+  const handlePermanentDelete = async (item) => {
+    if (!window.confirm(`「${item.report_date}」の日報を完全削除しますか？\n復元できなくなります。`)) return;
+    setWorking(item.id);
+    await permanentDeleteReport(item.id, user.id);
+    setItems(prev => prev.filter(r => r.id !== item.id));
+    setWorking(null);
+  };
+
+  if (loading) return <div style={{ textAlign:"center", padding:48, color:C.muted }}>読み込み中...</div>;
+
+  return (
+    <div>
+      <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>
+        削除した日報は30日間ここに保管されます。期限を過ぎると自動削除されます。
+      </div>
+      {items.length === 0 ? (
+        <Card style={{ textAlign:"center", padding:48 }}>
+          <div style={{ fontSize:32, marginBottom:12 }}>🗑️</div>
+          <div style={{ fontSize:14, color:C.muted }}>ゴミ箱は空です</div>
+        </Card>
+      ) : items.map(r => (
+        <Card key={r.id} style={{ marginBottom:10, padding:"12px 16px" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div>
+              <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{r.report_date}</div>
+              <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>
+                ¥{fmt(r.net_sales ?? Math.round((r.gross_sales||0)/1.1/10)*10)} · {r.ride_count||0}件
+              </div>
+              <div style={{ fontSize:11, color:C.orange, marginTop:2 }}>残り{daysLeft(r.deleted_at)}日</div>
+            </div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button
+                onClick={() => handleRestore(r)}
+                disabled={working === r.id}
+                style={{ fontSize:12, padding:"7px 14px", borderRadius:8, border:`1px solid ${C.accentLight}`, backgroundColor:C.accentGlow, color:C.accentLight, fontWeight:700, cursor:"pointer" }}>
+                {working === r.id ? "…" : "復元"}
+              </button>
+              <button
+                onClick={() => handlePermanentDelete(r)}
+                disabled={working === r.id}
+                style={{ fontSize:12, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.red}44`, backgroundColor:"transparent", color:C.red, cursor:"pointer" }}>
+                完全削除
+              </button>
+            </div>
+          </div>
+        </Card>
+      ))}
+    </div>
   );
 }
 
@@ -990,7 +1071,7 @@ function HelpSection({ setSubTab }) {
   );
 }
 
-export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, onManageArea, notifSettings, onUpdateNotif, appMode="standard", onModeChange, themeMode="auto", onThemeChange, showFAB=true, onToggleFAB, showAiMilestone=true, onToggleAiMilestone, reports=[], initialSection="", onBack, onOpenAdmin, onAccountLink }) {
+export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, onManageArea, notifSettings, onUpdateNotif, appMode="standard", onModeChange, themeMode="auto", onThemeChange, showFAB=true, onToggleFAB, showAiMilestone=true, onToggleAiMilestone, reports=[], initialSection="", onBack, onOpenAdmin, onAccountLink, onRestore }) {
   const [subTab, setSubTab] = useState(initialSection);
   const [form, setForm] = useState({ name:user.name||"", company:user.company||"", workType:user.workType||"隔日勤務", target:user.target||"" });
   const [saved, setSaved] = useState(false);
@@ -1012,7 +1093,7 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
     ]},
     { label: "収入計算", items: [
       {id:"closing", icon:"📅", label:"締日設定",            sub: user.closing_day ? `毎月${user.closing_day}日締め` : "月末締め"},
-      {id:"takepay", icon:"💴", label:"売上・手取り設定",       sub: user.workType==="個人タクシー" ? `経費${((takePay.expenses||0)/10000).toFixed(1)}万円/月` : user.target ? `目標¥${parseInt(user.target).toLocaleString()} / 歩合${takePay.rate}%` : `歩合${takePay.rate}% / 控除${(takePay.deduction/10000).toFixed(1)}万円`},
+      {id:"takepay", icon:"💴", label:"売上・手取り設定",       sub: user.workType==="個人タクシー" ? `経費${((takePay.expenses||0)/10000).toFixed(1)}万円/月` : parseInt(user.target) > 0 ? `目標¥${parseInt(user.target).toLocaleString()} / 歩合${takePay.rate}%` : `歩合${takePay.rate}% / 控除${(takePay.deduction/10000).toFixed(1)}万円`},
     ]},
     { label: "特典", items: [
       {id:"referral",icon:"🎁", label:"友達を招待",           sub:"紹介リンク・特典"},
@@ -1021,6 +1102,7 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
     ]},
     { label: "データ", items: [
       {id:"export",  icon:"📤", label:"データエクスポート",    sub:"CSV / PDF 出力"},
+      {id:"trash",   icon:"🗑️", label:"ゴミ箱",               sub:"削除した日報を復元（30日間）"},
     ]},
     { label: "サポート", items: [
       {id:"feedback",icon:"💬", label:"意見箱",               sub:"要望・バグ報告・ひとこと"},
@@ -1428,6 +1510,7 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
 
       {subTab==="export" && <ExportSection user={user} reports={reports} />}
 
+      {subTab==="trash" && <TrashSection user={user} onRestore={onRestore} />}
 
       {subTab==="coupon" && <CouponSection user={user} />}
 

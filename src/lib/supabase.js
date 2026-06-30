@@ -168,6 +168,7 @@ export async function fetchReports(userId) {
     .from("daily_reports")
     .select("*")
     .eq("user_id", userId)
+    .is("deleted_at", null)
     .order("report_date", { ascending: false });
   return { data: data ?? [], error };
 }
@@ -193,8 +194,43 @@ export async function updateReport(id, updates, userId) {
   return { data, error };
 }
 
-/** 日報を削除 */
+/** 日報をソフトデリート（ゴミ箱へ・30日後に自動削除） */
 export async function deleteReport(id, userId) {
+  const query = supabase
+    .from("daily_reports")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  if (userId) query.eq("user_id", userId);
+  const { error } = await query;
+  return { error };
+}
+
+/** ゴミ箱の日報一覧（deleted_atがある・30日以内） */
+export async function fetchDeletedReports(userId) {
+  const limit = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("daily_reports")
+    .select("id, report_date, gross_sales, net_sales, ride_count, deleted_at")
+    .eq("user_id", userId)
+    .not("deleted_at", "is", null)
+    .gte("deleted_at", limit)
+    .order("deleted_at", { ascending: false });
+  return { data: data ?? [], error };
+}
+
+/** 日報を復元（deleted_atをnullに戻す） */
+export async function restoreReport(id, userId) {
+  const query = supabase
+    .from("daily_reports")
+    .update({ deleted_at: null })
+    .eq("id", id);
+  if (userId) query.eq("user_id", userId);
+  const { error } = await query;
+  return { error };
+}
+
+/** 日報を完全削除（ゴミ箱からの永久削除） */
+export async function permanentDeleteReport(id, userId) {
   const query = supabase
     .from("daily_reports")
     .delete()
