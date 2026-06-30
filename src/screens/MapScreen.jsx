@@ -287,10 +287,15 @@ export default function MapScreen({ reports, user }) {
   const [bizPoints,    setBizPoints]    = useState(() => {
     try {
       const raw = JSON.parse(localStorage.getItem("taxi_biz_points") || "[]");
-      return raw.map(p => typeof p === "string" ? { name: p, address: p, memo: "", timestamp: null } : { address: p.name, ...p });
+      return raw.map(p => {
+        if (typeof p === "string") return { name: p, addresses: [p], memo: "", timestamp: null };
+        // 旧フォーマット (address: string) → addresses: [] に移行
+        const addresses = p.addresses || [p.address || p.name];
+        return { ...p, addresses };
+      });
     } catch { return []; }
   });
-  // 登録モーダル: { address, name }
+  // 登録モーダル: { address, name, mergeIdx } mergeIdx = 既存スポットへの追加先index
   const [pendingSave,  setPendingSave]  = useState(null);
   // 編集モーダル: { index, name, memo }
   const [editingPoint, setEditingPoint] = useState(null);
@@ -300,12 +305,25 @@ export default function MapScreen({ reports, user }) {
     localStorage.setItem("taxi_biz_points", JSON.stringify(next));
   };
 
-  const savePoint = useCallback((customName, originalAddress) => {
-    const name = (customName || "").trim();
-    if (!name) return;
+  const savePoint = useCallback((customName, originalAddress, mergeIdx = null) => {
     setBizPoints(prev => {
-      if (prev.some(p => p.address === originalAddress)) return prev; // 同じ住所は重複登録しない
-      const next = [...prev, { name, address: originalAddress || name, memo: "", lat: null, lng: null, timestamp: Date.now() }];
+      let next;
+      if (mergeIdx !== null) {
+        // 既存スポットにこのアドレスを追加（紐付け）
+        next = prev.map((p, i) => {
+          if (i !== mergeIdx) return p;
+          const addrs = p.addresses || [p.address || p.name];
+          if (addrs.includes(originalAddress)) return p; // すでに登録済み
+          return { ...p, addresses: [...addrs, originalAddress] };
+        });
+      } else {
+        // 新規スポット作成
+        const name = (customName || "").trim();
+        if (!name) return prev;
+        // 同じアドレスがすでにいずれかのスポットに含まれていたらスキップ
+        if (prev.some(p => (p.addresses || [p.address || p.name]).includes(originalAddress))) return prev;
+        next = [...prev, { name, addresses: [originalAddress], memo: "", lat: null, lng: null, timestamp: Date.now() }];
+      }
       localStorage.setItem("taxi_biz_points", JSON.stringify(next));
       return next;
     });
@@ -460,9 +478,10 @@ export default function MapScreen({ reports, user }) {
   // ── マイポイント統計（手動記録のpickup名で一致） ──
   const pointStats = useMemo(() =>
     bizPoints.map((p, idx) => {
+      const addrs = new Set(p.addresses || [p.address || p.name]);
       const matching = rawRidesList.filter(r =>
         matchesTime(r.hour, timeRange) && matchesDay(r.date, selectedDays) &&
-        (r.pickup === (p.address || p.name) || r.pickup === p.name)
+        (addrs.has(r.pickup) || r.pickup === p.name)
       );
       const count = matching.length;
       const avg   = count > 0 ? Math.round(matching.reduce((s, r) => s + Number(r.amount), 0) / count) : 0;
@@ -603,19 +622,21 @@ export default function MapScreen({ reports, user }) {
                     <div style={{ fontSize:22, fontWeight:900, color:C.text }}>
                       ¥{fmt(r.amount)}
                     </div>
-                    {r.pickup && (() => {
-                      const saved = bizPoints.some(p => p.address === r.pickup || p.name === r.pickup);
+                    {(() => {
+                      const savedSpot = r.pickup ? bizPoints.find(p =>
+                        (p.addresses || [p.address || p.name]).includes(r.pickup) || p.name === r.pickup
+                      ) : null;
                       return (
                         <button
-                          onClick={() => !saved && setPendingSave({ address: r.pickup, name: r.pickup })}
-                          disabled={saved}
+                          onClick={() => !savedSpot && setPendingSave({ address: r.pickup || "", name: "", mergeIdx: null })}
+                          disabled={!!savedSpot}
                           style={{ fontSize:11, padding:"3px 9px", borderRadius:7,
-                            cursor: saved ? "default" : "pointer",
-                            border:`1px solid ${saved ? C.border : C.accentLight}`,
-                            backgroundColor: saved ? "transparent" : C.accentGlow,
-                            color: saved ? C.muted : C.accentLight,
+                            cursor: savedSpot ? "default" : "pointer",
+                            border:`1px solid ${savedSpot ? C.border : C.accentLight}`,
+                            backgroundColor: savedSpot ? "transparent" : C.accentGlow,
+                            color: savedSpot ? C.muted : C.accentLight,
                             fontWeight:700, whiteSpace:"nowrap" }}>
-                          {saved ? "✓ 登録済" : "スポットへ登録"}
+                          {savedSpot ? `✓ ${savedSpot.name}` : "スポットへ登録"}
                         </button>
                       );
                     })()}
@@ -733,65 +754,103 @@ export default function MapScreen({ reports, user }) {
           )}
         </div>
       )}
-      {/* ── ポイント登録モーダル ── */}
-      {pendingSave && (
-        <div style={{ position:"fixed", inset:0, backgroundColor:"#00000080", zIndex:300, display:"flex", alignItems:"flex-end" }}
-          onClick={() => setPendingSave(null)}>
-          <div onClick={e => e.stopPropagation()}
-            style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%",
-              maxWidth:480, margin:"0 auto", padding:"24px 20px 48px" }}>
-            <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 20px" }}/>
-            <div style={{ fontSize:16, fontWeight:800, marginBottom:6, color:C.text }}>📍 スポットへ登録</div>
-            <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>乗車地: {pendingSave.address}</div>
-            {/* #60: 登録済みスポット候補 */}
-            {bizPoints.length > 0 && (
-              <div style={{ marginBottom:12 }}>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:6 }}>登録済みスポットに追加</div>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                  {bizPoints.map((p, i) => (
-                    <button key={i} onClick={() => setPendingSave(pp => ({ ...pp, name: p.name }))}
-                      style={{ fontSize:11, padding:"4px 10px", borderRadius:20,
-                        border:`1px solid ${pendingSave.name === p.name ? C.accentLight : C.border}`,
-                        backgroundColor: pendingSave.name === p.name ? C.accentGlow : "transparent",
-                        color: pendingSave.name === p.name ? C.accentLight : C.muted,
-                        cursor:"pointer", fontWeight:600 }}>
-                      {p.name}
-                    </button>
-                  ))}
+      {/* ── スポット登録モーダル ── */}
+      {pendingSave && (() => {
+        const mergeIdx = pendingSave.mergeIdx;
+        const isNew = pendingSave.mergeIdx === -1; // -1 = 新規作成モード
+        const canSave = mergeIdx !== null && mergeIdx !== -1
+          ? true                          // 既存スポット選択済み
+          : (pendingSave.name || "").trim().length > 0; // 新規: 名前入力済み
+        return (
+          <div style={{ position:"fixed", inset:0, backgroundColor:"#00000080", zIndex:300, display:"flex", alignItems:"flex-end" }}
+            onClick={() => setPendingSave(null)}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%",
+                maxWidth:480, margin:"0 auto", padding:"24px 20px 48px" }}>
+              <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 20px" }}/>
+              <div style={{ fontSize:16, fontWeight:800, marginBottom:4, color:C.text }}>📍 スポットへ登録</div>
+              {pendingSave.address
+                ? <div style={{ fontSize:12, color:C.muted, marginBottom:18, wordBreak:"break-all" }}>乗車地: {pendingSave.address}</div>
+                : <div style={{ fontSize:12, color:C.muted, marginBottom:18 }}>乗車地の記録なし</div>
+              }
+
+              {/* 既存スポット一覧 */}
+              {bizPoints.length > 0 && (
+                <div style={{ marginBottom:16 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:C.sub, marginBottom:8 }}>既存スポットに追加</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:6, maxHeight:200, overflowY:"auto" }}>
+                    {bizPoints.map((p, i) => {
+                      const selected = mergeIdx === i;
+                      return (
+                        <button key={i}
+                          onClick={() => setPendingSave(pp => ({ ...pp, mergeIdx: selected ? null : i }))}
+                          style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                            padding:"10px 14px", borderRadius:10, cursor:"pointer", textAlign:"left",
+                            border:`1.5px solid ${selected ? C.accentLight : C.border}`,
+                            backgroundColor: selected ? C.accentGlow : "transparent",
+                            color: selected ? C.accentLight : C.text, fontWeight: selected ? 700 : 400 }}>
+                          <span style={{ fontSize:13 }}>📍 {p.name}</span>
+                          {selected && <span style={{ fontSize:14 }}>✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
+              )}
+
+              {/* 新規スポット作成 */}
+              <div style={{ marginBottom:4 }}>
+                <button
+                  onClick={() => setPendingSave(pp => ({ ...pp, mergeIdx: pp.mergeIdx === -1 ? null : -1, name: "" }))}
+                  style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px", borderRadius:10,
+                    cursor:"pointer", width:"100%", textAlign:"left",
+                    border:`1.5px solid ${isNew ? C.accentLight : C.border}`,
+                    backgroundColor: isNew ? C.accentGlow : "transparent",
+                    color: isNew ? C.accentLight : C.muted, fontWeight: isNew ? 700 : 400 }}>
+                  <span style={{ fontSize:16 }}>＋</span>
+                  <span style={{ fontSize:13 }}>新しいスポットとして登録</span>
+                </button>
+                {isNew && (
+                  <input
+                    autoFocus
+                    value={pendingSave.name || ""}
+                    onChange={e => setPendingSave(p => ({ ...p, name: e.target.value }))}
+                    placeholder="スポット名 例: 銀座コリドー街"
+                    style={{ width:"100%", boxSizing:"border-box", padding:"11px 14px", marginTop:8,
+                      backgroundColor:C.bg, border:`1.5px solid ${C.accentLight}`,
+                      borderRadius:10, color:C.text, fontSize:14, outline:"none" }}
+                  />
+                )}
               </div>
-            )}
-            <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>または新しいスポット名</div>
-            <input
-              autoFocus
-              value={pendingSave.name}
-              onChange={e => setPendingSave(p => ({ ...p, name: e.target.value }))}
-              placeholder="例: 六本木ヒルズ前"
-              style={{ width:"100%", boxSizing:"border-box", padding:"11px 14px",
-                backgroundColor:C.bg, border:`1.5px solid ${C.accentLight}`,
-                borderRadius:10, color:C.text, fontSize:14, outline:"none" }}
-            />
-            {/* #62: 同名警告 */}
-            {pendingSave.name.trim() && bizPoints.some(p => p.name === pendingSave.name.trim()) && (
-              <div style={{ fontSize:11, color:C.gold, marginTop:6 }}>⚠️ 「{pendingSave.name.trim()}」は既に登録されています</div>
-            )}
-            <div style={{ display:"flex", gap:10, marginTop:16 }}>
-              <button onClick={() => setPendingSave(null)}
-                style={{ flex:1, padding:"12px 0", borderRadius:10, border:`1px solid ${C.border}`,
-                  backgroundColor:"transparent", color:C.muted, fontWeight:700, fontSize:14, cursor:"pointer" }}>
-                キャンセル
-              </button>
-              <button onClick={() => { savePoint(pendingSave.name, pendingSave.address); setPendingSave(null); }}
-                disabled={!pendingSave.name.trim()}
-                style={{ flex:2, padding:"12px 0", borderRadius:10, border:"none",
-                  backgroundColor: pendingSave.name.trim() ? C.accentLight : C.border,
-                  color:"#fff", fontWeight:700, fontSize:14, cursor: pendingSave.name.trim() ? "pointer" : "default" }}>
-                マイスポットに登録
-              </button>
+
+              <div style={{ display:"flex", gap:10, marginTop:20 }}>
+                <button onClick={() => setPendingSave(null)}
+                  style={{ flex:1, padding:"12px 0", borderRadius:10, border:`1px solid ${C.border}`,
+                    backgroundColor:"transparent", color:C.muted, fontWeight:700, fontSize:14, cursor:"pointer" }}>
+                  キャンセル
+                </button>
+                <button
+                  onClick={() => {
+                    if (mergeIdx !== null && mergeIdx !== -1) {
+                      savePoint(null, pendingSave.address, mergeIdx);
+                    } else {
+                      savePoint(pendingSave.name, pendingSave.address);
+                    }
+                    setPendingSave(null);
+                  }}
+                  disabled={!canSave}
+                  style={{ flex:2, padding:"12px 0", borderRadius:10, border:"none",
+                    backgroundColor: canSave ? C.accentLight : C.border,
+                    color:"#fff", fontWeight:700, fontSize:14, cursor: canSave ? "pointer" : "default" }}>
+                  {mergeIdx !== null && mergeIdx !== -1
+                    ? `📍 ${bizPoints[mergeIdx]?.name} に追加`
+                    : "新規スポット登録"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── エリア詳細モーダル（#63） ── */}
       {selectedArea && (() => {

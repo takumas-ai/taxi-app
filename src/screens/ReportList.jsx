@@ -900,7 +900,8 @@ export default function ReportList({ reports, onSelect, onEdit, onUpdate, user }
               );
             }
             const or=occ(r), oc=or>=55?C.green:or>=45?C.gold:C.red;
-            const netSales = r.net_sales || Math.round(r.gross_sales / 1.1);
+            const _storedNet = r.net_sales != null ? r.net_sales : (r.gross_sales ? Math.round(r.gross_sales / 1.1) : 0);
+            const netSales = Math.round((_storedNet + (r.adjustment || 0)) / 10) * 10;
             const diff = netSales - getDailyTarget(r);
             const isSelected = selectedIds.has(r.id);
             elems.push(
@@ -926,18 +927,16 @@ export default function ReportList({ reports, onSelect, onEdit, onUpdate, user }
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:12, color:C.muted, marginBottom:2 }}>{r.date}（{dow(r.date)}）</div>
-                    <div style={{ display:"flex", alignItems:"flex-end", gap:14, flexWrap:"wrap" }}>
-                      <div style={{ fontSize:26, fontWeight:900, color:C.text, lineHeight:1.1, minWidth:150 }}>
-                        {fmt(netSales)}<span style={{ fontSize:12, color:C.muted, marginLeft:3, fontWeight:400 }}>円</span>
-                      </div>
-                      <div style={{ paddingBottom:2 }}>
-                        <div style={{ fontSize:10, color:diff>=0?C.green:C.red, fontWeight:600, lineHeight:1.3 }}>{diffLabel}</div>
-                        <div style={{ fontSize:15, fontWeight:800, color:diff>=0?C.green:C.red, lineHeight:1.2 }}>{diff>=0?"+":""}{fmt(diff)}<span style={{ fontSize:11, marginLeft:1 }}>円</span></div>
-                      </div>
+                    <div style={{ fontSize:24, fontWeight:900, color:C.text, lineHeight:1.1 }}>
+                      {fmt(netSales)}<span style={{ fontSize:12, color:C.muted, marginLeft:3, fontWeight:400 }}>円</span>
                     </div>
                   </div>
-                  <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6, flexShrink:0 }}>
+                  <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, flexShrink:0, marginLeft:10 }}>
                     <Badge color={oc}>実車率 {or}%</Badge>
+                    <div style={{ textAlign:"right" }}>
+                      <div style={{ fontSize:9, color:diff>=0?C.green:C.red, fontWeight:600, lineHeight:1.3 }}>{diffLabel}</div>
+                      <div style={{ fontSize:13, fontWeight:800, color:diff>=0?C.green:C.red, lineHeight:1.2 }}>{diff>=0?"+":""}{fmt(diff)}<span style={{ fontSize:11, marginLeft:1 }}>円</span></div>
+                    </div>
                     {!selectMode && (
                       <div style={{ display:"flex", gap:6 }}>
                         {r.id && (

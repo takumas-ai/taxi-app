@@ -73,7 +73,7 @@ function UnifiedDayModal({ dateStr, shift, report, onClose, onSaveShift, onDelet
           <div style={{ backgroundColor:C.goldGlow||C.gold+"12", border:`1px solid ${C.gold}44`, borderRadius:12, padding:14, marginBottom:12 }}>
             <div style={{ fontSize:12, color:C.gold, fontWeight:700, marginBottom:8 }}>💴 日報入力済み</div>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div><div style={{ fontSize:10, color:C.muted }}>総売上（税抜）</div><div style={{ fontSize:22, fontWeight:900, color:C.gold }}>{fmt(report.gross_sales)}円</div></div>
+              <div><div style={{ fontSize:10, color:C.muted }}>売上（税抜）</div><div style={{ fontSize:22, fontWeight:900, color:C.gold }}>{fmt(report.net_sales != null ? report.net_sales : Math.round(Math.round(report.gross_sales / 1.1) / 10) * 10)}円</div></div>
               <div><div style={{ fontSize:10, color:C.muted }}>営業回数</div><div style={{ fontSize:22, fontWeight:900 }}>{report.ride_count}回</div></div>
             </div>
             <button onClick={()=>{ onOpenReport(report); onClose(); }} style={{ marginTop:10, width:"100%", backgroundColor:C.gold+"22", color:C.gold, border:`1px solid ${C.gold}44`, borderRadius:9, padding:"9px 0", fontSize:12, fontWeight:700, cursor:"pointer" }}>日報の詳細を見る →</button>
@@ -255,7 +255,7 @@ function UnifiedCalendar({ reports, monthTarget, user, onOpenReport, noCard = fa
               style={{ borderRadius:6, padding:"4px 2px", textAlign:"center", cursor:"pointer", backgroundColor:bg?bg+"22":isFuture?"transparent":C.surface, border:isToday?`2px solid ${C.accentLight}`:`1px solid ${bg?bg+"55":C.border}`, minHeight:54, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-start", gap:1, opacity:isFuture&&!shift?0.4:1 }}>
               <div style={{ fontSize:10, color:isToday?C.accentLight:C.text, fontWeight:isToday?800:400 }}>{d}</div>
               {shift && <div style={{ fontSize:7, color:bg||C.muted, fontWeight:600, lineHeight:1.3 }}>{shift.clockIn&&shift.clockIn.slice(0,5)}<br/>{shift.clockOut&&shift.clockOut.slice(0,5)}</div>}
-              {report && <div style={{ fontSize:8, color:C.gold, fontWeight:700, marginTop:1 }}>{(report.gross_sales/10000).toFixed(1)}万</div>}
+              {report && <div style={{ fontSize:8, color:C.gold, fontWeight:700, marginTop:1 }}>{((report.net_sales != null ? report.net_sales : Math.round(report.gross_sales / 1.1))/10000).toFixed(1)}万</div>}
               {(friendsByDate[dateStr]||[]).length > 0 && (
                 <div style={{ display:"flex", gap:2, marginTop:2, flexWrap:"wrap", justifyContent:"center" }}>
                   {(friendsByDate[dateStr]||[]).slice(0,3).map((f,fi) => (
