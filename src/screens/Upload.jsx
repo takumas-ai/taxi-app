@@ -21,6 +21,58 @@ const DEFAULT_MEMO_DICT = {
   "迎U":   "アプリ配車（Uber）ネット決済",
 };
 
+// ━━━ 文字レベル略語マップ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// _skip: 認識するが効果なし / _app_hint: 迎と組み合わせてapp_typeになる（位置不問）
+const ABBREV_CHAR_MAP = {
+  "電": { payment: "電子マネー" },
+  "Q": { payment: "QR" },
+  "ク": { payment: "カード" },
+  "カ": { payment: "カード" },
+  "ネ": { payment: "ネット決済" },
+  "高": { highway: true },
+  "E": { highway: true },
+  "迎": { boarding_method: "アプリ配車" },
+  "障": { has_disability_card: true },
+  "S": { _app_hint: "S.RIDE" },
+  "G": { _app_hint: "GO" },
+  "D": { _app_hint: "DiDi" },
+  "U": { _app_hint: "Uber" },
+  "遠": { _skip: true },
+  "確": { _skip: true },
+};
+
+// noteを1文字ずつスキャンしてフィールド効果を返す。未知文字があればnullを返す
+function parseNoteToEffects(note) {
+  const effects = {};
+  let appHint = null;
+  for (const ch of note) {
+    const entry = ABBREV_CHAR_MAP[ch];
+    if (!entry) return null; // 未知文字 → 確認が必要
+    if (entry._skip) continue;
+    if (entry._app_hint) { appHint = entry._app_hint; continue; }
+    if (entry.payment)             effects.payment = entry.payment;
+    if (entry.highway)             effects.highway = true;
+    if (entry.has_disability_card) effects.has_disability_card = true;
+    if (entry.boarding_method)     effects.boarding_method = entry.boarding_method;
+  }
+  // 迎 + アプリヒント → app_type確定。支払い未指定ならネット決済をデフォルト
+  if (effects.boarding_method && appHint) {
+    effects.app_type = appHint;
+    if (!effects.payment) effects.payment = "ネット決済";
+  }
+  return effects; // {}（全スキップ）でも「既知」扱い
+}
+
+// フィールド効果から表示ラベルを生成
+function buildNoteLabel(effects) {
+  const parts = [];
+  if (effects.boarding_method) parts.push(effects.app_type ? `配車アプリ（${effects.app_type}）` : "配車アプリ");
+  if (effects.highway)           parts.push("高速利用");
+  if (effects.has_disability_card) parts.push("障害者手帳あり");
+  if (effects.payment)           parts.push(effects.payment);
+  return parts.join("・");
+}
+
 // HEIC/HEIFをJPEG Blobに変換（heic2any CDN経由）
 async function convertHeicToJpeg(file) {
   // heic2anyをCDNから動的ロード（初回のみ）
@@ -171,22 +223,41 @@ function isKnownMeaning(text) {
 function applyMemoDict(rides, dict) {
   return rides.map(r => {
     const raw = r.note?.trim();
-    if (!raw || !dict[raw] || dict[raw] === "skip") return r;
+    if (!raw) return r;
+
+    // 1. ユーザー辞書 / DEFAULT_MEMO_DICT の全文一致
     const meaning = dict[raw];
-    // 支払い方法（意味テキストに含まれるキーワードで判定）
-    const paymentKey = Object.keys(PAYMENT_FROM_MEANING).find(k => meaning.includes(k));
-    const payment = paymentKey ? PAYMENT_FROM_MEANING[paymentKey] : (r.payment || "現金");
-    // 乗車方法
-    let boarding_method = r.boarding_method || "";
-    let app_type = r.app_type || "";
-    if (meaning.includes("アプリ配車") || ["GO","S.RIDE","DiDi","Uber"].some(a => meaning.includes(a))) {
-      boarding_method = "アプリ配車";
-      const found = APP_TYPE_OPTIONS.find(a => meaning.includes(a));
-      if (found && found !== "その他") app_type = found;
+    if (meaning && meaning !== "skip") {
+      const paymentKey = Object.keys(PAYMENT_FROM_MEANING).find(k => meaning.includes(k));
+      const payment = paymentKey ? PAYMENT_FROM_MEANING[paymentKey] : (r.payment || "現金");
+      let boarding_method = r.boarding_method || "";
+      let app_type = r.app_type || "";
+      if (meaning.includes("アプリ配車") || ["GO","S.RIDE","DiDi","Uber"].some(a => meaning.includes(a))) {
+        boarding_method = "アプリ配車";
+        const found = APP_TYPE_OPTIONS.find(a => meaning.includes(a));
+        if (found && found !== "その他") app_type = found;
+      }
+      const has_disability_card = r.has_disability_card || meaning.includes("障害者手帳");
+      const highway = r.highway || meaning.includes("高速");
+      return { ...r, note: meaning, payment, boarding_method, app_type, has_disability_card, highway };
     }
-    const has_disability_card = r.has_disability_card || meaning.includes("障害者手帳");
-    const highway = r.highway || meaning.includes("高速");
-    return { ...r, note: meaning, payment, boarding_method, app_type, has_disability_card, highway };
+
+    // 2. 文字レベル略語解析（「カE」「迎高遠S確Q」など複合略語）
+    const effects = parseNoteToEffects(raw);
+    if (effects && Object.keys(effects).length > 0) {
+      const label = buildNoteLabel(effects);
+      return {
+        ...r,
+        note:                label || raw,
+        payment:             effects.payment           || r.payment           || "現金",
+        highway:             effects.highway           ?? r.highway           ?? false,
+        has_disability_card: effects.has_disability_card ?? r.has_disability_card ?? false,
+        boarding_method:     effects.boarding_method   || r.boarding_method   || "",
+        app_type:            effects.app_type          || r.app_type          || "",
+      };
+    }
+
+    return r;
   });
 }
 
@@ -710,7 +781,7 @@ export default function UploadScreen({ uploadCount, onSave, reports, user, onSav
       const wordMap = new Map();
       allWordRides.forEach(({ word, rideNum }) => { if (!wordMap.has(word)) wordMap.set(word, rideNum); });
       const unknown = [...wordMap.entries()]
-        .filter(([word]) => !(word in existingDict))
+        .filter(([word]) => !(word in existingDict) && parseNoteToEffects(word) === null)
         .map(([word, rideNum]) => ({ word, rideNum }));
 
       if (unknown.length > 0) {
