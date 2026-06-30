@@ -924,39 +924,39 @@ export default function ReportList({ reports, onSelect, onEdit, onUpdate, user }
                   style={{ padding:"14px", marginLeft: selectMode ? 26 : 0,
                     border: isSelected ? `1.5px solid ${C.accentLight}` : undefined,
                     backgroundColor: isSelected ? C.accentGlow : undefined }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:12, color:C.muted, marginBottom:2 }}>{r.date}（{dow(r.date)}）</div>
                     <div style={{ fontSize:24, fontWeight:900, color:C.text, lineHeight:1.1 }}>
                       {fmt(netSales)}<span style={{ fontSize:12, color:C.muted, marginLeft:3, fontWeight:400 }}>円</span>
                     </div>
                   </div>
-                  <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, flexShrink:0, marginLeft:10 }}>
+                  <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:3, flexShrink:0, marginLeft:10 }}>
                     <Badge color={oc}>実車率 {or}%</Badge>
                     <div style={{ textAlign:"right" }}>
                       <div style={{ fontSize:9, color:diff>=0?C.green:C.red, fontWeight:600, lineHeight:1.3 }}>{diffLabel}</div>
                       <div style={{ fontSize:13, fontWeight:800, color:diff>=0?C.green:C.red, lineHeight:1.2 }}>{diff>=0?"+":""}{fmt(diff)}<span style={{ fontSize:11, marginLeft:1 }}>円</span></div>
                     </div>
-                    {!selectMode && (
-                      <div style={{ display:"flex", gap:6 }}>
-                        {r.id && (
-                          <button
-                            onClick={e => handleToggleShare(e, r.id)}
-                            disabled={shareLoading === r.id}
-                            title={sharedIds.has(r.id) ? "共有中（タップで解除）" : "フレンドに共有"}
-                            style={{ fontSize:12, color:sharedIds.has(r.id)?C.accentLight:C.muted, background:"none", border:`1px solid ${sharedIds.has(r.id)?C.accentLight+"66":C.border}`, borderRadius:8, padding:"6px 10px", cursor:"pointer", opacity:shareLoading===r.id?0.5:1, fontWeight:sharedIds.has(r.id)?700:400 }}
-                          >{shareLoading===r.id?"…":sharedIds.has(r.id)?"✓共有":"共有"}</button>
-                        )}
-                        {onEdit && (
-                          <button
-                            onClick={e=>{ e.stopPropagation(); onEdit(r); }}
-                            style={{ fontSize:12, color:C.accentLight, background:"none", border:`1px solid ${C.accentLight}66`, borderRadius:8, padding:"6px 10px", cursor:"pointer", fontWeight:700 }}
-                          >✏️</button>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </div>
+                {!selectMode && (
+                  <div style={{ display:"flex", justifyContent:"flex-end", gap:6, marginBottom:4 }}>
+                    {r.id && (
+                      <button
+                        onClick={e => handleToggleShare(e, r.id)}
+                        disabled={shareLoading === r.id}
+                        title={sharedIds.has(r.id) ? "共有中（タップで解除）" : "フレンドに共有"}
+                        style={{ fontSize:12, color:sharedIds.has(r.id)?C.accentLight:C.muted, background:"none", border:`1px solid ${sharedIds.has(r.id)?C.accentLight+"66":C.border}`, borderRadius:8, padding:"6px 10px", cursor:"pointer", opacity:shareLoading===r.id?0.5:1, fontWeight:sharedIds.has(r.id)?700:400 }}
+                      >{shareLoading===r.id?"…":sharedIds.has(r.id)?"✓共有":"共有"}</button>
+                    )}
+                    {onEdit && (
+                      <button
+                        onClick={e=>{ e.stopPropagation(); onEdit(r); }}
+                        style={{ fontSize:12, color:C.accentLight, background:"none", border:`1px solid ${C.accentLight}66`, borderRadius:8, padding:"6px 10px", cursor:"pointer", fontWeight:700 }}
+                      >✏️</button>
+                    )}
+                  </div>
+                )}
                 <div style={{ display:"flex", gap:12, fontSize:11, color:C.muted, flexWrap:"wrap" }}>
                   <span>🚗 {r.ride_count}回</span>
                   <span>📍 {r.total_distance}km</span>
