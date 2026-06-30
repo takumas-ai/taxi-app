@@ -196,11 +196,11 @@ export async function updateReport(id, updates, userId) {
 
 /** 日報をソフトデリート（ゴミ箱へ・30日後に自動削除） */
 export async function deleteReport(id, userId) {
-  const query = supabase
+  let query = supabase
     .from("daily_reports")
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", id);
-  if (userId) query.eq("user_id", userId);
+  if (userId) query = query.eq("user_id", userId);
   const { error } = await query;
   return { error };
 }
