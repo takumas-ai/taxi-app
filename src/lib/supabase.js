@@ -818,10 +818,11 @@ export async function fetchFriendsShifts(userId) {
     r.from_user_id === userId ? r.to_user_id : r.from_user_id
   );
   const today = new Date().toISOString().slice(0, 10);
+  // 承認済みフレンドのシフトは is_shared フラグに関わらず全件表示
   const { data: shifts, error } = await supabase
     .from("shifts")
     .select("id, user_id, shift_date, clock_in, clock_out, note")
-    .in("user_id", sharedFriendIds).eq("is_shared", true)
+    .in("user_id", sharedFriendIds)
     .gte("shift_date", today)
     .order("shift_date", { ascending: true }).limit(50);
   if (!shifts?.length) return { data: [], error };
