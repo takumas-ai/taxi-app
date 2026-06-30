@@ -29,7 +29,7 @@ class ErrorBoundary extends Component {
 }
 import { C, loadS, saveS, applyTheme, computeIsDark, getClosingPeriod } from "./lib/constants";
 import { sanitizeProfile, isValidEmail, isValidPassword } from "./lib/validate";
-import { INITIAL_REPORTS, ALL_AREAS, AREA_MASTER } from "./data/mockData";
+import { INITIAL_REPORTS } from "./data/mockData";
 import { processLogin, processReport, processAction, levelFromXp, checkMissions, getMissionState, saveMissionState } from "./lib/xp";
 import {
   supabase,
@@ -171,6 +171,7 @@ function LoginScreen({ onLogin, onGuestLogin }) {
   const [step, setStep]   = useState("top");
   const [form, setForm]   = useState({ name:"", email:"", password:"", company:"", workType:"隔日勤務", target:"" });
   const [areas, setAreas] = useState([]);
+  const [showAreaPicker, setShowAreaPicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -184,7 +185,6 @@ function LoginScreen({ onLogin, onGuestLogin }) {
     return false;
   })();
 
-  const toggleArea = a => setAreas(prev => prev.includes(a) ? prev.filter(x=>x!==a) : [...prev,a]);
 
   // URLの ?ref= パラメータを取得（招待リンク経由は自動入力、口頭は手入力）
   const refFromUrl = new URLSearchParams(window.location.search).get("ref")?.toUpperCase() || "";
@@ -196,41 +196,52 @@ function LoginScreen({ onLogin, onGuestLogin }) {
     if (!isValidEmail(form.email)) { setError("正しいメールアドレスを入力してください"); return; }
     if (!isValidPassword(form.password)) { setError("パスワードは6文字以上で入力してください"); return; }
     setLoading(true); setError("");
-    if (SUPABASE_READY) {
-      const { data, error: err } = await signUpWithEmail(form.email, form.password);
-      if (err) { setError(err.message); setLoading(false); return; }
-      if (data.user) {
-        const profileData = {
-          id: data.user.id,
-          ...sanitizeProfile({
-            name: form.name, company_name: form.company,
-            work_type: form.workType, areas,
-            monthly_target: parseInt(form.target) || null,
-          }),
-        };
-        await insertProfile(profileData);
-        // メール認証フロー用：新規ユーザーフラグ（getSession側でオンボーディングをスキップしないため）
-        localStorage.setItem("taxi_new_user_pending", "true");
-        // 招待コードがあれば紹介イベントを記録・クーポン発行
-        if (refCode.trim()) {
-          await registerWithReferral({
-            referredId:   data.user.id,
-            referredName: form.name,
-            referralCode: refCode.trim().toUpperCase(),
-          });
+    try {
+      if (SUPABASE_READY) {
+        const { data, error: err } = await signUpWithEmail(form.email, form.password);
+        if (err) { setError(err.message); return; }
+        if (data?.user) {
+          const profileData = {
+            id: data.user.id,
+            ...sanitizeProfile({
+              name: form.name, company_name: form.company,
+              work_type: form.workType, areas,
+              monthly_target: parseInt(form.target) || null,
+            }),
+          };
+          await insertProfile(profileData);
+          // メール認証フロー用：新規ユーザーフラグ（getSession側でオンボーディングをスキップしないため）
+          localStorage.setItem("taxi_new_user_pending", "true");
+          // 招待コードがあれば紹介イベントを記録・クーポン発行
+          if (refCode.trim()) {
+            try {
+              await registerWithReferral({
+                referredId:   data.user.id,
+                referredName: form.name,
+                referralCode: refCode.trim().toUpperCase(),
+              });
+            } catch(e) { console.warn("[doRegister] referral error:", e); }
+          }
+          // 自分の招待コードを生成
+          try { await ensureReferralCode(data.user.id); } catch(e) { console.warn("[doRegister] referralCode error:", e); }
+          // メール認証が必要な場合（session===null）は確認待ち画面へ
+          if (!data.session) { setStep("verify_email"); return; }
+          onLogin({ id: data.user.id, name: form.name, company: form.company, workType: form.workType, target: form.target, plan:"free", uploadCount:0, areas, _migrationUserId: data.user.id });
+        } else {
+          // data.user が null = 既登録メール（確認メール再送） or 予期しない状態
+          setError("このメールアドレスは既に登録されています。ログインしてください。");
         }
-        // 自分の招待コードを生成
-        if (SUPABASE_READY) await ensureReferralCode(data.user.id);
-        // メール認証が必要な場合（session===null）は確認待ち画面へ
-        if (!data.session) { setStep("verify_email"); setLoading(false); return; }
-        onLogin({ id: data.user.id, name: form.name, company: form.company, workType: form.workType, target: form.target, plan:"free", uploadCount:0, areas, _migrationUserId: data.user.id });
+      } else {
+        // Supabase未設定時はローカルで動作
+        await new Promise(r=>setTimeout(r,700));
+        onLogin({ id: "local_" + Date.now(), ...form, plan:"free", uploadCount:0, areas });
       }
-    } else {
-      // Supabase未設定時はローカルで動作
-      await new Promise(r=>setTimeout(r,700));
-      onLogin({ id: "local_" + Date.now(), ...form, plan:"free", uploadCount:0, areas });
+    } catch(e) {
+      console.error("[doRegister] unexpected error:", e);
+      setError("エラーが発生しました。もう一度お試しください。");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   // Supabase メールログイン
@@ -249,7 +260,7 @@ function LoginScreen({ onLogin, onGuestLogin }) {
         name: profile?.name || data.user.email,
         company: profile?.company_name || "",
         workType: profile?.work_type || "隔日勤務",
-        target: profile?.monthly_target != null ? String(profile.monthly_target) : "",
+        target: profile?.monthly_target > 0 ? String(profile.monthly_target) : "",
         plan: profile?.plan || "free",
         uploadCount: profile?.monthly_upload_count || 0,
         areas: profile?.areas || [],
@@ -460,12 +471,23 @@ function LoginScreen({ onLogin, onGuestLogin }) {
           </div>
           <div style={{ marginBottom:12 }}>
             <div style={{ fontSize:11, color:C.muted, marginBottom:8 }}>📍 所属エリア（複数可）</div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-              {ALL_AREAS.map(a=>{
-                const meta=AREA_MASTER[a], isOn=areas.includes(a);
-                return <div key={a} onClick={()=>toggleArea(a)} style={{ padding:"10px 0", textAlign:"center", borderRadius:10, border:`2px solid ${isOn?meta.color:C.border}`, backgroundColor:isOn?meta.color+"15":"transparent", cursor:"pointer" }}><div style={{ fontSize:16 }}>{meta.emoji}</div><div style={{ fontSize:12, fontWeight:isOn?700:400, color:isOn?meta.color:C.muted }}>{a}</div></div>;
-              })}
+            <div onClick={()=>setShowAreaPicker(true)} style={{ padding:"12px 14px", borderRadius:12, border:`2px solid ${areas.length>0?C.accentLight:C.border}`, backgroundColor:areas.length>0?C.accentLight+"11":C.card, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              {areas.length > 0 ? (
+                <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                  {areas.map(a => <span key={a} style={{ fontSize:11, backgroundColor:C.accentLight+"22", color:C.accentLight, fontWeight:700, padding:"3px 8px", borderRadius:99 }}>{a}</span>)}
+                </div>
+              ) : (
+                <span style={{ fontSize:12, color:C.muted }}>地域 → 交通圏の順に選択</span>
+              )}
+              <span style={{ fontSize:12, color:C.accentLight, marginLeft:8, flexShrink:0 }}>選ぶ →</span>
             </div>
+            {showAreaPicker && (
+              <AreaSettingModal
+                userAreas={areas}
+                onSave={sel => { setAreas(sel); setShowAreaPicker(false); }}
+                onClose={() => setShowAreaPicker(false)}
+              />
+            )}
           </div>
           {/* 招待コード（任意） */}
           <div style={{ marginBottom:16 }}>
@@ -710,7 +732,7 @@ export default function App() {
             name: profile.name,
             company: profile.company_name || "",
             workType: profile.work_type || "隔日勤務",
-            target: profile.monthly_target != null ? String(profile.monthly_target) : "",
+            target: profile.monthly_target > 0 ? String(profile.monthly_target) : "",
             plan: profile.plan || "free",
             uploadCount,
             areas: profile.areas || [],
@@ -792,7 +814,7 @@ export default function App() {
               name: existingProfile.name,
               company: existingProfile.company_name || "",
               workType: existingProfile.work_type || "隔日勤務",
-              target: existingProfile.monthly_target != null ? String(existingProfile.monthly_target) : "",
+              target: existingProfile.monthly_target > 0 ? String(existingProfile.monthly_target) : "",
               plan: existingProfile.plan || "free",
               uploadCount: existingProfile.monthly_upload_count || 0,
               areas: existingProfile.areas || [],
@@ -891,7 +913,7 @@ export default function App() {
           name: prof.name,
           company: prof.company_name || "",
           workType: prof.work_type || "隔日勤務",
-          target: prof.monthly_target != null ? String(prof.monthly_target) : "",
+          target: prof.monthly_target > 0 ? String(prof.monthly_target) : "",
           plan: prof.plan || "free",
           uploadCount: prof.monthly_upload_count || 0,
           areas: prof.areas || [],
