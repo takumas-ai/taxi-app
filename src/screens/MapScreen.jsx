@@ -401,17 +401,24 @@ export default function MapScreen({ reports, user }) {
   // ── 全体データ取得 ──
   const getAllRides = useCallback(async () => {
     if (!SUPABASE_READY) return getMyRides();
-    const { data, error } = await supabase.from("daily_reports").select("*");
+    const { data, error } = await supabase
+      .from("daily_reports")
+      .select("user_id, report_date, rides")
+      .is("deleted_at", null);
     if (error) return getMyRides();
+    const seen = new Set(); // 重複排除キー（user_id+date+pickup+amount+hour）
     const rides = [], ridesList = [];
     (data || []).forEach(row => {
-      const date = row.date || row.report_date || null;
+      const date = row.report_date || null;
       (row.rides || []).forEach(ride => {
         const pickup  = (ride.pickup_area || ride.point_name || "").trim();
         const dropoff = (ride.dropoff_area || "").trim();
         let hour = null;
         const ts = ride.pickup_time || ride.start_time || "";
         if (ts) { const h = parseInt(ts.split(":")[0]); if (!isNaN(h)) hour = h; }
+        const key = `${row.user_id}|${date}|${pickup}|${ride.amount||0}|${hour}`;
+        if (seen.has(key)) return; // 重複スキップ
+        seen.add(key);
         if (pickup) rides.push({ address: pickup, amount: ride.amount || 0, date, hour });
         if (pickup || dropoff) ridesList.push({ pickup, dropoff, amount: ride.amount || 0, date, hour });
       });

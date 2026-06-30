@@ -173,11 +173,11 @@ export async function fetchReports(userId) {
   return { data: data ?? [], error };
 }
 
-/** 日報を保存（insert） */
+/** 日報を保存（同日付は上書きupsert） */
 export async function insertReport(report) {
   const { data, error } = await supabase
     .from("daily_reports")
-    .insert(report)
+    .upsert(report, { onConflict: "user_id,report_date", ignoreDuplicates: false })
     .select()
     .single();
   return { data, error };
