@@ -363,7 +363,8 @@ export function ReportModal({ report, onClose, onUpdate, onDelete, startInEdit =
           ) : (
             <div style={{ marginTop:18, backgroundColor:`${C.red}18`, border:`1px solid ${C.red}44`, borderRadius:12, padding:16 }}>
               <div style={{ fontSize:14, fontWeight:700, color:C.red, marginBottom:4 }}>本当に削除しますか？</div>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:14 }}>削除した日報は元に戻せません</div>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>削除した日報はゴミ箱に30日間保存されます。</div>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:14 }}>復元は 設定 → ゴミ箱 から行えます。</div>
               <div style={{ display:"flex", gap:10 }}>
                 <button onClick={() => setConfirmDelete(false)} style={{ flex:1, padding:"12px 0", borderRadius:10, fontSize:14, fontWeight:700, cursor:"pointer", border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.muted }}>
                   キャンセル
