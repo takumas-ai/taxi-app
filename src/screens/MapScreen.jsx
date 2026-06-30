@@ -337,9 +337,14 @@ export default function MapScreen({ reports, user }) {
     });
   }, []);
 
-  const updatePoint = useCallback((idx, { name, memo }) => {
+  const updatePoint = useCallback((idx, { name, memo, addresses }) => {
     setBizPoints(prev => {
-      const next = prev.map((p, i) => i === idx ? { ...p, name: name.trim(), memo: memo.trim() } : p);
+      const next = prev.map((p, i) => i === idx ? {
+        ...p,
+        name: name.trim(),
+        memo: memo.trim(),
+        ...(addresses !== undefined ? { addresses } : {}),
+      } : p);
       localStorage.setItem("taxi_biz_points", JSON.stringify(next));
       return next;
     });
@@ -734,7 +739,7 @@ export default function MapScreen({ reports, user }) {
                           <div style={{ fontSize:12, color:C.border }}>—</div>
                         )}
                         <div style={{ display:"flex", gap:6 }}>
-                          <button onClick={() => setEditingPoint({ index: p._idx, name: p.name, memo: p.memo || "" })}
+                          <button onClick={() => setEditingPoint({ index: p._idx, name: p.name, memo: p.memo || "", addresses: p.addresses || [] })}
                             style={{ fontSize:11, padding:"3px 8px", borderRadius:6, cursor:"pointer",
                               border:`1px solid ${C.border}`, backgroundColor:"transparent", color:C.muted, fontWeight:600 }}>
                             編集
@@ -892,10 +897,11 @@ export default function MapScreen({ reports, user }) {
           onClick={() => setEditingPoint(null)}>
           <div onClick={e => e.stopPropagation()}
             style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%",
-              maxWidth:480, margin:"0 auto", padding:"24px 20px 48px" }}>
+              maxWidth:480, margin:"0 auto", padding:"24px 20px 48px", maxHeight:"85vh", overflowY:"auto" }}>
             <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 20px" }}/>
-            <div style={{ fontSize:16, fontWeight:800, marginBottom:20, color:C.text }}>スポットを編集</div>
-            <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>ポイント名</div>
+            <div style={{ fontSize:16, fontWeight:800, marginBottom:16, color:C.text }}>スポットを編集</div>
+
+            <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>スポット名</div>
             <input
               autoFocus
               value={editingPoint.name}
@@ -904,6 +910,7 @@ export default function MapScreen({ reports, user }) {
                 backgroundColor:C.bg, border:`1.5px solid ${C.accentLight}`,
                 borderRadius:10, color:C.text, fontSize:14, outline:"none", marginBottom:14 }}
             />
+
             <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>メモ（任意）</div>
             <textarea
               value={editingPoint.memo}
@@ -912,15 +919,48 @@ export default function MapScreen({ reports, user }) {
               placeholder="時間帯・コツなど"
               style={{ width:"100%", boxSizing:"border-box", padding:"11px 14px",
                 backgroundColor:C.bg, border:`1px solid ${C.border}`,
-                borderRadius:10, color:C.text, fontSize:13, outline:"none", resize:"vertical" }}
+                borderRadius:10, color:C.text, fontSize:13, outline:"none", resize:"vertical", marginBottom:14 }}
             />
-            <div style={{ display:"flex", gap:10, marginTop:16 }}>
+
+            {/* 紐付け住所の管理 */}
+            {(editingPoint.addresses || []).filter(a => a).length > 0 && (
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>紐付け住所（タップで削除）</div>
+                <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                  {(editingPoint.addresses || []).filter(a => a).map((addr, i) => (
+                    <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                      backgroundColor:C.bg, borderRadius:8, padding:"8px 12px",
+                      border:`1px solid ${C.border}` }}>
+                      <span style={{ fontSize:12, color:C.text, flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                        📍 {addr}
+                      </span>
+                      <button
+                        onClick={() => setEditingPoint(p => ({ ...p, addresses: p.addresses.filter((_, j) => j !== i) }))}
+                        style={{ fontSize:11, color:C.red, background:"none", border:`1px solid ${C.red}44`,
+                          borderRadius:6, padding:"3px 8px", cursor:"pointer", fontWeight:600, flexShrink:0, marginLeft:8 }}>
+                        削除
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display:"flex", gap:10, marginTop:4 }}>
               <button onClick={() => setEditingPoint(null)}
                 style={{ flex:1, padding:"12px 0", borderRadius:10, border:`1px solid ${C.border}`,
                   backgroundColor:"transparent", color:C.muted, fontWeight:700, fontSize:14, cursor:"pointer" }}>
                 キャンセル
               </button>
-              <button onClick={() => { updatePoint(editingPoint.index, { name: editingPoint.name, memo: editingPoint.memo }); setEditingPoint(null); }}
+              <button
+                onClick={() => {
+                  updatePoint(editingPoint.index, {
+                    name: editingPoint.name,
+                    memo: editingPoint.memo,
+                    addresses: editingPoint.addresses,
+                  });
+                  setEditingPoint(null);
+                }}
                 disabled={!editingPoint.name.trim()}
                 style={{ flex:2, padding:"12px 0", borderRadius:10, border:"none",
                   backgroundColor: editingPoint.name.trim() ? C.accentLight : C.border,
