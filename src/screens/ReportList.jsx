@@ -927,11 +927,13 @@ export default function ReportList({ reports, onSelect, onEdit, onUpdate, user }
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:12, color:C.muted, marginBottom:2 }}>{r.date}（{dow(r.date)}）</div>
-                    <div style={{ fontSize:24, fontWeight:900, color:C.text, lineHeight:1.1 }}>
-                      {fmt(netSales)}<span style={{ fontSize:12, color:C.muted, marginLeft:3, fontWeight:400 }}>円</span>
-                    </div>
-                    <div style={{ fontSize:11, fontWeight:700, color:diff>=0?C.green:C.red, marginTop:2, whiteSpace:"nowrap" }}>
-                      {diffLabel} {diff>=0?"+":""}{fmt(diff)}円
+                    <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"nowrap", overflow:"hidden" }}>
+                      <span style={{ fontSize:24, fontWeight:900, color:C.text, lineHeight:1.1, flexShrink:0 }}>
+                        {fmt(netSales)}<span style={{ fontSize:12, color:C.muted, marginLeft:3, fontWeight:400 }}>円</span>
+                      </span>
+                      <span style={{ fontSize:11, fontWeight:700, color:diff>=0?C.green:C.red, whiteSpace:"nowrap", flexShrink:0 }}>
+                        {diff>=0?"+":""}{fmt(diff)}円
+                      </span>
                     </div>
                   </div>
                   <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6, flexShrink:0, marginLeft:10 }}>
