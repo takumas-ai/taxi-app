@@ -220,22 +220,22 @@ export async function fetchDeletedReports(userId) {
 
 /** 日報を復元（deleted_atをnullに戻す） */
 export async function restoreReport(id, userId) {
-  const query = supabase
+  let query = supabase
     .from("daily_reports")
     .update({ deleted_at: null })
     .eq("id", id);
-  if (userId) query.eq("user_id", userId);
+  if (userId) query = query.eq("user_id", userId);
   const { error } = await query;
   return { error };
 }
 
 /** 日報を完全削除（ゴミ箱からの永久削除） */
 export async function permanentDeleteReport(id, userId) {
-  const query = supabase
+  let query = supabase
     .from("daily_reports")
     .delete()
     .eq("id", id);
-  if (userId) query.eq("user_id", userId);
+  if (userId) query = query.eq("user_id", userId);
   const { error } = await query;
   return { error };
 }
