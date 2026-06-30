@@ -287,7 +287,7 @@ function UsersTab() {
                         <div>
                           <div style={{ fontSize:13, fontWeight:700 }}>{r.report_date}</div>
                           <div style={{ fontSize:11, color:"#888", marginTop:2 }}>
-                            売上: {(r.gross_sales||0).toLocaleString()}円 · {r.ride_count||0}件 · {r.work_hours||0}h
+                            税抜: {(r.net_sales ?? Math.round((r.gross_sales||0)/1.1/10)*10).toLocaleString()}円 · {r.ride_count||0}件 · {r.work_hours||0}h
                           </div>
                         </div>
                         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
