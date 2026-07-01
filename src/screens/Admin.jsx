@@ -123,10 +123,12 @@ function UsersTab() {
   const [reportTarget, setReportTarget] = useState(null);
   const [userReports, setUserReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportTab, setReportTab] = useState("image"); // "image" | "data"
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [suspending, setSuspending] = useState(null);
   const [fullImage, setFullImage] = useState(null);
+  const [expandedMenu, setExpandedMenu] = useState(null); // 停止・削除メニュー展開中のuser.id
 
   useEffect(() => {
     adminFetchUsers().then(({ data }) => { setUsers(data); setLoading(false); });
@@ -148,6 +150,7 @@ function UsersTab() {
 
   const handleViewReports = async (u) => {
     setReportTarget(u);
+    setReportTab("image");
     setReportsLoading(true);
     setUserReports([]);
     const { data, error } = await adminFetchUserReports(u.id);
@@ -199,16 +202,27 @@ function UsersTab() {
                 {u.suspended && <span style={badge("#ef4444")}>停止中</span>}
                 {u.deletion_requested && <span style={badge("#ef4444")}>削除申請中</span>}
               </div>
-              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                <button onClick={() => handleViewReports(u)} style={{ ...btn("#4f8ef7"), fontSize:11, padding:"5px 10px" }}>日報</button>
-                <button onClick={() => setGrantTarget(u)} style={{ ...btn("#22c55e"), fontSize:11, padding:"5px 10px" }}>XP</button>
-                <button
-                  onClick={() => handleToggleSuspend(u)}
-                  disabled={suspending === u.id}
-                  style={{ ...btn(u.suspended ? "#22c55e" : "#f59e0b"), fontSize:11, padding:"5px 10px" }}>
-                  {suspending === u.id ? "..." : u.suspended ? "解除" : "停止"}
-                </button>
-                <button onClick={() => setDeleteTarget(u)} style={{ ...btn("#ef4444"), fontSize:11, padding:"5px 10px" }}>削除</button>
+              <div style={{ display:"flex", flexDirection:"column", gap:6, alignItems:"flex-end" }}>
+                {/* メインボタン（大きめ） */}
+                <div style={{ display:"flex", gap:8 }}>
+                  <button onClick={() => handleViewReports(u)} style={{ ...btn("#4f8ef7"), fontSize:13, padding:"8px 16px" }}>📋 日報</button>
+                  <button onClick={() => setGrantTarget(u)} style={{ ...btn("#22c55e"), fontSize:13, padding:"8px 16px" }}>🎁 XP</button>
+                  <button
+                    onClick={() => setExpandedMenu(expandedMenu === u.id ? null : u.id)}
+                    style={{ ...btn("#444"), fontSize:13, padding:"8px 12px" }}>⚙️</button>
+                </div>
+                {/* 停止・削除（⚙️を押した時だけ展開） */}
+                {expandedMenu === u.id && (
+                  <div style={{ display:"flex", gap:8, padding:"8px 10px", backgroundColor:"#1a1a2e", borderRadius:8, border:"1px solid #3a3a5a" }}>
+                    <button
+                      onClick={() => { handleToggleSuspend(u); setExpandedMenu(null); }}
+                      disabled={suspending === u.id}
+                      style={{ ...btn(u.suspended ? "#22c55e" : "#f59e0b"), fontSize:12, padding:"6px 14px" }}>
+                      {suspending === u.id ? "..." : u.suspended ? "⬆️ 停止解除" : "⏸ 停止"}
+                    </button>
+                    <button onClick={() => { setDeleteTarget(u); setExpandedMenu(null); }} style={{ ...btn("#ef4444"), fontSize:12, padding:"6px 14px" }}>🗑 削除</button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -277,38 +291,64 @@ function UsersTab() {
               </div>
             ) : (
               <>
-                <div style={{ backgroundColor:"#22c55e22", border:"1px solid #22c55e44", borderRadius:8, padding:"8px 14px", marginBottom:14, fontSize:13, color:"#22c55e" }}>
+                <div style={{ backgroundColor:"#22c55e22", border:"1px solid #22c55e44", borderRadius:8, padding:"8px 14px", marginBottom:12, fontSize:13, color:"#22c55e" }}>
                   ✓ DBに {userReports.length} 件 · 画像あり {userReports.filter(r=>r.image_url).length} 件
                 </div>
-                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                  {userReports.map(r => (
-                    <div key={r.id} style={{ backgroundColor:"#1a1a2e", borderRadius:8, padding:"10px 14px" }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                        <div>
-                          <div style={{ fontSize:13, fontWeight:700 }}>{r.report_date}</div>
-                          <div style={{ fontSize:11, color:"#888", marginTop:2 }}>
-                            税抜: {(r.net_sales ?? Math.round((r.gross_sales||0)/1.1/10)*10).toLocaleString()}円 · {r.ride_count||0}件 · {r.work_hours||0}h
-                          </div>
-                        </div>
-                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          {r.image_url && (
-                            <button onClick={() => setFullImage(r.image_url)}
-                              style={{ padding:"4px 10px", borderRadius:6, fontSize:11, fontWeight:700, border:"1px solid #4f8ef766", backgroundColor:"#4f8ef722", color:"#4f8ef7", cursor:"pointer" }}>
-                              📷 画像
-                            </button>
-                          )}
-                          <div style={{ fontSize:10, color:"#555" }}>{r.created_at?.slice(0,10)}</div>
-                        </div>
-                      </div>
-                      {/* サムネイル */}
-                      {r.image_url && (
-                        <img src={r.image_url} alt="日報画像"
-                          onClick={() => setFullImage(r.image_url)}
-                          style={{ marginTop:8, width:"100%", maxHeight:120, objectFit:"cover", borderRadius:6, cursor:"pointer", opacity:0.85 }} />
-                      )}
-                    </div>
+                {/* タブ切替 */}
+                <div style={{ display:"flex", gap:6, marginBottom:12 }}>
+                  {[["image","📷 画像"],["data","📊 記録データ"]].map(([t,l]) => (
+                    <button key={t} onClick={() => setReportTab(t)}
+                      style={{ flex:1, padding:"8px 0", borderRadius:8, fontSize:13, fontWeight:700, border:"none", cursor:"pointer",
+                        backgroundColor: reportTab===t ? "#4f8ef7" : "#1a1a2e", color: reportTab===t ? "#fff" : "#888" }}>
+                      {l}
+                    </button>
                   ))}
                 </div>
+
+                {/* 📷 画像タブ */}
+                {reportTab === "image" && (
+                  <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                    {userReports.filter(r => r.image_url).length === 0 && (
+                      <div style={{ textAlign:"center", padding:30, color:"#555", fontSize:13 }}>画像なし</div>
+                    )}
+                    {userReports.map(r => r.image_url ? (
+                      <div key={r.id} style={{ backgroundColor:"#1a1a2e", borderRadius:8, padding:"10px 14px" }}>
+                        <div style={{ fontSize:12, fontWeight:700, marginBottom:6 }}>{r.report_date}
+                          <span style={{ color:"#888", fontWeight:400, marginLeft:8 }}>税抜 {(r.net_sales ?? Math.round((r.gross_sales||0)/1.1/10)*10).toLocaleString()}円 · {r.ride_count||0}件</span>
+                        </div>
+                        <img src={r.image_url} alt="日報画像"
+                          onClick={() => setFullImage(r.image_url)}
+                          style={{ width:"100%", maxHeight:160, objectFit:"cover", borderRadius:6, cursor:"pointer" }} />
+                      </div>
+                    ) : null)}
+                  </div>
+                )}
+
+                {/* 📊 記録データタブ */}
+                {reportTab === "data" && (
+                  <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                    {userReports.map(r => (
+                      <div key={r.id} style={{ backgroundColor:"#1a1a2e", borderRadius:8, padding:"10px 14px" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                          <div style={{ fontSize:13, fontWeight:700 }}>{r.report_date}</div>
+                          <div style={{ fontSize:11, color:"#888" }}>税抜 {(r.net_sales ?? Math.round((r.gross_sales||0)/1.1/10)*10).toLocaleString()}円 · {r.ride_count||0}件 · {r.work_hours||0}h</div>
+                        </div>
+                        {(r.rides||[]).length > 0 ? (
+                          <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                            {(r.rides||[]).map((ride, i) => (
+                              <div key={i} style={{ fontSize:11, color:"#aaa", padding:"4px 8px", backgroundColor:"#12122a", borderRadius:5, display:"flex", justifyContent:"space-between" }}>
+                                <span>#{i+1} {ride.pickup_area||ride.point_name||"—"} → {ride.dropoff_area||"—"}</span>
+                                <span style={{ color:"#f59e0b", fontWeight:700, flexShrink:0, marginLeft:8 }}>{(ride.amount||0).toLocaleString()}円</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize:11, color:"#555" }}>乗車記録なし</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>
             )}
           </div>

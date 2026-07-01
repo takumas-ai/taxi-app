@@ -685,8 +685,9 @@ export async function adminFetchNotifications() {
 export async function adminFetchUserReports(userId) {
   const { data, error } = await supabase
     .from("daily_reports")
-    .select("id, report_date, gross_sales, net_sales, ride_count, work_hours, image_url, created_at")
+    .select("id, report_date, gross_sales, net_sales, ride_count, work_hours, image_url, rides, created_at")
     .eq("user_id", userId)
+    .is("deleted_at", null)
     .order("report_date", { ascending: false })
     .limit(100);
   return { data: data ?? [], error };
