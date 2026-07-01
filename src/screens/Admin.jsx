@@ -7,6 +7,7 @@ import {
   adminFetchReferrals, adminFetchCoupons, adminGrantXP, adminResolveDeleteRequest,
   adminCreateNotification, adminFetchNotifications, adminFetchMetrics,
   adminFetchUserReports, adminSetSuspended, adminDeleteUser,
+  adminFetchGiftMilestones, adminMarkGiftSent,
 } from "../lib/supabase";
 
 const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL ?? "";
@@ -428,19 +429,33 @@ function FeedbackTab() {
 
 // ── 紹介管理 ────────────────────────────────────────
 function ReferralsTab() {
-  const [events,   setEvents]   = useState([]);
-  const [coupons,  setCoupons]  = useState([]);
-  const [view,     setView]     = useState("events"); // "events" | "coupons"
-  const [loading,  setLoading]  = useState(true);
-  const [filter,   setFilter]   = useState("");
+  const [events,       setEvents]       = useState([]);
+  const [coupons,      setCoupons]      = useState([]);
+  const [gifts,        setGifts]        = useState([]);
+  const [view,         setView]         = useState("gifts"); // "gifts" | "events" | "coupons"
+  const [loading,      setLoading]      = useState(true);
+  const [filter,       setFilter]       = useState("");
+  const [sendingId,    setSendingId]    = useState(null);
+  const [sendNote,     setSendNote]     = useState({});
 
-  useEffect(() => {
-    Promise.all([adminFetchReferrals(), adminFetchCoupons()]).then(([r, c]) => {
+  const reload = () => {
+    setLoading(true);
+    Promise.all([adminFetchReferrals(), adminFetchCoupons(), adminFetchGiftMilestones()]).then(([r, c, g]) => {
       setEvents(r.data);
       setCoupons(c.data);
+      setGifts(g.data);
       setLoading(false);
     });
-  }, []);
+  };
+
+  useEffect(() => { reload(); }, []);
+
+  const markSent = async (id) => {
+    setSendingId(id);
+    await adminMarkGiftSent(id, sendNote[id] || "");
+    setSendingId(null);
+    reload();
+  };
 
   // 紹介者ごとにグループ化（表示用）
   const grouped = {};
@@ -455,19 +470,74 @@ function ReferralsTab() {
     : events;
 
   const typeLabel = { invited:"招待登録特典", milestone:"マイルストーン特典" };
+  const unsentCount = gifts.filter(g => !g.sent_at).length;
 
   return (
     <div>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
         <div style={{ fontSize:16, fontWeight:800 }}>🎁 紹介管理</div>
         <div style={{ display:"flex", gap:6 }}>
+          <button onClick={()=>setView("gifts")}  style={{ ...btn(view==="gifts"?"#f59e0b":"#1a1a2e"), border:"1px solid #2a2a4a", position:"relative" }}>
+            Amazonギフト
+            {unsentCount > 0 && <span style={{ position:"absolute", top:-6, right:-6, backgroundColor:"#ef4444", color:"#fff", borderRadius:99, fontSize:10, fontWeight:900, padding:"1px 5px" }}>{unsentCount}</span>}
+          </button>
           <button onClick={()=>setView("events")}  style={{ ...btn(view==="events"?"#4f8ef7":"#1a1a2e"), border:"1px solid #2a2a4a" }}>イベントログ ({events.length})</button>
           <button onClick={()=>setView("coupons")} style={{ ...btn(view==="coupons"?"#4f8ef7":"#1a1a2e"), border:"1px solid #2a2a4a" }}>クーポン ({coupons.length})</button>
         </div>
       </div>
 
       {loading ? <div style={{ color:"#666", textAlign:"center", padding:40 }}>読み込み中...</div> : (
-        view === "events" ? (
+        view === "gifts" ? (
+          <>
+            {/* 未送付サマリー */}
+            {unsentCount > 0 && (
+              <div style={{ backgroundColor:"#ef444422", border:"1px solid #ef4444", borderRadius:10, padding:"10px 14px", marginBottom:14, color:"#ef4444", fontWeight:700, fontSize:13 }}>
+                ⚠️ 未送付のAmazonギフトが {unsentCount} 件あります
+              </div>
+            )}
+            {gifts.length === 0
+              ? <div style={{ color:"#666", textAlign:"center", padding:40 }}>達成者なし</div>
+              : gifts.map(g => (
+                <div key={g.id} style={{ ...card, borderColor: g.sent_at ? "#2a2a4a" : "#f59e0b44" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+                    <div>
+                      <span style={{ fontWeight:700, fontSize:14 }}>{g.user_name || "不明"}</span>
+                      <span style={{ fontSize:12, color:"#888", marginLeft:8 }}>{g.user_email}</span>
+                    </div>
+                    <span style={badge(g.sent_at ? "#22c55e" : "#f59e0b")}>
+                      {g.sent_at ? "✓ 送付済み" : "未送付"}
+                    </span>
+                  </div>
+                  <div style={{ fontSize:13, color:"#a0a0c0", marginBottom:6 }}>
+                    {g.milestone}人達成 → <strong style={{ color:"#f59e0b" }}>¥{(g.gift_amount||0).toLocaleString()} Amazonギフト</strong>
+                    <span style={{ fontSize:11, color:"#666", marginLeft:8 }}>達成: {new Date(g.achieved_at).toLocaleDateString("ja-JP")}</span>
+                  </div>
+                  {g.sent_at ? (
+                    <div style={{ fontSize:11, color:"#22c55e" }}>
+                      送付済み: {new Date(g.sent_at).toLocaleDateString("ja-JP")}
+                      {g.sent_note && <span style={{ color:"#888", marginLeft:8 }}>{g.sent_note}</span>}
+                    </div>
+                  ) : (
+                    <div style={{ display:"flex", gap:8, marginTop:8 }}>
+                      <input
+                        value={sendNote[g.id] || ""}
+                        onChange={e => setSendNote(n => ({ ...n, [g.id]: e.target.value }))}
+                        placeholder="メモ（任意）例: メールで送付"
+                        style={{ ...input, flex:1, padding:"8px 12px", fontSize:12 }}
+                      />
+                      <button
+                        onClick={() => markSent(g.id)}
+                        disabled={sendingId === g.id}
+                        style={{ ...btn("#22c55e"), border:"none", padding:"8px 16px", fontSize:12, fontWeight:700, flexShrink:0 }}>
+                        {sendingId === g.id ? "…" : "送付済みにする"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            }
+          </>
+        ) : view === "events" ? (
           <>
             {/* サマリー */}
             <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:16 }}>

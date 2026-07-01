@@ -333,9 +333,17 @@ export async function registerWithReferral({ referredId, referredName, referralC
   return { error: null, valid: true };
 }
 
+// Amazonギフトマイルストーン定義
+const GIFT_MILESTONES = [
+  { count: 3,  amount: 500  },
+  { count: 5,  amount: 1000 },
+  { count: 10, amount: 1500 },
+];
+
 /**
  * 招待されたユーザーがOCR3枚達成したタイミングで呼ぶ
- * ・招待した側に +100 XP ＋ マイルストーンクーポンを付与
+ * ・招待した側に +100 XP
+ * ・招待累計が 3/5/10人に達したら referral_milestones に記録（管理者が手動でAmazonギフト送付）
  * ・べき等（activated_at があれば何もしない）
  */
 export async function activateReferral(referredId) {
@@ -349,11 +357,11 @@ export async function activateReferral(referredId) {
   if (!ev) return; // 招待経由でない or 既にアクティベート済み
 
   // 2. OCR枚数を確認（3枚以上ならアクティベート）
-  const { count } = await supabase
+  const { count: ocrCount } = await supabase
     .from("daily_reports")
     .select("id", { count: "exact", head: true })
     .eq("user_id", referredId);
-  if ((count ?? 0) < 3) return;
+  if ((ocrCount ?? 0) < 3) return;
 
   // 3. activated_at をセット
   await supabase.from("referral_events")
@@ -361,11 +369,29 @@ export async function activateReferral(referredId) {
     .eq("id", ev.id);
 
   // 4. 招待した人に +100 XP
-  const { data: cur } = await supabase.from("users").select("xp").eq("id", ev.referrer_id).single();
-  await supabase.from("users").update({ xp: (cur?.xp ?? 0) + 100 }).eq("id", ev.referrer_id);
+  const { data: referrer } = await supabase
+    .from("users").select("xp, name, email").eq("id", ev.referrer_id).single();
+  await supabase.from("users")
+    .update({ xp: (referrer?.xp ?? 0) + 100 }).eq("id", ev.referrer_id);
 
-  // 5. マイルストーンチェック・クーポン発行（RPC）
-  await supabase.rpc("check_referral_milestone", { referrer_id_input: ev.referrer_id });
+  // 5. 招待した人の累計アクティベート数を確認
+  const { count: totalActivated } = await supabase
+    .from("referral_events")
+    .select("id", { count: "exact", head: true })
+    .eq("referrer_id", ev.referrer_id)
+    .not("activated_at", "is", null);
+
+  // 6. Amazonギフトマイルストーン達成チェック → referral_milestones に記録
+  const milestone = GIFT_MILESTONES.find(m => m.count === totalActivated);
+  if (milestone) {
+    await supabase.from("referral_milestones").insert({
+      user_id:     ev.referrer_id,
+      user_name:   referrer?.name  ?? "",
+      user_email:  referrer?.email ?? "",
+      milestone:   milestone.count,
+      gift_amount: milestone.amount,
+    }).onConflict("user_id,milestone").ignore(); // 重複は無視
+  }
 }
 
 /** 自分の招待実績（アクティベート済みのみカウント + 発行済みクーポン）を取得 */
@@ -673,6 +699,24 @@ export async function adminFetchCoupons() {
     .select("id, user_id, code, type, benefit_days, milestone_at, issued_at, used_at, expires_at")
     .order("issued_at", { ascending: false });
   return { data: data ?? [], error };
+}
+
+/** Amazonギフトマイルストーン一覧（管理者用） */
+export async function adminFetchGiftMilestones() {
+  const { data, error } = await supabase
+    .from("referral_milestones")
+    .select("id, user_id, user_name, user_email, milestone, gift_amount, achieved_at, sent_at, sent_note")
+    .order("achieved_at", { ascending: false });
+  return { data: data ?? [], error };
+}
+
+/** Amazonギフト送付済みにする（管理者用） */
+export async function adminMarkGiftSent(milestoneId, note = "") {
+  const { error } = await supabase
+    .from("referral_milestones")
+    .update({ sent_at: new Date().toISOString(), sent_note: note })
+    .eq("id", milestoneId);
+  return { error };
 }
 
 /** ユーザーに XP を付与 */

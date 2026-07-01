@@ -206,11 +206,10 @@ function FriendReportCard({ report }) {
 // 友達招待セクション
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const REWARD_TIERS = [
-  { count:1,  days:14, label:"1人招待",  benefit:"+14日延長クーポン", xp:100 },
-  { count:3,  days:30, label:"3人招待",  benefit:"+30日延長クーポン", xp:100 },
-  { count:6,  days:30, label:"6人招待",  benefit:"+30日延長クーポン", xp:100 },
-  { count:9,  days:30, label:"9人招待",  benefit:"+30日延長クーポン", xp:100 },
-  { count:12, days:30, label:"12人招待", benefit:"+30日延長クーポン", xp:100 },
+  { count:1,  label:"1人招待ごとに", benefit:"有料化時1ヶ月無料",        icon:"🎟️", cash:false },
+  { count:3,  label:"3人達成",       benefit:"Amazonギフト券 ¥500",      icon:"🎁", cash:true  },
+  { count:5,  label:"5人達成",       benefit:"Amazonギフト券 ¥1,000",    icon:"🎁", cash:true  },
+  { count:10, label:"10人達成",      benefit:"Amazonギフト券 ¥1,500",    icon:"🎁", cash:true  },
 ];
 
 function ReferralSection({ user }) {
@@ -323,21 +322,18 @@ function ReferralSection({ user }) {
       )}
 
       {/* 特典ティア */}
-      <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:6 }}>🎁 招待特典（累計達成）</div>
+      <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:6 }}>🎁 招待特典</div>
       <div style={{ borderRadius:10, overflow:"hidden", border:`1px solid ${C.border}`, marginBottom:10 }}>
         {REWARD_TIERS.map((tier, i) => {
-          const achieved  = total >= tier.count;
-          const isCurrent = lastMilestone === tier.count && achieved;
+          const achieved = tier.count === 1 ? total >= 1 : total >= tier.count;
           return (
-            <div key={tier.count} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderBottom: i < REWARD_TIERS.length-1 ? `1px solid ${C.border}` : "none", backgroundColor: isCurrent ? `${C.accentLight}10` : "transparent" }}>
-              <div style={{ width:28, height:28, borderRadius:"50%", backgroundColor: achieved ? `${C.green}22` : C.surface, border:`2px solid ${achieved ? C.green : C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color: achieved ? C.green : C.muted, flexShrink:0 }}>
-                {achieved ? "✓" : tier.count}
-              </div>
+            <div key={tier.count} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderBottom: i < REWARD_TIERS.length-1 ? `1px solid ${C.border}` : "none", backgroundColor: achieved ? `${C.accentLight}08` : "transparent" }}>
+              <div style={{ fontSize:18, flexShrink:0 }}>{tier.icon}</div>
               <div style={{ flex:1 }}>
                 <div style={{ fontSize:12, fontWeight:700, color: achieved ? C.text : C.muted }}>{tier.label}</div>
-                <div style={{ fontSize:10, color: achieved ? C.green : C.muted, marginTop:1 }}>{tier.benefit}</div>
+                <div style={{ fontSize:10, color: tier.cash ? (achieved ? "#f59e0b" : C.muted) : (achieved ? C.green : C.muted), marginTop:1 }}>{tier.benefit}</div>
               </div>
-              {achieved && <span style={{ fontSize:14 }}>🏅</span>}
+              {achieved && <span style={{ fontSize:12, color:C.green, fontWeight:700 }}>✓</span>}
             </div>
           );
         })}
