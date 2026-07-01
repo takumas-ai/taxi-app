@@ -1096,7 +1096,6 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
       {id:"takepay", icon:"💴", label:"売上・手取り設定",       sub: user.workType==="個人タクシー" ? `経費${((takePay.expenses||0)/10000).toFixed(1)}万円/月` : parseInt(user.target) > 0 ? `目標¥${parseInt(user.target).toLocaleString()} / 歩合${takePay.rate}%` : `歩合${takePay.rate}% / 控除${(takePay.deduction/10000).toFixed(1)}万円`},
     ]},
     { label: "特典", items: [
-      {id:"referral",icon:"🎁", label:"友達を招待",           sub:"紹介リンク・特典"},
       {id:"coupon",  icon:"🎟️", label:"クーポンコード",       sub:"割引・特典コードを入力"},
       {id:"rank",    icon:"🏆", label:"ランク",              sub:"XP・バッジ・レベル"},
     ]},
@@ -1515,7 +1514,6 @@ export default function Settings({ user, onUpdate, onLogout, onDeleteAccount, on
       {subTab==="coupon" && <CouponSection user={user} />}
 
 
-      {subTab==="referral" && <ReferralSection user={user} />}
 
 
       {subTab==="feedback" && <FeedbackSection user={user} />}

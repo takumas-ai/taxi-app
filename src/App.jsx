@@ -49,6 +49,7 @@ import {
   resetPasswordForEmail,
   ensureReferralCode,
   registerWithReferral,
+  activateReferral,
   saveMemoDict,
   callTakuroChat,
   fetchFriendNotifCount,
@@ -282,6 +283,10 @@ function LoginScreen({ onLogin, onGuestLogin }) {
     const localReports = loadS("taxi_reports", []);
     if (localReports.length > 0 && loadS("taxi_user", null)?._isGuest) {
       localStorage.setItem("taxi_migration_pending", "1");
+    }
+    // 招待コードがあればリダイレクト前に保存（OAuth後にURLパラメータが消えるため）
+    if (refCode?.trim()) {
+      localStorage.setItem("taxi_pending_ref", refCode.trim().toUpperCase());
     }
     const { error: err } = await signInWithOAuth(provider);
     if (err) { setError(err.message); setLoading(false); }
@@ -745,6 +750,16 @@ export default function App() {
           const isNewUser = isNewUserPending || profileAgeMin < 30;
           if (isNewUser) {
             if (isNewUserPending) localStorage.removeItem("taxi_new_user_pending");
+            // OAuth新規ユーザー：リダイレクト前に保存した招待コードを適用
+            const pendingRef = localStorage.getItem("taxi_pending_ref");
+            if (pendingRef) {
+              localStorage.removeItem("taxi_pending_ref");
+              registerWithReferral({
+                referredId:   session.user.id,
+                referredName: profile.name,
+                referralCode: pendingRef,
+              }).catch(e => console.warn("[OAuth] referral error:", e));
+            }
             // onboarding_done はセットしない → オンボーディング・チュートリアルを表示
           } else {
             localStorage.setItem("taxi_onboarding_done", "true");
@@ -1292,6 +1307,10 @@ export default function App() {
     if (SUPABASE_READY && user?.id && !user?._isGuest) {
       const currentMonth = new Date().toISOString().slice(0, 7);
       upsertProfile({ id: user.id, monthly_upload_count: newUploadCount, upload_reset_month: currentMonth });
+      // OCR3枚達成で招待アクティベート（べき等なので毎回呼んでOK）
+      if (newUploadCount >= 3) {
+        activateReferral(user.id).catch(e => console.warn("[activateReferral]", e));
+      }
     }
     await awardXP(reportXp + missionXp, newBadges);
 

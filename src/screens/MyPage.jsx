@@ -20,6 +20,7 @@ import {
   updateDisplayId,
   respondFriendRequest,
   fetchIncomingFriendRequests,
+  fetchMyReferralStats,
 } from "../lib/supabase";
 import { UserAvatar } from "../components/AvatarPicker";
 import QRCode from "qrcode";
@@ -196,6 +197,155 @@ function FriendReportCard({ report }) {
             <div style={{ fontSize:15, fontWeight:700, color:C.text }}>{occ}%</div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 友達招待セクション
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const REWARD_TIERS = [
+  { count:1,  days:14, label:"1人招待",  benefit:"+14日延長クーポン", xp:100 },
+  { count:3,  days:30, label:"3人招待",  benefit:"+30日延長クーポン", xp:100 },
+  { count:6,  days:30, label:"6人招待",  benefit:"+30日延長クーポン", xp:100 },
+  { count:9,  days:30, label:"9人招待",  benefit:"+30日延長クーポン", xp:100 },
+  { count:12, days:30, label:"12人招待", benefit:"+30日延長クーポン", xp:100 },
+];
+
+function ReferralSection({ user }) {
+  const APP_URL   = "https://taxi-app-nine-eta.vercel.app";
+  const myCode    = user?.referral_code || null;
+  const refUrl    = myCode ? `${APP_URL}/?ref=${myCode}` : APP_URL;
+  const shareText = `タクシードライバー向けアプリ「タクロー」を使ってみて！日報記録・売上分析・AIアドバイスが全部ひとつ🦉\n招待コード: ${myCode}\n${refUrl}`;
+
+  const [copied, setCopied]         = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [stats, setStats]           = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [refQrUrl, setRefQrUrl]     = useState(null);
+  const [showRefQr, setShowRefQr]   = useState(false);
+
+  useEffect(() => {
+    if (!user?.id || !myCode) { setLoading(false); return; }
+    fetchMyReferralStats(user.id, myCode)
+      .then(s => { setStats(s); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [user?.id]);
+
+  const total         = stats?.events?.length ?? 0;
+  const MILESTONES    = [1, 3, 6, 9, 12];
+  const nextMilestone = MILESTONES.find(m => m > total) ?? null;
+  const lastMilestone = [...MILESTONES].reverse().find(m => m <= total) ?? 0;
+
+  const copyCode  = () => { navigator.clipboard.writeText(myCode || "").catch(()=>{}); setCopied(true); setTimeout(()=>setCopied(false), 2000); };
+  const copyLink  = () => { navigator.clipboard.writeText(refUrl).catch(()=>{}); setCopiedLink(true); setTimeout(()=>setCopiedLink(false), 2000); };
+  const shareLine = () => window.open(`https://line.me/R/msg/text/?${encodeURIComponent(shareText)}`, "_blank");
+  const shareX    = () => window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`, "_blank");
+  const shareOther = () => navigator.share
+    ? navigator.share({ title:"タクロー", text: shareText, url: refUrl }).catch(()=>{})
+    : copyLink();
+  const openRefQr = () => {
+    if (!refQrUrl && myCode) {
+      QRCode.toDataURL(refUrl, { width:240, margin:2, color:{ dark:"#1a1a2e", light:"#ffffff" } })
+        .then(url => { setRefQrUrl(url); setShowRefQr(true); })
+        .catch(console.error);
+    } else {
+      setShowRefQr(true);
+    }
+  };
+
+  if (!myCode && !loading) return null;
+
+  return (
+    <div style={{ margin:"0 16px 14px", backgroundColor:C.card, borderRadius:14, padding:"14px 16px", border:`1px solid ${C.border}` }}>
+      <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:12 }}>🎁 タクローを友達に紹介する</div>
+
+      {/* 累計カウント */}
+      <div style={{ background:`linear-gradient(135deg, ${C.accentLight}18, ${C.accentLight}08)`, border:`1px solid ${C.accentLight}33`, borderRadius:12, padding:"12px", marginBottom:12, textAlign:"center" }}>
+        <div style={{ fontSize:11, color:C.muted, marginBottom:2 }}>累計招待人数</div>
+        <div style={{ fontSize:32, fontWeight:900, color:C.text }}>
+          {loading ? "—" : total}
+          <span style={{ fontSize:14, color:C.muted, marginLeft:4 }}>人</span>
+        </div>
+        {!loading && nextMilestone && (
+          <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>あと{nextMilestone - total}人で次の特典！</div>
+        )}
+        {!loading && !nextMilestone && total > 0 && (
+          <div style={{ fontSize:12, color:C.green, fontWeight:700, marginTop:2 }}>🏆 全マイルストーン達成！</div>
+        )}
+      </div>
+
+      {/* 招待コード */}
+      <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:6 }}>あなたの招待コード</div>
+      <div style={{ display:"flex", gap:8, marginBottom:10 }}>
+        <div style={{ flex:1, backgroundColor:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 14px" }}>
+          <div style={{ fontSize:16, fontWeight:900, color:C.accentLight, letterSpacing:"2px", fontFamily:"monospace" }}>{myCode || "..."}</div>
+        </div>
+        <button onClick={copyCode} style={{ padding:"0 14px", borderRadius:10, border:`1px solid ${copied?C.green:C.border}`, backgroundColor:copied?C.greenGlow||"#0f04":C.card, color:copied?C.green:C.sub||C.muted, fontSize:13, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
+          {copied ? "✓ 済" : "コピー"}
+        </button>
+      </div>
+
+      {/* シェアボタン */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
+        <button onClick={shareLine} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"11px 0", borderRadius:11, border:"1px solid #06C75544", backgroundColor:"#06C75514", color:"#06C755", fontSize:13, fontWeight:800, cursor:"pointer" }}>
+          💬 LINEで送る
+        </button>
+        <button onClick={copyLink} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"11px 0", borderRadius:11, border:`1px solid ${copiedLink?C.green:C.border}`, backgroundColor:copiedLink?C.greenGlow||"#0f04":C.card, color:copiedLink?C.green:C.muted, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+          {copiedLink ? "✓ コピー済" : "🔗 リンクをコピー"}
+        </button>
+        <button onClick={shareX} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"11px 0", borderRadius:11, border:"1px solid #33333344", backgroundColor:"#00000010", color:C.text, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+          𝕏 でシェア
+        </button>
+        <button onClick={openRefQr} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"11px 0", borderRadius:11, border:`1px solid ${C.border}`, backgroundColor:C.surface, color:C.muted, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+          📱 QRコード
+        </button>
+      </div>
+
+      {/* 招待QRコードモーダル */}
+      {showRefQr && (
+        <div style={{ position:"fixed", inset:0, backgroundColor:"#000000aa", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={() => setShowRefQr(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{ backgroundColor:C.surface, borderRadius:20, padding:28, textAlign:"center", maxWidth:300, width:"90%" }}>
+            <div style={{ fontSize:16, fontWeight:800, marginBottom:4 }}>招待QRコード</div>
+            <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>新規登録者にスキャンしてもらうと<br/>あなたのコードが自動入力されます</div>
+            {refQrUrl ? (
+              <img src={refQrUrl} alt="招待QR" style={{ width:200, height:200, borderRadius:12, border:`2px solid ${C.border}` }}/>
+            ) : (
+              <div style={{ width:200, height:200, backgroundColor:C.card, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto" }}>
+                <span style={{ color:C.muted, fontSize:12 }}>生成中...</span>
+              </div>
+            )}
+            <div style={{ marginTop:14, fontSize:12, color:C.accentLight, fontWeight:700, fontFamily:"monospace", letterSpacing:1 }}>{myCode}</div>
+            <button onClick={() => setShowRefQr(false)} style={{ marginTop:16, padding:"10px 32px", borderRadius:12, border:"none", backgroundColor:C.accentLight, color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer" }}>閉じる</button>
+          </div>
+        </div>
+      )}
+
+      {/* 特典ティア */}
+      <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:6 }}>🎁 招待特典（累計達成）</div>
+      <div style={{ borderRadius:10, overflow:"hidden", border:`1px solid ${C.border}`, marginBottom:10 }}>
+        {REWARD_TIERS.map((tier, i) => {
+          const achieved  = total >= tier.count;
+          const isCurrent = lastMilestone === tier.count && achieved;
+          return (
+            <div key={tier.count} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderBottom: i < REWARD_TIERS.length-1 ? `1px solid ${C.border}` : "none", backgroundColor: isCurrent ? `${C.accentLight}10` : "transparent" }}>
+              <div style={{ width:28, height:28, borderRadius:"50%", backgroundColor: achieved ? `${C.green}22` : C.surface, border:`2px solid ${achieved ? C.green : C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color: achieved ? C.green : C.muted, flexShrink:0 }}>
+                {achieved ? "✓" : tier.count}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:12, fontWeight:700, color: achieved ? C.text : C.muted }}>{tier.label}</div>
+                <div style={{ fontSize:10, color: achieved ? C.green : C.muted, marginTop:1 }}>{tier.benefit}</div>
+              </div>
+              {achieved && <span style={{ fontSize:14 }}>🏅</span>}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ fontSize:10, color:C.muted, lineHeight:1.7 }}>
+        ※ 招待した相手が登録完了した時点でカウントされます。<br/>
+        ※ 招待された方は登録時に+30日の無料期間が付与されます。
       </div>
     </div>
   );
@@ -508,76 +658,8 @@ export default function MyPageScreen({ user, reports = [], onBack, onMarkNotifsR
         </div>
       )}
 
-      {/* タクローを紹介するボタン */}
-      <div style={{ margin:"0 16px 14px", backgroundColor:C.card, borderRadius:14, padding:"14px 16px", border:`1px solid ${C.border}` }}>
-        <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10 }}>🚕 タクローを友達に紹介する</div>
-        {(() => {
-          const APP_URL = "https://taxi-app-nine-eta.vercel.app";
-          const MSG = `タクシードライバー向け売上管理アプリ「タクロー」使ってみて！勘と経験をデータに変えられるよ🚕\n${APP_URL}`;
-          const SHARE_BTNS = [
-            {
-              label: "LINE",
-              icon: (
-                <svg width="20" height="20" viewBox="0 0 40 40" fill="none">
-                  <rect width="40" height="40" rx="10" fill="#06C755"/>
-                  <path d="M20 8C13.37 8 8 12.7 8 18.5c0 4.97 4.4 9.13 10.36 9.91.4.09.95.27 1.09.62.12.32.08.82.04 1.14l-.18 1.07c-.05.32-.25 1.26 1.1.69 1.36-.58 7.3-4.3 9.96-7.36C32.2 22.37 32 20.5 32 18.5 32 12.7 26.63 8 20 8z" fill="white"/>
-                  <path d="M17.1 21.3h-2.6a.4.4 0 01-.4-.4v-4.8a.4.4 0 01.8 0v4.4h2.2a.4.4 0 010 .8zM18.4 20.9a.4.4 0 01-.8 0v-4.8a.4.4 0 01.8 0v4.8zM23.8 20.9a.4.4 0 01-.72.24l-2.48-3.38v3.14a.4.4 0 01-.8 0v-4.8a.4.4 0 01.72-.24l2.48 3.38v-3.14a.4.4 0 01.8 0v4.8zM26.9 17.5h-2.2v1.2h2.2a.4.4 0 010 .8h-2.2v1.2h2.2a.4.4 0 010 .8h-2.6a.4.4 0 01-.4-.4v-4.8a.4.4 0 01.4-.4h2.6a.4.4 0 010 .8v.8z" fill="#06C755"/>
-                </svg>
-              ),
-              bg: "#06C755", color: "#fff",
-              action: () => window.open(`https://line.me/R/msg/text/?${encodeURIComponent(MSG)}`, "_blank"),
-            },
-            {
-              label: "X",
-              icon: (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.253 5.622L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                </svg>
-              ),
-              bg: "#000", color: "#fff",
-              action: () => window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(MSG)}`, "_blank"),
-            },
-            {
-              label: "コピー",
-              icon: (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2"/>
-                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                </svg>
-              ),
-              bg: C.card, color: C.text,
-              action: async () => {
-                await navigator.clipboard.writeText(MSG);
-                alert("コピーしました！");
-              },
-            },
-            {
-              label: "その他",
-              icon: (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-                </svg>
-              ),
-              bg: C.card, color: C.text,
-              action: () => navigator.share ? navigator.share({ title:"タクロー", text: MSG, url: APP_URL }).catch(()=>{}) : alert("お使いの環境ではシェアできません"),
-            },
-          ];
-          return (
-            <div style={{ display:"flex", gap:10, justifyContent:"space-between" }}>
-              {SHARE_BTNS.map(b => (
-                <button key={b.label} onClick={b.action}
-                  style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:5,
-                    padding:"10px 0", borderRadius:12, border:`1px solid ${C.border}`,
-                    backgroundColor:b.bg, color:b.color, cursor:"pointer", fontSize:10, fontWeight:700 }}>
-                  {b.icon}
-                  {b.label}
-                </button>
-              ))}
-            </div>
-          );
-        })()}
-      </div>
+      {/* 友達を招待（紹介コード） */}
+      <ReferralSection user={user} />
 
       {/* タブ */}
       <div style={{ display:"flex", gap:4, margin:"0 16px 14px", backgroundColor:C.card, borderRadius:12, padding:4, border:`1px solid ${C.border}` }}>

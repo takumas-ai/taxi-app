@@ -292,8 +292,9 @@ export async function ensureReferralCode(userId) {
 }
 
 /**
- * 招待コードを使った登録を記録し、関連クーポンを発行する
- * 招待された側：invitedクーポン発行 / 招待した側：マイルストーン確認
+ * 招待コードを使った登録を記録する（登録時）
+ * ・招待された側：+30日クーポンをすぐ発行
+ * ・招待した側の特典はOCR3枚達成後に activateReferral() で付与
  */
 export async function registerWithReferral({ referredId, referredName, referralCode }) {
   // 1. 招待コードからreferrerを特定
@@ -304,21 +305,21 @@ export async function registerWithReferral({ referredId, referredName, referralC
   // 2. referred_byを保存
   await supabase.from("users").update({ referred_by: referralCode }).eq("id", referredId);
 
-  // 3. referral_eventsに記録（重複はUNIQUE制約で弾かれる）
+  // 3. referral_eventsに記録（activated_at = null = 未アクティベート）
   const { error: evErr } = await supabase.from("referral_events").insert({
     referrer_id:   referrer.id,
     referred_id:   referredId,
     referral_code: referralCode,
     referrer_name: referrer.name,
     referred_name: referredName,
+    // activated_at は null のまま（OCR3枚達成で activateReferral() がセット）
   });
   if (evErr) {
-    // referred_idのUNIQUE違反 = すでに招待済みの人
     if (evErr.code === "23505") return { error: "このコードはすでに使用済みです", valid: false };
     return { error: evErr.message, valid: false };
   }
 
-  // 4. 招待された人にinvitedクーポンを発行（14日→44日分のため+30日）
+  // 4. 招待された人にすぐ +30日クーポンを発行（来てくれたお礼）
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const invCode = "INV-" + Array.from({length:6}, () => chars[Math.floor(Math.random()*chars.length)]).join("");
   await supabase.from("coupons").insert({
@@ -329,22 +330,52 @@ export async function registerWithReferral({ referredId, referredName, referralC
     issued_reason: "招待コード登録ボーナス（+30日）",
   });
 
-  // 5. 招待した人に +100 XP を付与
-  const { data: cur } = await supabase.from("users").select("xp").eq("id", referrer.id).single();
-  await supabase.from("users").update({ xp: (cur?.xp ?? 0) + 100 }).eq("id", referrer.id);
-
-  // 6. 招待した人のマイルストーンをチェック・クーポン発行（RPC）
-  const { data: milestone } = await supabase
-    .rpc("check_referral_milestone", { referrer_id_input: referrer.id });
-
-  return { error: null, valid: true, milestone, xpGranted: 100 };
+  return { error: null, valid: true };
 }
 
-/** 自分の招待実績（招待した人数 + 発行済みクーポン）を取得 */
+/**
+ * 招待されたユーザーがOCR3枚達成したタイミングで呼ぶ
+ * ・招待した側に +100 XP ＋ マイルストーンクーポンを付与
+ * ・べき等（activated_at があれば何もしない）
+ */
+export async function activateReferral(referredId) {
+  // 1. 未アクティベートの招待イベントを検索
+  const { data: ev } = await supabase
+    .from("referral_events")
+    .select("id, referrer_id")
+    .eq("referred_id", referredId)
+    .is("activated_at", null)
+    .maybeSingle();
+  if (!ev) return; // 招待経由でない or 既にアクティベート済み
+
+  // 2. OCR枚数を確認（3枚以上ならアクティベート）
+  const { count } = await supabase
+    .from("daily_reports")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", referredId);
+  if ((count ?? 0) < 3) return;
+
+  // 3. activated_at をセット
+  await supabase.from("referral_events")
+    .update({ activated_at: new Date().toISOString() })
+    .eq("id", ev.id);
+
+  // 4. 招待した人に +100 XP
+  const { data: cur } = await supabase.from("users").select("xp").eq("id", ev.referrer_id).single();
+  await supabase.from("users").update({ xp: (cur?.xp ?? 0) + 100 }).eq("id", ev.referrer_id);
+
+  // 5. マイルストーンチェック・クーポン発行（RPC）
+  await supabase.rpc("check_referral_milestone", { referrer_id_input: ev.referrer_id });
+}
+
+/** 自分の招待実績（アクティベート済みのみカウント + 発行済みクーポン）を取得 */
 export async function fetchMyReferralStats(userId, referralCode) {
   const [eventsRes, couponsRes] = await Promise.all([
-    supabase.from("referral_events").select("referred_name, created_at")
-      .eq("referrer_id", userId).order("created_at", { ascending: false }),
+    // activated_at IS NOT NULL = OCR3枚達成済みの招待のみ
+    supabase.from("referral_events").select("referred_name, created_at, activated_at")
+      .eq("referrer_id", userId)
+      .not("activated_at", "is", null)
+      .order("activated_at", { ascending: false }),
     supabase.from("coupons").select("*")
       .eq("user_id", userId).order("issued_at", { ascending: false }),
   ]);
@@ -671,13 +702,23 @@ export async function adminCreateNotification({ title, body, area, severity }) {
   return { data, error };
 }
 
-/** お知らせ一覧取得 */
+/** お知らせ一覧取得（管理画面用） */
 export async function adminFetchNotifications() {
   const { data, error } = await supabase
     .from("notifications")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(50);
+  return { data: data ?? [], error };
+}
+
+/** お知らせ一覧取得（全ユーザー向け・最新20件） */
+export async function fetchPublicNotifications() {
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("id, title, body, severity, created_at")
+    .order("created_at", { ascending: false })
+    .limit(20);
   return { data: data ?? [], error };
 }
 
