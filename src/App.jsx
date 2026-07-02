@@ -783,6 +783,7 @@ export default function App() {
             closing_day: profile.closing_day ?? null,
             memoDict: profile.memo_dict || {},
             display_id: profile.display_id || null,
+            referral_code: profile.referral_code || null,
           });
           // 未送信データの再送（オフライン時に保存できなかったレポート）
           const pendingSaves = loadS("taxi_pending_saves", []);
@@ -860,6 +861,7 @@ export default function App() {
               closing_day: existingProfile.closing_day ?? null,
               memoDict: existingProfile.memo_dict || {},
               display_id: existingProfile.display_id || null,
+              referral_code: existingProfile.referral_code || null,
             });
             const { data: reps } = await fetchReports(session.user.id);
             if (reps?.length) {
@@ -959,6 +961,7 @@ export default function App() {
           closing_day: prof.closing_day ?? null,
           memoDict: prof.memo_dict || {},
           display_id: prof.display_id || null,
+          referral_code: prof.referral_code || null,
         });
       }
     });
