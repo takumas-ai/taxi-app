@@ -6,33 +6,45 @@ import { C, loadS, saveS } from "../lib/constants";
 import { MOCK_DELAYS } from "../data/mockData";
 import { ZONE_META } from "../data/trafficZones";
 import { UserAvatar } from "./AvatarPicker";
-import { fetchFriendNotifs, markFriendNotifsRead } from "../lib/supabase";
-
-// ━━━ タクローからのお知らせ（アップデート情報）━━━
-const UPDATE_NEWS = [
-  { date:"2026-06-24", title:"βテスト開始", body:"タクローのβ版テストを開始しました。不具合・ご意見は設定の「意見箱」からお送りください。" },
-  { date:"2026-06-24", title:"アカウント削除を即時対応に変更", body:"アカウント削除が申請制から即時削除に変わりました。削除後も日報データは保持されます。" },
-  { date:"2026-06-23", title:"OCR確認画面に休憩時間を追加", body:"日報読み取り後の確認画面で休憩時間を入力できるようになりました。ホーム画面の休憩記録にも自動反映されます。" },
-  { date:"2026-06-22", title:"フレンド機能リリース", body:"QRコードでフレンド登録・日報の共有ができるようになりました。マイページからご利用ください。" },
-  { date:"2026-06-20", title:"βテスト期間中はOCR月30回無料", body:"βテスト期間中は全プラン月30回のOCR読み取りが無料でご利用いただけます。" },
-];
+import { fetchFriendNotifs, markFriendNotifsRead, fetchPublicNotifications } from "../lib/supabase";
 
 // ━━━ 通知パネル（ベルタップで開くボトムシート）━━━
 function NotificationPanel({ user, onClose, onNavigateSettings, onMarkRead }) {
+  const [activeTab,   setActiveTab]   = useState("personal"); // "personal" | "news"
   const [friendNotifs, setFriendNotifs] = useState([]);
-  const [loading, setLoading]           = useState(true);
+  const [news,        setNews]        = useState([]);
+  const [loading,     setLoading]     = useState(true);
 
   useEffect(() => {
     if (!user?.id) { setLoading(false); return; }
-    fetchFriendNotifs(user.id).then(({ data }) => {
-      setFriendNotifs(data || []);
+    Promise.all([
+      fetchFriendNotifs(user.id),
+      fetchPublicNotifications(),
+    ]).then(([{ data: fn }, { data: ns }]) => {
+      setFriendNotifs(fn || []);
+      setNews(ns || []);
       setLoading(false);
     });
     markFriendNotifsRead(user.id).then(() => onMarkRead?.());
   }, []);
 
-  const unreadFriend = friendNotifs.filter(n => !n.read);
-  const typeLabel = (type) => type === "friend_added" ? "フレンドに追加しました" : type;
+  const typeLabel = (type) => {
+    const map = {
+      friend_request:       "フレンド申請が届きました",
+      friend_accepted:      "フレンド申請が承認されました",
+      friend_added:         "フレンドに追加しました",
+      shift_share_request:  "シフト共有の申請が届きました",
+      shift_share_accepted: "シフト共有が承認されました",
+    };
+    return map[type] ?? type;
+  };
+
+  const severityColor = (s) => s === "alert" ? C.red : s === "warning" ? C.orange : C.accentLight;
+
+  const tabs = [
+    { id:"personal", label:"自分宛", badge: friendNotifs.filter(n => !n.read).length },
+    { id:"news",     label:"ニュース", badge: 0 },
+  ];
 
   return (
     <div style={{ position:"fixed", inset:0, backgroundColor:"#00000088", zIndex:500, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
@@ -40,43 +52,76 @@ function NotificationPanel({ user, onClose, onNavigateSettings, onMarkRead }) {
       <div onClick={e => e.stopPropagation()}
         style={{ backgroundColor:C.surface, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, maxHeight:"80vh", overflowY:"auto", padding:"20px 20px 40px", position:"relative" }}>
         <button onClick={onClose} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", fontSize:28, color:C.muted, cursor:"pointer", lineHeight:1, padding:"8px" }}>×</button>
-        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 18px" }}/>
-        <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:18 }}>🔔 お知らせ</div>
+        <div style={{ width:40, height:4, backgroundColor:C.border, borderRadius:99, margin:"0 auto 14px" }}/>
+        <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:14 }}>🔔 お知らせ</div>
 
-        {/* フレンド通知 */}
-        {!loading && friendNotifs.length > 0 && (
-          <div style={{ marginBottom:22 }}>
-            <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:10, letterSpacing:1 }}>👥 フレンド通知</div>
-            {friendNotifs.map(n => (
-              <div key={n.id} style={{ padding:"12px 0", borderBottom:`1px solid ${C.border}`, display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
-                <div>
-                  <div style={{ fontSize:13, color:C.text, fontWeight: n.read ? 400 : 700 }}>
-                    {n.from_name ?? "だれか"}さんが{typeLabel(n.type)}
-                  </div>
-                </div>
-                <div style={{ fontSize:10, color:C.muted, flexShrink:0 }}>{n.created_at?.slice(0,10)}</div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* タクローからのお知らせ */}
-        <div style={{ marginBottom:20 }}>
-          <div style={{ fontSize:11, color:C.muted, fontWeight:700, marginBottom:10, letterSpacing:1 }}>📢 タクローからのお知らせ</div>
-          {UPDATE_NEWS.map((n, i) => (
-            <div key={i} style={{ padding:"12px 0", borderBottom:`1px solid ${C.border}` }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:5, gap:8 }}>
-                <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{n.title}</div>
-                <div style={{ fontSize:10, color:C.muted, flexShrink:0 }}>{n.date}</div>
-              </div>
-              <div style={{ fontSize:12, color:C.sub, lineHeight:1.7 }}>{n.body}</div>
+        {/* タブ切り替え */}
+        <div style={{ display:"flex", gap:4, marginBottom:18, backgroundColor:C.bg, borderRadius:10, padding:3, border:`1px solid ${C.border}` }}>
+          {tabs.map(t => (
+            <div key={t.id} onClick={() => setActiveTab(t.id)}
+              style={{ flex:1, textAlign:"center", padding:"8px 0", borderRadius:8, fontSize:13, fontWeight:activeTab===t.id?700:400, backgroundColor:activeTab===t.id?C.accentLight:"transparent", color:activeTab===t.id?"#fff":C.muted, cursor:"pointer", transition:"all 0.15s", position:"relative" }}>
+              {t.label}
+              {t.badge > 0 && (
+                <span style={{ position:"absolute", top:2, right:6, backgroundColor:C.red, color:"#fff", fontSize:9, fontWeight:700, borderRadius:99, minWidth:14, height:14, display:"inline-flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{t.badge}</span>
+              )}
             </div>
           ))}
         </div>
 
+        {loading ? (
+          <div style={{ textAlign:"center", color:C.muted, padding:"32px 0", fontSize:13 }}>読み込み中...</div>
+        ) : activeTab === "personal" ? (
+          /* 自分宛 */
+          friendNotifs.length === 0 ? (
+            <div style={{ textAlign:"center", color:C.muted, padding:"32px 0" }}>
+              <div style={{ fontSize:28, marginBottom:8 }}>📭</div>
+              <div style={{ fontSize:13 }}>通知はありません</div>
+            </div>
+          ) : (
+            <div>
+              {friendNotifs.map(n => (
+                <div key={n.id} style={{ padding:"12px 0", borderBottom:`1px solid ${C.border}`, display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13, color:C.text, fontWeight: n.read ? 400 : 700 }}>
+                      {n.from_name ?? "だれか"}さんから
+                    </div>
+                    <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{typeLabel(n.type)}</div>
+                  </div>
+                  <div style={{ fontSize:10, color:C.muted, flexShrink:0 }}>{n.created_at?.slice(0,10)}</div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : (
+          /* ニュース */
+          news.length === 0 ? (
+            <div style={{ textAlign:"center", color:C.muted, padding:"32px 0" }}>
+              <div style={{ fontSize:28, marginBottom:8 }}>📭</div>
+              <div style={{ fontSize:13 }}>ニュースはありません</div>
+            </div>
+          ) : (
+            <div>
+              {news.map(n => (
+                <div key={n.id} style={{ padding:"13px 0", borderBottom:`1px solid ${C.border}` }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:5, gap:8 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      <span style={{ fontSize:10, fontWeight:700, color:severityColor(n.severity), backgroundColor:severityColor(n.severity)+"22", borderRadius:5, padding:"1px 6px" }}>
+                        {n.severity === "alert" ? "🚨" : n.severity === "warning" ? "⚠️" : "📢"}
+                      </span>
+                      <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{n.title}</div>
+                    </div>
+                    <div style={{ fontSize:10, color:C.muted, flexShrink:0 }}>{n.created_at?.slice(0,10)}</div>
+                  </div>
+                  <div style={{ fontSize:12, color:C.sub, lineHeight:1.7 }}>{n.body}</div>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+
         {/* 通知設定 */}
         <button onClick={() => { onNavigateSettings?.("notif"); onClose(); }}
-          style={{ width:"100%", padding:"12px 0", borderRadius:10, backgroundColor:C.bg, border:`1px solid ${C.border}`, color:C.sub, fontSize:13, cursor:"pointer" }}>
+          style={{ width:"100%", marginTop:20, padding:"12px 0", borderRadius:10, backgroundColor:C.bg, border:`1px solid ${C.border}`, color:C.sub, fontSize:13, cursor:"pointer" }}>
           ⚙️ 通知設定
         </button>
       </div>
