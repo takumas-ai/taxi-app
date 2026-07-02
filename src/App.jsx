@@ -785,6 +785,12 @@ export default function App() {
             display_id: profile.display_id || null,
             referral_code: profile.referral_code || null,
           });
+          // 招待コードが未生成なら生成してuserに反映（既存ユーザー・Google登録対応）
+          if (!profile.referral_code) {
+            ensureReferralCode(session.user.id).then(({ code }) => {
+              if (code) setUser(u => u ? { ...u, referral_code: code } : u);
+            }).catch(() => {});
+          }
           // 未送信データの再送（オフライン時に保存できなかったレポート）
           const pendingSaves = loadS("taxi_pending_saves", []);
           if (pendingSaves.length > 0) {
