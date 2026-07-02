@@ -55,6 +55,7 @@ import {
   fetchFriendNotifCount,
   saveAiAnalysis,
   fetchUnreadAnalysisCount,
+  fetchPublicNotifications,
 } from "./lib/supabase";
 import { generateMilestoneAnalysis, generatePeriodSummary } from "./lib/ai";
 
@@ -1091,6 +1092,18 @@ export default function App() {
     load();
     const timer = setInterval(load, 120000);
     return () => clearInterval(timer);
+  }, [user?.id]);
+
+  // 起動時：未読ニュースがあればトーストで通知（1回だけ）
+  useEffect(() => {
+    if (!SUPABASE_READY || !user?.id || user?._isGuest) return;
+    const lastSeen = localStorage.getItem("taxi_last_news_seen") || "1970-01-01";
+    fetchPublicNotifications().then(({ data }) => {
+      const unseen = (data || []).filter(n => n.created_at > lastSeen);
+      if (unseen.length > 0) {
+        showToast(`📢 ${unseen[0].title}`, "info");
+      }
+    }).catch(() => {});
   }, [user?.id]);
 
   // 締め期間終了後の振り返りAI分析（自動生成）

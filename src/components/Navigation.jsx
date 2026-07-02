@@ -538,6 +538,26 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
   const [showModeSheet, setShowModeSheet]     = useState(false);
   const [showBizPoints, setShowBizPoints]     = useState(false);
   const [showNotifPanel, setShowNotifPanel]   = useState(false);
+  const [newsCount, setNewsCount]             = useState(0);
+
+  // 未読ニュース数をロード時に取得
+  useEffect(() => {
+    if (!user?.id) return;
+    const lastSeen = localStorage.getItem("taxi_last_news_seen") || "1970-01-01";
+    fetchPublicNotifications().then(({ data }) => {
+      const unseen = (data || []).filter(n => n.created_at > lastSeen).length;
+      setNewsCount(unseen);
+    });
+  }, [user?.id]);
+
+  // 通知パネルを閉じるとき既読にする
+  const closeNotifPanel = () => {
+    setShowNotifPanel(false);
+    if (newsCount > 0) {
+      localStorage.setItem("taxi_last_news_seen", new Date().toISOString());
+      setNewsCount(0);
+    }
+  };
 
   // 今日チェック済みイベント数（バッジ表示用）
   const eventChecks = loadS("taxi_event_checks", {});
@@ -602,8 +622,8 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
           {/* 通知ベル → 通知パネルを開く */}
           <div onClick={() => setShowNotifPanel(true)} style={{ position:"relative", cursor:"pointer", padding:"5px 6px", borderRadius:10, backgroundColor:showNotifPanel?C.accentGlow:"transparent", flexShrink:0 }}>
             <span style={{ fontSize:18, opacity:showNotifPanel?1:0.6 }}>🔔</span>
-            {friendNotifCount > 0 && (
-              <div style={{ position:"absolute", top:0, right:2, backgroundColor:C.red, color:"#fff", fontSize:9, fontWeight:700, borderRadius:99, minWidth:16, height:16, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{friendNotifCount}</div>
+            {(friendNotifCount + newsCount) > 0 && (
+              <div style={{ position:"absolute", top:0, right:2, backgroundColor:C.red, color:"#fff", fontSize:9, fontWeight:700, borderRadius:99, minWidth:16, height:16, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{friendNotifCount + newsCount}</div>
             )}
           </div>
         </div>
@@ -635,7 +655,7 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
       {showNotifPanel && (
         <NotificationPanel
           user={user}
-          onClose={() => setShowNotifPanel(false)}
+          onClose={closeNotifPanel}
           onNavigateSettings={onNavigateSettings}
           onMarkRead={onMarkNotifsRead}
         />
