@@ -740,7 +740,7 @@ export async function adminResolveDeleteRequest(userId) {
 export async function adminCreateNotification({ title, body, area, severity }) {
   const { data, error } = await supabase
     .from("notifications")
-    .insert({ title, body, area: area || null, severity: severity || "info", created_at: new Date().toISOString() })
+    .insert({ title, body, severity: severity || "info", created_at: new Date().toISOString() })
     .select()
     .single();
   return { data, error };
