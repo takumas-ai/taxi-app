@@ -9,7 +9,7 @@ import { UserAvatar } from "./AvatarPicker";
 import { fetchFriendNotifs, markFriendNotifsRead, fetchPublicNotifications } from "../lib/supabase";
 
 // ━━━ 通知パネル（ベルタップで開くボトムシート）━━━
-function NotificationPanel({ user, onClose, onNavigateSettings, onMarkRead }) {
+function NotificationPanel({ user, onClose, onNavigateSettings, onMarkRead, newsCount=0 }) {
   const [activeTab,   setActiveTab]   = useState("personal"); // "personal" | "news"
   const [friendNotifs, setFriendNotifs] = useState([]);
   const [news,        setNews]        = useState([]);
@@ -42,8 +42,8 @@ function NotificationPanel({ user, onClose, onNavigateSettings, onMarkRead }) {
   const severityColor = (s) => s === "alert" ? C.red : s === "warning" ? C.orange : C.accentLight;
 
   const tabs = [
-    { id:"personal", label:"自分宛", badge: friendNotifs.filter(n => !n.read).length },
-    { id:"news",     label:"ニュース", badge: 0 },
+    { id:"personal", label:"自分宛",   badge: friendNotifs.filter(n => !n.read).length },
+    { id:"news",     label:"ニュース", badge: newsCount },
   ];
 
   return (
@@ -658,6 +658,7 @@ export function Header({ user, tab, setTab, appMode="simple", onModeChange, aler
           onClose={closeNotifPanel}
           onNavigateSettings={onNavigateSettings}
           onMarkRead={onMarkNotifsRead}
+          newsCount={newsCount}
         />
       )}
     </>
